@@ -53,6 +53,7 @@ for path in (HERE, "/usr/local/lib/b8k-video"):
 import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
+from search import view as search_view  # noqa: E402
 from sources import net  # noqa: E402
 
 CACHE = sources.CACHE_DIR
@@ -870,49 +871,29 @@ class Video(Gtk.Application):
         if sub["kind"] == "channels":
             box.pack_start(self.channel_finder(sub["query"]), False, False, 0)
         keys = {s.id: (sub["kind"], s.id, sub["query"]) for s in sub["sources"]}
-        results = {sid: self.searches.get(key) for sid, key in keys.items()}
-        several = len(sub["sources"]) > 1
-        waiting = [s.label for s in sub["sources"]
-                   if results[s.id] is None and self.searches.is_loading(keys[s.id])]
-        failed = [s.label for s in sub["sources"]
-                  if results[s.id] is None and self.searches.has_failed(keys[s.id])]
-        found = any(results.get(s.id) for s in sub["sources"])
-        newest = sub["kind"] == "search" and self.library.sort == "date"
-        if sub["kind"] == "search" and found:
+        shown = search_view(
+            sub["kind"], sub["query"], [(s.id, s.label) for s in sub["sources"]],
+            {sid: self.searches.get(key) for sid, key in keys.items()},
+            {sid for sid, key in keys.items() if self.searches.is_loading(key)},
+            {sid for sid, key in keys.items() if self.searches.has_failed(key)},
+            self.library.sort)
+        if shown["can_sort"]:
+            newest = self.library.sort == "date"
             order = Gtk.Button(label="Сначала новые" if newest else "Сначала подходящие")
             order.get_style_context().add_class("more")
             order.set_halign(Gtk.Align.START)
             order.connect("clicked", lambda _b: self.toggle_sort(sub))
             box.pack_start(order, False, False, 0)
-        if newest:
-            # The sources find by relevance (asked for the newest, they
-            # bring the newest of anything, matching or not): what they
-            # found, all sources together, newest first.
-            videos = [v for s in sub["sources"] for v in results.get(s.id) or []]
-            videos.sort(key=lambda v: v.get("published") or 0, reverse=True)
-            if videos:
-                box.pack_start(self.grid(videos), False, False, 0)
-        for src in [] if newest else sub["sources"]:
-            got = results.get(src.id)
-            if not got:
-                continue
-            if several:
-                self.section(box, src.label)
+        for section in shown["sections"]:
+            if section["label"]:
+                self.section(box, section["label"])
             if sub["kind"] == "search":
-                box.pack_start(self.grid(got), False, False, 0)
+                box.pack_start(self.grid(section["items"]), False, False, 0)
             else:
-                for chan in got:
+                for chan in section["items"]:
                     box.pack_start(self.channel_row(chan, self.follow_button(chan, sub)),
                                    False, False, 0)
-        notes = []
-        if waiting:
-            notes.append("Ищу «%s» (%s)…" % (sub["query"], ", ".join(waiting)))
-        if failed:
-            notes.append("Не удалось: %s — нет связи?" % ", ".join(failed))
-        if not waiting and not found and not failed:
-            notes.append("Ничего не найдено." if sub["kind"] == "search"
-                         else "Каналы не найдены.")
-        self.say(" ".join(notes))
+        self.say(shown["note"])
         self.set_content(box)
 
     def toggle_sort(self, sub):
