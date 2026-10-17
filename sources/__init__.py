@@ -7,7 +7,10 @@ SOURCE has:
   id, label                 "youtube", "YouTube"
   search(query)             a list of videos, best first
   channel_videos(channel)   the channel's newest videos, newest first
-  find_channel(text)        a channel from a link or a name, or None
+  search_channels(query)    channels matching the words, best first, or
+                            the one a link or @name points at
+  find_channel(text)        a channel from a link, a name or its id, with
+                            everything known about it, or None
   watch_url(video)          what the player opens; it goes through mpv's
                             yt-dlp hook, so a page link is enough
 and may have warm_up(), called once in the background at start.
@@ -17,6 +20,10 @@ A video is a dict:
   thumb (an image URL), published (a Unix time or None)
 A channel is a dict:
   source, id, title
+and, when the source knows them (a followed channel may lack them until
+b8k-video asks find_channel again):
+  handle (like "@name"), thumb (an avatar URL), subscribers (a count or
+  None), description
 
 A source may block (network): b8k-video calls it from a worker thread.
 """

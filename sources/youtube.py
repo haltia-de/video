@@ -3,6 +3,7 @@
 newest videos from its public Atom feed (one small request instead of a
 page of JavaScript), playback through mpv's yt-dlp hook."""
 import re
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -15,6 +16,11 @@ NS = {
 }
 UA = "Mozilla/5.0 (X11; Linux armv7l; rv:151.0) Gecko/20100101 Firefox/151.0"
 SEARCH_COUNT = 24
+CHANNEL_COUNT = 12
+AVATAR_SIZE = 176
+# The "channels only" filter of YouTube's search page.
+CHANNELS_ONLY = "EgIQAg=="
+DESCRIPTION_MAX = 300
 
 
 def _thumb(video_id):
@@ -45,6 +51,43 @@ def _video(entry):
         "thumb": _thumb(vid),
         "published": entry.get("timestamp"),
     }
+
+
+def _avatar(thumbs):
+    url = ""
+    for thumb in thumbs or []:
+        if thumb.get("id") == "avatar_uncropped":
+            url = thumb["url"]
+            break
+        if thumb.get("width") and thumb.get("width") == thumb.get("height"):
+            url = thumb["url"]  # the last square one is the largest
+    if not url:
+        return ""
+    if url.startswith("//"):
+        url = "https:" + url
+    # The size is in the URL's tail: ask for a small one, not 900x900.
+    return re.sub(r"=[^=/]*$", "=s%d-c-k-c0x00ffffff-no-rj" % AVATAR_SIZE, url)
+
+
+def _channel(info, cid):
+    handle = info.get("uploader_id") or ""
+    desc = " ".join((info.get("description") or "").split())
+    if len(desc) > DESCRIPTION_MAX:
+        desc = desc[:DESCRIPTION_MAX].rsplit(" ", 1)[0] + "…"
+    return {
+        "source": "youtube",
+        "id": cid,
+        "title": info.get("channel") or info.get("uploader") or info.get("title") or cid,
+        "handle": handle if handle.startswith("@") else "",
+        "thumb": _avatar(info.get("thumbnails")),
+        "subscribers": info.get("channel_follower_count"),
+        "description": desc,
+    }
+
+
+def _is_link(text):
+    return (re.fullmatch(r"UC[\w-]{22}", text) is not None
+            or text.startswith(("@", "http")) or "youtube.com/" in text)
 
 
 class YouTube:
@@ -91,8 +134,26 @@ class YouTube:
             })
         return out
 
+    def search_channels(self, query):
+        query = query.strip()
+        if _is_link(query):
+            chan = self.find_channel(query)
+            return [chan] if chan else []
+        url = "https://www.youtube.com/results?" + urllib.parse.urlencode(
+            {"search_query": query, "sp": CHANNELS_ONLY})
+        with _ydl({"playlistend": CHANNEL_COUNT}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        out = []
+        for entry in info.get("entries") or []:
+            cid = (entry or {}).get("channel_id") or ""
+            if cid.startswith("UC"):
+                out.append(_channel(entry, cid))
+        return out
+
     def find_channel(self, text):
         text = text.strip()
+        if text.startswith("youtube.com/") or text.startswith("www.youtube.com/"):
+            text = "https://" + text
         if re.fullmatch(r"UC[\w-]{22}", text):
             url = "https://www.youtube.com/channel/" + text
         elif text.startswith("@"):
@@ -106,8 +167,7 @@ class YouTube:
         cid = info.get("channel_id") or info.get("id")
         if not cid or not cid.startswith("UC"):
             return None
-        return {"source": "youtube", "id": cid,
-                "title": info.get("channel") or info.get("uploader") or info.get("title") or cid}
+        return _channel(info, cid)
 
     def watch_url(self, video):
         return "https://www.youtube.com/watch?v=" + video["id"]

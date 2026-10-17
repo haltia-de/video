@@ -3,8 +3,10 @@
 """Видео: videos in large cards, played full screen by b8k-vplay.
 
 Three pages under the search field: Подписки (the newest videos of the
-channels one follows, all together), Каналы (those channels; a tap shows
-one, the cross unfollows) and История (what was played). A search shows its
+channels one follows, all together), Каналы (those channels with their
+avatar, subscribers and latest video; a tap shows one, the cross
+unfollows; a field above them finds new channels) and История (what was
+played). A search shows its
 results in place of the page. A tap on a card plays the video; a long press
 follows or unfollows its channel.
 
@@ -53,6 +55,8 @@ HISTORY_MAX = 100
 FEED_MAX = 48
 FEED_REFRESH_SEC = 30 * 60
 THUMB_W, THUMB_H = 352, 198
+AVATAR = 96
+CHANNEL_INFO_SEC = 7 * 86400
 UA = "Mozilla/5.0 (X11; Linux armv7l; rv:151.0) Gecko/20100101 Firefox/151.0"
 
 CSS = b"""
@@ -87,7 +91,18 @@ button.tab.current { background-color: #c4dcf7; }
 .card label.sub { font-size: 17px; color: #5e5c64; }
 label.note { font-size: 24px; color: #5e5c64; }
 .chan { background-color: #f2f2f0; border-radius: 16px; padding: 12px 20px; }
-.chan label { font-size: 26px; color: #2e3436; }
+.chan button.open {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  padding: 0;
+}
+.chan button.open:active { background-color: #c4dcf7; }
+.chan label.cname { font-size: 26px; color: #2e3436; }
+.chan label.csub { font-size: 19px; color: #5e5c64; }
+.chan label.cdesc { font-size: 18px; color: #5e5c64; }
 button.drop {
   background-image: none;
   background-color: #e6e6e4;
@@ -98,6 +113,7 @@ button.drop {
   min-height: 64px;
   font-size: 28px;
 }
+button.drop.wide { font-size: 24px; padding: 0 24px; }
 """
 
 
@@ -135,6 +151,24 @@ def nice_duration(sec):
     return "%d:%02d" % (sec // 60, sec % 60)
 
 
+def plural(n, one, few, many):
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def nice_subscribers(n):
+    if n is None:
+        return ""
+    if n >= 1000:
+        num, unit = (n / 1e6, "млн") if n >= 10 ** 6 else (n / 1e3, "тыс.")
+        text = ("%d" % num) if num >= 100 else ("%.1f" % num).rstrip("0").rstrip(".")
+        return "%s %s подписчиков" % (text.replace(".", ","), unit)
+    return "%d %s" % (n, plural(n, "подписчик", "подписчика", "подписчиков"))
+
+
 def nice_age(ts):
     if not ts:
         return ""
@@ -154,15 +188,15 @@ class Thumbs:
         self.pool = ThreadPoolExecutor(max_workers=3)
         os.makedirs(CACHE, exist_ok=True)
 
-    def get(self, url, image):
+    def get(self, url, image, size=(THUMB_W, THUMB_H)):
         name = hashlib.sha1(url.encode()).hexdigest() + ".jpg"
         path = os.path.join(CACHE, name)
         if os.path.exists(path):
-            self._show(path, image)
+            self._show(path, image, size)
             return
-        self.pool.submit(self._fetch, url, path, image)
+        self.pool.submit(self._fetch, url, path, image, size)
 
-    def _fetch(self, url, path, image):
+    def _fetch(self, url, path, image, size):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=20) as resp:
@@ -172,12 +206,12 @@ class Thumbs:
             os.replace(path + ".new", path)
         except OSError:
             return
-        GLib.idle_add(self._show, path, image)
+        GLib.idle_add(self._show, path, image, size)
 
     @staticmethod
-    def _show(path, image):
+    def _show(path, image, size):
         try:
-            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, THUMB_W, THUMB_H, True)
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size[0], size[1], True)
             image.set_from_pixbuf(pix)
         except GLib.Error:
             pass
@@ -195,6 +229,8 @@ class Video(Gtk.Application):
         self.feed_time = 0
         self.page = "feed"
         self.channel = None  # the channel shown on its own page
+        self.refreshing = False  # followed channels' details being fetched
+        self.refresh_tried = set()
         self.win = None
 
     # --- layout ---------------------------------------------------------
@@ -379,22 +415,39 @@ class Video(Gtk.Application):
 
     def _load_feed(self, chans):
         out = []
+        latest = {}  # (source, id): the time of the channel's newest video
         for chan in chans:
             src = self.sources.get(chan.get("source"))
             if not src:
                 continue
             try:
-                out.extend(src.channel_videos(chan))
+                videos = src.channel_videos(chan)
             except Exception as exc:
                 sys.stderr.write("b8k-video: %s: %s\n" % (chan.get("title"), exc))
+                continue
+            out.extend(videos)
+            times = [v["published"] for v in videos if v.get("published")]
+            if times:
+                latest[(chan["source"], chan["id"])] = max(times)
         out.sort(key=lambda v: v.get("published") or 0, reverse=True)
-        return out[:FEED_MAX]
+        return out[:FEED_MAX], latest
 
-    def _feed_ready(self, videos, error):
-        if error or videos is None:
+    def _feed_ready(self, result, error):
+        if error or result is None:
             if self.page == "feed":
                 self.say("Не удалось загрузить: нет связи?")
             return
+        videos, latest = result
+        # Kept with the channels, so that Каналы can tell it before the
+        # feed is loaded again.
+        changed = False
+        for chan in self.config.get("channels", []):
+            when = latest.get((chan["source"], chan["id"]))
+            if when and when != chan.get("latest"):
+                chan["latest"] = when
+                changed = True
+        if changed:
+            save_json(CONFIG, self.config)
         self.feed = videos
         self.feed_time = time.time()
         if self.page == "feed" and not self.channel:
@@ -403,48 +456,162 @@ class Video(Gtk.Application):
 
     def show_channels(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        add = Gtk.Box(spacing=12)
-        entry = Gtk.Entry(placeholder_text="Ссылка на канал или @имя")
-        entry.get_style_context().add_class("search")
-        add.pack_start(entry, True, True, 0)
-        btn = Gtk.Button(label="Добавить")
-        btn.get_style_context().add_class("add")
-        add.pack_start(btn, False, False, 0)
-        box.pack_start(add, False, False, 0)
-
-        def do_add(*_a):
-            text = entry.get_text().strip()
-            if not text:
-                return
-            self.say("Ищу канал…")
-            src = self.sources.get("youtube") or next(iter(self.sources.values()))
-            self.work(src.find_channel, text, done=self._channel_found)
-
-        entry.connect("activate", do_add)
-        btn.connect("clicked", do_add)
+        box.pack_start(self.channel_finder(), False, False, 0)
         for chan in self.config.get("channels", []):
-            row = Gtk.Box(spacing=12)
-            row.get_style_context().add_class("chan")
-            name = Gtk.Button(label=chan["title"], relief=Gtk.ReliefStyle.NONE)
-            name.get_child().set_xalign(0)
-            name.connect("clicked", lambda _b, c=chan: self.show_channel(c))
-            row.pack_start(name, True, True, 0)
             drop = Gtk.Button(label="✕")
             drop.get_style_context().add_class("drop")
             drop.connect("clicked", lambda _b, c=chan: self.unfollow(c))
-            row.pack_start(drop, False, False, 0)
-            box.pack_start(row, False, False, 0)
+            box.pack_start(self.channel_row(chan, drop), False, False, 0)
         if not self.config.get("channels"):
-            self.say("Подписок пока нет.")
+            self.say("Подписок пока нет. Найдите канал по названию или "
+                     "вставьте ссылку на него.")
         self.set_content(box)
+        self.refresh_channels()
 
-    def _channel_found(self, chan, error):
-        if error or not chan:
-            self.say("Канал не найден.")
+    def channel_finder(self, text=""):
+        row = Gtk.Box(spacing=12)
+        entry = Gtk.Entry(placeholder_text="Найти канал, ссылка или @имя", text=text)
+        entry.get_style_context().add_class("search")
+        row.pack_start(entry, True, True, 0)
+        btn = Gtk.Button(label="Найти")
+        btn.get_style_context().add_class("add")
+        row.pack_start(btn, False, False, 0)
+
+        def do_find(*_a):
+            query = entry.get_text().strip()
+            if query:
+                self.find_channels(query)
+
+        entry.connect("activate", do_find)
+        btn.connect("clicked", do_find)
+        return row
+
+    def channel_row(self, chan, action):
+        """A channel with what is known about it; a tap opens it, action
+        (a button) sits at the end."""
+        row = Gtk.Box(spacing=12)
+        row.get_style_context().add_class("chan")
+        inner = Gtk.Box(spacing=16)
+        avatar = Gtk.Image()
+        avatar.set_size_request(AVATAR, AVATAR)
+        avatar.set_valign(Gtk.Align.START)
+        if chan.get("thumb"):
+            self.thumbs.get(chan["thumb"], avatar, (AVATAR, AVATAR))
+        inner.pack_start(avatar, False, False, 0)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        text.set_valign(Gtk.Align.CENTER)
+        name = Gtk.Label(label=chan["title"], xalign=0)
+        name.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        name.get_style_context().add_class("cname")
+        text.pack_start(name, False, False, 0)
+        latest = nice_age(chan.get("latest"))
+        bits = [chan.get("handle") or "", nice_subscribers(chan.get("subscribers")),
+                ("новое видео " + latest) if latest else ""]
+        bits = [b for b in bits if b]
+        if bits:
+            sub = Gtk.Label(label=" · ".join(bits), xalign=0)
+            sub.set_ellipsize(3)
+            sub.get_style_context().add_class("csub")
+            text.pack_start(sub, False, False, 0)
+        if chan.get("description"):
+            desc = Gtk.Label(label=chan["description"], xalign=0)
+            desc.set_line_wrap(True)
+            desc.set_lines(2)
+            desc.set_ellipsize(3)
+            desc.set_max_width_chars(60)
+            desc.get_style_context().add_class("cdesc")
+            text.pack_start(desc, False, False, 0)
+        inner.pack_start(text, True, True, 0)
+        open_btn = Gtk.Button()
+        open_btn.get_style_context().add_class("open")
+        open_btn.add(inner)
+        open_btn.connect("clicked", lambda _b: self.show_channel(chan))
+        row.pack_start(open_btn, True, True, 0)
+        action.set_valign(Gtk.Align.CENTER)
+        row.pack_start(action, False, False, 0)
+        return row
+
+    def find_channels(self, query):
+        self.win.set_focus(None)  # the keyboard goes away
+        self.channel = {"channels": query}
+        self.header.set_title("Поиск каналов")
+        self.back_btn.show()
+        self.say("Ищу каналы «%s»…" % query)
+        self.set_content(self.channel_finder(query))
+        src = self.sources.get("youtube") or next(iter(self.sources.values()))
+        self.work(src.search_channels, query,
+                  done=lambda chans, error: self._channels_found(query, chans, error))
+
+    def _channels_found(self, query, chans, error):
+        if not self.channel or self.channel.get("channels") != query:
+            return  # left, or another search began
+        if error:
+            self.say("Поиск не удался: нет связи?")
             return
-        self.follow(chan)
-        if self.page == "channels":
+        self.channel["found"] = chans
+        self.say("" if chans else "Каналы не найдены.")
+        self.show_found()
+
+    def show_found(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.pack_start(self.channel_finder(self.channel["channels"]), False, False, 0)
+        for chan in self.channel["found"]:
+            if self.is_followed(chan["source"], chan["id"]):
+                btn = Gtk.Button(label="Отписаться")
+                btn.get_style_context().add_class("drop")
+                btn.get_style_context().add_class("wide")
+                btn.connect("clicked", lambda _b, c=chan: (self.unfollow(c), self.show_found()))
+            else:
+                btn = Gtk.Button(label="Подписаться")
+                btn.get_style_context().add_class("add")
+                btn.connect("clicked", lambda _b, c=chan: (self.follow(c), self.show_found()))
+            box.pack_start(self.channel_row(chan, btn), False, False, 0)
+        value = self.scroll.get_vadjustment().get_value()
+        self.set_content(box)
+        self.scroll.get_vadjustment().set_value(value)  # stay at the row tapped
+
+    def refresh_channels(self):
+        """Ask again, in the background, about followed channels known only
+        by name (followed from a card) or whose details are a week old."""
+        if self.refreshing:
+            return
+        now = time.time()
+        stale = [c for c in self.config.get("channels", [])
+                 if now - c.get("updated", 0) > CHANNEL_INFO_SEC
+                 and (c["source"], c["id"]) not in self.refresh_tried]
+        if not stale:
+            return
+        self.refreshing = True
+        self.refresh_tried.update((c["source"], c["id"]) for c in stale)
+        self.work(self._load_channel_info, stale, done=self._channel_info_ready)
+
+    def _load_channel_info(self, chans):
+        out = []
+        for chan in chans:
+            src = self.sources.get(chan["source"])
+            try:
+                info = src and src.find_channel(chan["id"])
+            except Exception as exc:
+                sys.stderr.write("b8k-video: %s: %s\n" % (chan.get("title"), exc))
+                continue
+            if info and info["id"] == chan["id"]:
+                out.append(info)
+        return out
+
+    def _channel_info_ready(self, infos, error):
+        self.refreshing = False
+        if not infos:
+            return
+        now = time.time()
+        for info in infos:
+            for chan in self.config.get("channels", []):
+                if chan["id"] == info["id"] and chan["source"] == info["source"]:
+                    chan.update(info, updated=now)
+        save_json(CONFIG, self.config)
+        if self.page == "channels" and not self.channel:
+            value = self.scroll.get_vadjustment().get_value()
             self.show_page("channels")
+            self.scroll.get_vadjustment().set_value(value)
 
     def show_channel(self, chan):
         self.channel = chan
@@ -497,9 +664,12 @@ class Video(Gtk.Application):
         self.set_content(self.grid(videos))
 
     # --- channels -----------------------------------------------------------
-    def followed(self, video):
-        return any(c["id"] == video.get("channel_id") and c["source"] == video["source"]
+    def is_followed(self, source, cid):
+        return any(c["id"] == cid and c["source"] == source
                    for c in self.config.get("channels", []))
+
+    def followed(self, video):
+        return self.is_followed(video["source"], video.get("channel_id"))
 
     def follow_menu(self, video):
         if not video.get("channel_id"):
@@ -523,6 +693,9 @@ class Video(Gtk.Application):
     def follow(self, chan):
         chans = [c for c in self.config.get("channels", [])
                  if not (c["id"] == chan["id"] and c["source"] == chan["source"])]
+        chan = dict(chan)
+        if chan.get("thumb") or chan.get("subscribers") is not None:
+            chan["updated"] = time.time()  # found with its details
         chans.append(chan)
         self.config["channels"] = chans
         save_json(CONFIG, self.config)
