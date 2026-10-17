@@ -54,6 +54,7 @@ import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
 from search import view as search_view  # noqa: E402
+from signin import SignIn  # noqa: E402
 from sources import net  # noqa: E402
 
 CACHE = sources.CACHE_DIR
@@ -70,8 +71,6 @@ HOME_SOURCE = 12
 THUMB_W, THUMB_H = 352, 198
 AVATAR = 96
 QR_SIZE = 320
-LOGIN_POLL_MS = 3000
-LOGIN_RETRIES = 5
 # Cards made at once; the rest follow in batches while the first are
 # already on screen (some fifty cards take a second to make here).
 CARDS_AT_ONCE = 9
@@ -344,6 +343,15 @@ class Video(Gtk.Application):
             lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
         self.channel_videos.watch(self._channel_came)
+        self.signins = {}  # source id: its SignIn, for the sources that have one
+        for src in self.sources.values():
+            if getattr(src, "login", None):
+                sign = SignIn(src, run=self.work, later=lambda ms, fn: GLib.timeout_add(
+                    ms, lambda: (fn(), False)[1]))
+                sign.watch(lambda state, src=src: self._signin_changed(src, state))
+                self.signins[src.id] = sign
+        self.signed_in = {sid: s.state["kind"] == "in" for sid, s in self.signins.items()}
+        self.account_notes = {}  # source id: the last word on its Account's channels
         self.page = "home"
         self.sub = None  # a page over the tabs: search, a channel, settings
         self.refreshing = False  # followed channels' details being fetched
@@ -498,9 +506,16 @@ class Video(Gtk.Application):
 
     def open_sub(self, sub, title):
         """A page over the tabs; the back button returns to the tab."""
-        self.sub = sub
+        left, self.sub = self.sub, sub
         self.header.set_title(title)
         self.back_btn.show()
+        self.left(left)
+
+    def left(self, sub):
+        """A page over the tabs was left: a code no one sees is not asked about."""
+        if sub and sub["kind"] == "settings":
+            for sign in self.signins.values():
+                sign.cancel()
 
     def on_sub(self, kind, **match):
         """Whether that page is still the one on show (work done in the
@@ -591,7 +606,8 @@ class Video(Gtk.Application):
     # --- pages ------------------------------------------------------------
     def show_page(self, key):
         self.page = key
-        self.sub = None
+        left, self.sub = self.sub, None
+        self.left(left)
         self.back_btn.hide()
         self.header.set_title("Видео")
         self.mark_tab(key)
@@ -921,15 +937,16 @@ class Video(Gtk.Application):
     # --- settings ---------------------------------------------------------
     def show_settings(self):
         again = self.on_sub("settings")
-        sub = self.sub if again else {"kind": "settings", "login": {}}
         if not again:
-            self.open_sub(sub, "Настройки")
+            self.open_sub({"kind": "settings"}, "Настройки")
             self.mark_tab(None)
+            for sign in self.signins.values():
+                sign.refresh()  # a token revoked since
         self.say("")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.section(box, "Источники")
         for src in self.ordered():
-            box.pack_start(self.source_settings(src, sub), False, False, 0)
+            box.pack_start(self.source_settings(src), False, False, 0)
         box.pack_start(label("Поиск идёт во всех включённых источниках, первыми — "
                              "результаты YouTube. Кнопка слева от поля поиска "
                              "оставляет один источник.", "hint", wrap=True), False, False, 0)
@@ -938,7 +955,7 @@ class Video(Gtk.Application):
         else:
             self.set_content(box)
 
-    def source_settings(self, src, sub):
+    def source_settings(self, src):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         card.get_style_context().add_class("chan")
         top = Gtk.Box(spacing=12)
@@ -948,38 +965,39 @@ class Video(Gtk.Application):
         switch.connect("notify::active", lambda sw, _p: self.set_enabled(src, sw.get_active()))
         top.pack_start(switch, False, False, 0)
         card.pack_start(top, False, False, 0)
-        if not getattr(src, "login", None):
+        sign = self.signins.get(src.id)
+        if not sign:
             return card
-        account = src.account()
-        state = sub["login"].get(src.id) or {}
+        state = sign.state
+        kind = state["kind"]
         buttons = Gtk.Box(spacing=12)
-        if account:
-            card.pack_start(label("Вход выполнен: %s" % account["name"], "csub"), False, False, 0)
-            imp = Gtk.Button(label="Подписаться на каналы аккаунта")
-            imp.get_style_context().add_class("add")
-            imp.connect("clicked", lambda _b: self.import_subscriptions(src, sub))
-            buttons.pack_start(imp, False, False, 0)
-            out = Gtk.Button(label="Выйти")
-            out.get_style_context().add_class("drop")
-            out.get_style_context().add_class("wide")
-            out.connect("clicked", lambda _b: self.logout(src, sub))
-            buttons.pack_start(out, False, False, 0)
-        elif src.login == "code":
-            if state.get("code"):
-                card.pack_start(self.login_code(state), False, False, 0)
-            else:
-                btn = Gtk.Button(label="Войти по QR-коду")
-                btn.get_style_context().add_class("add")
-                btn.connect("clicked", lambda _b: self.login_start(src, sub))
-                buttons.pack_start(btn, False, False, 0)
-        else:
-            card.pack_start(label(src.login_hint, "cdesc", wrap=True), False, False, 0)
-            btn = Gtk.Button(label="Проверить вход")
-            btn.get_style_context().add_class("add")
-            btn.connect("clicked", lambda _b: self.login_check(src, sub))
+
+        def button(text, cls, action):
+            btn = Gtk.Button(label=text)
+            for c in cls.split():
+                btn.get_style_context().add_class(c)
+            btn.connect("clicked", lambda _b: action())
             buttons.pack_start(btn, False, False, 0)
-        if state.get("note"):
-            card.pack_start(label(state["note"], "csub", wrap=True), False, False, 0)
+
+        if kind == "in":
+            card.pack_start(label("Вход выполнен: %s" % state["name"], "csub"), False, False, 0)
+            button("Подписаться на каналы аккаунта", "add",
+                   lambda: self.import_subscriptions(src))
+            button("Выйти", "drop wide", lambda: self.logout(src))
+            note = self.account_notes.get(src.id)
+        elif kind == "waiting":
+            card.pack_start(self.login_code(state), False, False, 0)
+            note = None
+        else:
+            if src.login == "cookies":
+                card.pack_start(label(src.login_hint, "cdesc", wrap=True), False, False, 0)
+            note = {"getting": "Получаю код…", "checking": "Проверяю…"}.get(
+                kind, state.get("note"))
+            if kind in ("out", "failed"):
+                button("Войти по QR-коду" if src.login == "code" else "Проверить вход", "add",
+                       sign.begin)
+        if note:
+            card.pack_start(label(note, "csub", wrap=True), False, False, 0)
         if buttons.get_children():
             card.pack_start(buttons, False, False, 0)
         return card
@@ -1006,100 +1024,40 @@ class Video(Gtk.Application):
             self.feed.invalidate()
             self.home.invalidate(src.id)
 
-    def login_start(self, src, sub, tries=0):
-        sub["login"][src.id] = {"note": "Получаю код…", "tries": tries}
-        self.show_settings()
-        self.work(src.login_start, done=lambda got, error: self._login_code(src, sub, got, error))
-
-    def _login_code(self, src, sub, got, error):
-        state = sub["login"].get(src.id)
-        if state is None:
-            return
-        if error:
-            state.update(note="Не удалось получить код: нет связи?")
-        else:
-            state.update(got, note="")
-            GLib.timeout_add(LOGIN_POLL_MS, self._login_tick, src, sub, state)
-        if self.sub is sub:
+    def _signin_changed(self, src, state):
+        now = state["kind"] == "in"
+        if now != self.signed_in.get(src.id):
+            self.signed_in[src.id] = now
+            # Главная and searches of a signed-in source are the account's own.
+            self.home.forget(src.id)
+            self.searches.forget()
+            self.account_notes[src.id] = (
+                "Подписаться на каналы аккаунта можно кнопкой ниже." if now else None)
+        if self.on_sub("settings"):
             self.show_settings()
 
-    def _login_tick(self, src, sub, state):
-        # Asks while Настройки with this code is on show, then stops.
-        if self.sub is not sub or sub["login"].get(src.id) is not state:
-            return False
-        self.work(src.login_poll, done=lambda acc, error: self._login_polled(src, sub, state,
-                                                                             acc, error))
-        return False
-
-    def _login_polled(self, src, sub, state, account, error):
-        if self.sub is not sub or sub["login"].get(src.id) is not state:
-            return
-        if error:
-            # The code lives a few minutes: a new one, as a TV shows.
-            if state["tries"] + 1 < LOGIN_RETRIES:
-                self.login_start(src, sub, state["tries"] + 1)
-            else:
-                sub["login"][src.id] = {"note": "Код устарел."}
-                self.show_settings()
-            return
-        if account is None:
-            GLib.timeout_add(LOGIN_POLL_MS, self._login_tick, src, sub, state)
-            return
-        sub["login"][src.id] = {"note": "Подписаться на каналы аккаунта можно кнопкой ниже."}
-        self.after_login(src)
-        self.show_settings()
-
-    def login_check(self, src, sub):
-        sub["login"][src.id] = {"note": "Проверяю…"}
-        self.show_settings()
-
-        def done(account, error):
-            if error or not account:
-                text = "Войти не удалось: файла нет, он устарел или нет связи."
-            else:
-                text = "Подписаться на каналы аккаунта можно кнопкой ниже."
-                self.after_login(src)
-            sub["login"][src.id] = {"note": text}
-            if self.sub is sub:
-                self.show_settings()
-
-        self.work(src.login_check, done=done)
-
-    def after_login(self, src):
-        # Главная and searches of a signed-in source are the account's own.
-        self.home.forget(src.id)
-        self.searches.forget()
-
-    def logout(self, src, sub):
+    def logout(self, src):
         def worker():
             if ask(src.label, "Выйти из аккаунта"):
-                GLib.idle_add(done)
-
-        def done():
-            src.logout()
-            sub["login"].pop(src.id, None)
-            self.after_login(src)
-            if self.sub is sub:
-                self.show_settings()
-            return False
+                GLib.idle_add(lambda: self.signins[src.id].logout() and False)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def import_subscriptions(self, src, sub):
-        sub["login"][src.id] = {"note": "Загружаю каналы аккаунта…"}
-        self.show_settings()
+    def import_subscriptions(self, src):
+        def note(text):
+            self.account_notes[src.id] = text
+            if self.on_sub("settings"):
+                self.show_settings()
 
         def done(chans, error):
             if error:
-                text = "Не удалось загрузить каналы: нет связи?"
+                note("Не удалось загрузить каналы: нет связи?")
             else:
                 new = self.library.follow_all(chans or [])
-                text = ("Добавлено каналов: %d." % new) if new else \
-                    "Все каналы аккаунта уже здесь."
-            sub["login"][src.id] = {"note": text}
-            if self.sub is sub:
-                self.show_settings()
+                note(("Добавлено каналов: %d." % new) if new
+                     else "Все каналы аккаунта уже здесь.")
 
+        note("Загружаю каналы аккаунта…")
         self.work(src.subscriptions, done=done)
 
     # --- channels ---------------------------------------------------------

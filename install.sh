@@ -9,7 +9,7 @@ root=${1:-}
 root=${root%/}
 here=$(cd "$(dirname "$0")" && pwd)
 install -D -m 755 "$here/b8k-video" "$root/usr/local/bin/b8k-video"
-for f in library.py kept.py search.py; do
+for f in library.py kept.py search.py signin.py; do
 	install -D -m 644 "$here/$f" "$root/usr/local/lib/b8k-video/$f"
 done
 for f in "$here"/sources/*.py; do
