@@ -1,0 +1,254 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358841,
+"expires": 1792358841
+}
+}
+},
+{
+"url": "catalog.getVideoSearchWeb2",
+"params": {
+"q": "vert dider",
+"content_type": "author"
+},
+"answer": {
+"response": {
+"catalog": {
+"default_section": "PUldVA8HW0pkXktMF0cOBzQIASlHURoTIxgdKVNdBxIjGRopRlEIEi8EB1QZFlJEfFpFVAIWUUQwDhsCFVACAiMZS1oXB1pEfF5FVAYNSVxwU1BPBQRTUn9eWEEHAF9Xf11bWhcFWER8EEsVWlofAygfNgJMRA5EfEkIA0FcBBRkR0tCBxZRRGRHS0IAFlEAJwcaExkW",
+"sections": [
+{
+"id": "PUldVA8HW0pkXktMF0cOBzQIASlHURoTIxgdKVNdBxIjGRopRlEIEi8EB1QZFlJEfFpFVAIWUUQwDhsCFVACAiMZS1oXB1pEfF5FVAYNSVxwU1BPBQRTUn9eWEEHAF9Xf11bWhcFWER8EEsVWlofAygfNgJMRA5EfEkIA0FcBBRkR0tCBxZRRGRHS0IAFlEAJwcaExkWX1VkUVgLGRZfV2RRWAs",
+"title": "",
+"blocks": [
+{
+"id": "PUlQVA8GR0R3W0tMF0cOBzQIASlDXQ8DKTQPH1lADhQ1WktaFwdaRHxeRVQCFlFEMA4bAhVQAgIjGUtaFwdSRHxdUU8MBFteclJcRwIGX1J3Ul9EGRZaVWRRElRWWwUSIwUdKUFNGwNkUUsXQEADCTRJRVQBAUlcIAoFBVAYSVJ1SVNHGRZfVGRRSwVQVRkFLjQfH1FRBDkgAgUCUEYYRDtHS0MXDkkVIwobFV1rGQM3HgwFQWsNDyofDARGaxgDJR8AGVsWR0RySVNFBRhJV3NJU0cZFlhUZFFYCw",
+"data_type": "search_filter",
+"layout": {
+"name": "slider"
+},
+"actions": [
+{
+"action": {
+"type": "open_search_filters",
+"style": "default"
+},
+"title": "Все фильтры",
+"ref_items_count": 5,
+"ref_layout_name": "slider",
+"ref_data_type": "search_filter",
+"enabled": false
+}
+],
+"search_filters_ids": [
+"4d4594cf8067f3c3a0",
+"3c3a92ca9afebc9abe",
+"d0641a75a39626ae72",
+"8891ea8bbc4ff5527b",
+"ba73548961b026ab49"
+]
+},
+{
+"id": "PUlQVA8GR0R3W0tMF0cOBzQIASlDXQ8DKTQIA0FcBBQ1WjYeUFUPAzRJRVQAFlFENQ4IBFZcNBQjGhwTRkA0AC8HHRNHRzQVIwgdH1paSUpkX0tMBgRHRHdeS0wESQ",
+"data_type": "none",
+"layout": {
+"name": "header_compact",
+"title": "Каналы",
+"style": "right_button"
+}
+},
+{
+"id": "PUlQVA8GR0R3W0tMF0cOBzQIASlDXQ8DKTQIA0FcBBQ1WktaFwdaRHxeRVQCFlFEMA4bAhVQAgIjGUtaFwdSRHxdUU8MBFteclJcRwIGX1J3Ul9EGRZaVWRRElRWWwUSIwUdKUFNGwNkUUsXQEADCTRJRVQBAUlcIAoFBVAYSVJ1SVNHGRZfUmRRWFoXAFlEfEkaE1RGCA4ZHQASUFs0BzMfARlHR0kbaklcVA8WGAMnGQoeakYOFzMOGgJqUgIKMg4bBWpHDgUyAgYYFxhJUmRRWkYZFlpTZFFYWhcHWUR8WRQ",
+"data_type": "search_authors",
+"layout": {
+"name": "list"
+},
+"url": "https://vkvideo.ru/author",
+"search_author_items": [
+{
+"id": -55155418,
+"content_type": "videos",
+"description": "1584 видео • 286K подписчиков",
+"section_id": ""
+},
+{
+"id": -69934966,
+"content_type": "videos",
+"description": "3262 видео • 35K подписчиков",
+"section_id": ""
+},
+{
+"id": -78975351,
+"content_type": "videos",
+"description": "2390 видео • 17K подписчиков",
+"section_id": ""
+},
+{
+"id": -204988326,
+"content_type": "videos",
+"description": "1777 видео • 3873 подписчика",
+"section_id": ""
+},
+{
+"id": -29631161,
+"content_type": "videos",
+"description": "1087 видео • 190 подписчиков",
+"section_id": ""
+}
+],
+"title": "Каналы"
+}
+]
+}
+]
+},
+"groups": [
+{
+"id": 55155418,
+"member_status": 0,
+"members_count": 286001,
+"activity": "Наука",
+"trending": 0,
+"name": "VERT DIDER",
+"screen_name": "studio_vd",
+"is_closed": 0,
+"type": "page",
+"is_member": 0,
+"verified": 0,
+"photo_200": "https://sun1-54.userapi.com/s/v1/ig1/QbKvO2tJNnvWGoNsM5doG4KbE9v01Vc5lIxfoslQk0vVQumw5fzeh2FOtEGPmLXANM9A_evy.jpg?quality=96&crop=26,26,748,748&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480"
+},
+{
+"id": 69934966,
+"member_status": 0,
+"members_count": 35853,
+"activity": "Стример",
+"trending": 0,
+"name": "Stream HellYeahPlay",
+"screen_name": "hellyeahplay",
+"is_closed": 0,
+"type": "page",
+"is_member": 0,
+"verified": 1,
+"photo_200": "https://sun9-83.userapi.com/s/v1/ig2/YeYV3Z09TvOD5CcOKKdurKvoW_3r5bwQXdsdSchFJuZXeMymw_n3NFh8CsjquCuF2p9I74EjXmnPmozfY7yJfGRx.jpg?quality=95&crop=0,0,719,719&as=32x32,48x48,72x72,108x108,160x160,240x2"
+},
+{
+"id": 78975351,
+"member_status": 0,
+"members_count": 17407,
+"activity": "Обучающие курсы",
+"trending": 0,
+"name": "HistFAQ | Материалы по Истории и Обществознанию",
+"screen_name": "histfaq",
+"is_closed": 0,
+"type": "group",
+"is_member": 0,
+"verified": 0,
+"photo_200": "https://sun1-94.userapi.com/s/v1/ig1/XbZcmriI7qajRlaYYLqsq1oy1nSflQLmQwMpU9pCq0vogD_UqMSycXLooNcHWJ5qV6B-H4xJ.jpg?quality=96&crop=38,9,265,265&as=32x32,48x48,72x72,108x108,160x160,240x240&ava=1&u=wRf9"
+},
+{
+"id": 204988326,
+"member_status": 0,
+"members_count": 3873,
+"activity": "Кино",
+"trending": 0,
+"name": "YouTube to VK (Выключен)",
+"screen_name": "youtube4kbot",
+"is_closed": 0,
+"type": "group",
+"is_member": 0,
+"verified": 0,
+"photo_200": "https://sun1-16.userapi.com/s/v1/ig2/8LOk715UVFBgUimUw7JLchybOBlul3sMyMWf03BkLxl8V3KiArnSc-APa8G-0s0PzOFNAdo0QSdg2fSUkqI7qej-.jpg?quality=95&crop=118,338,584,584&as=32x32,48x48,72x72,108x108,160x160,2"
+},
+{
+"id": 29631161,
+"member_status": 0,
+"members_count": 190,
+"activity": "Предприниматель",
+"trending": 0,
+"name": "Дневник Томаса",
+"screen_name": "thomasjournal",
+"is_closed": 0,
+"type": "page",
+"is_member": 0,
+"verified": 0,
+"photo_200": "https://sun9-40.userapi.com/s/v1/ig2/dLkLHsUQIdeRXUwXPUhRwixHdvExtGKXBLraK5KmvulawK_zH488jKffQAvRS9fDeatai9u-Be66MqZ2hsV_ncm_.jpg?quality=95&crop=824,0,1216,1216&as=32x32,48x48,72x72,108x108,160x160,2"
+}
+]
+}
+}
+},
+{
+"url": "groups.getById",
+"params": {
+"group_ids": "55155418,69934966,78975351,204988326,29631161",
+"fields": "members_count,description,photo_200,screen_name"
+},
+"answer": {
+"response": {
+"groups": [
+{
+"id": 55155418,
+"description": "Заявления РКН: № 7959135609\n\nПереводим и озвучиваем научно-популярные видео, лекции, дебаты и документальные фильмы.\n\nПриоритеты нашего проекта: популяризация науки, борьба с различными заблуждениями ",
+"members_count": 286001,
+"name": "VERT DIDER",
+"screen_name": "studio_vd",
+"is_closed": 0,
+"type": "page",
+"photo_200": "https://sun1-54.userapi.com/s/v1/ig1/QbKvO2tJNnvWGoNsM5doG4KbE9v01Vc5lIxfoslQk0vVQumw5fzeh2FOtEGPmLXANM9A_evy.jpg?quality=96&crop=26,26,748,748&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480"
+},
+{
+"id": 69934966,
+"description": "Я стример, все очень плохо.\nhttps://www.twitch.tv/hellyeahplay\n\nТелеграм:\nhttps://t.me/ToxicHellYeahPlay\n\nБусти:\nhttps://boosty.to/hellyeahplay\n\nИнстаграм:\nhttps://www.instagram.com/sergeyhellyeah/\n\nК",
+"members_count": 35853,
+"name": "Stream HellYeahPlay",
+"screen_name": "hellyeahplay",
+"is_closed": 0,
+"type": "page",
+"photo_200": "https://sun9-83.userapi.com/s/v1/ig2/YeYV3Z09TvOD5CcOKKdurKvoW_3r5bwQXdsdSchFJuZXeMymw_n3NFh8CsjquCuF2p9I74EjXmnPmozfY7yJfGRx.jpg?quality=95&crop=0,0,719,719&as=32x32,48x48,72x72,108x108,160x160,240x2"
+},
+{
+"id": 78975351,
+"description": "Приветствуем тебя в сообществе HistFAQ\n\nНаша миссия - сделать подготовку к ЕГЭ доступной и интересной!\n\nДля этого мы собрали всё необходимое. \n\nМы собираем по всему интернету лучшие общедоступные мате",
+"members_count": 17407,
+"name": "HistFAQ | Материалы по Истории и Обществознанию",
+"screen_name": "histfaq",
+"is_closed": 0,
+"type": "group",
+"photo_200": "https://sun1-94.userapi.com/s/v1/ig1/XbZcmriI7qajRlaYYLqsq1oy1nSflQLmQwMpU9pCq0vogD_UqMSycXLooNcHWJ5qV6B-H4xJ.jpg?quality=96&crop=38,9,265,265&as=32x32,48x48,72x72,108x108,160x160,240x240&ava=1&u=wRf9"
+},
+{
+"id": 204988326,
+"description": "Бот был удалён\n\nold. Загрузка видео из YouTube в VK",
+"members_count": 3873,
+"name": "YouTube to VK (Выключен)",
+"screen_name": "youtube4kbot",
+"is_closed": 0,
+"type": "group",
+"photo_200": "https://sun1-16.userapi.com/s/v1/ig2/8LOk715UVFBgUimUw7JLchybOBlul3sMyMWf03BkLxl8V3KiArnSc-APa8G-0s0PzOFNAdo0QSdg2fSUkqI7qej-.jpg?quality=95&crop=118,338,584,584&as=32x32,48x48,72x72,108x108,160x160,2"
+},
+{
+"id": 29631161,
+"description": "🐉 Интеллектуальный дневник трикстера.\n\n©️ Дневник Томаса (англ. Tomas's journal) — заметка Fallout: New Vegas.\n\nНа последней странице дневника запись:\n\nПохоже, наконец-то, всё начало меняться к лучшем",
+"members_count": 190,
+"name": "Дневник Томаса",
+"screen_name": "thomasjournal",
+"is_closed": 0,
+"type": "page",
+"photo_200": "https://sun9-40.userapi.com/s/v1/ig2/dLkLHsUQIdeRXUwXPUhRwixHdvExtGKXBLraK5KmvulawK_zH488jKffQAvRS9fDeatai9u-Be66MqZ2hsV_ncm_.jpg?quality=95&crop=824,0,1216,1216&as=32x32,48x48,72x72,108x108,160x160,2"
+}
+],
+"profiles": []
+}
+}
+}
+]

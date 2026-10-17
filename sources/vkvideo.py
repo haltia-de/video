@@ -19,8 +19,6 @@ CLIENT_SECRET = "o557NLIkAErNhakXrQ7A"
 TOKEN_URL = "https://login.vk.com/?act=get_anonym_token"
 SITE = "https://vkvideo.ru"
 HEADERS = {"Origin": SITE, "Referer": SITE + "/"}
-ANON_TOKEN = os.path.join(CACHE_DIR, "vk-anonym.json")
-ACCOUNT = os.path.join(CONFIG_DIR, "video-vk.json")
 CHANNEL_COUNT = 30
 DESCRIPTION_MAX = 300
 GROUP_FIELDS = "members_count,description,photo_200,screen_name"
@@ -35,10 +33,6 @@ class ApiError(Exception):
     def __init__(self, code, text):
         super().__init__("VK %s: %s" % (code, text))
         self.code = code
-
-
-def _post(url, data):
-    return net.get_json(url, data, HEADERS)
 
 
 def _thumb(images):
@@ -73,6 +67,10 @@ def _owner_names(resp):
 def _video(item, names):
     owner = item.get("owner_id")
     if owner is None or not item.get("id"):
+        return None
+    # Restricted (to an account, by age): it would not play, and VK sends
+    # no picture for it either.
+    if (item.get("restriction") or {}).get("can_play") == 0:
         return None
     return {
         "source": "vk",
@@ -132,21 +130,29 @@ class VKVideo:
     label = "VK Видео"
     login = "code"
 
-    def __init__(self):
+    def __init__(self, http=net, config_dir=CONFIG_DIR, cache_dir=CACHE_DIR):
+        """http: what fetches (get_json(url, data, headers)); the sources
+        package's net, or recorded answers in the tests."""
+        self.http = http
+        self.anon_path = os.path.join(cache_dir, "vk-anonym.json")
+        self.account_path = os.path.join(config_dir, "video-vk.json")
         self.lock = threading.Lock()
         # The anonymous token outlives a run of the program: kept on disk,
         # it spares a round trip at every start.
-        anon = load_json(ANON_TOKEN, {}) or {}
+        anon = load_json(self.anon_path, {}) or {}
         self.token = anon.get("token")
         self.token_until = anon.get("until", 0)
-        self.user = load_json(ACCOUNT, None)
+        self.user = load_json(self.account_path, None)
         self.pending = None  # the sign-in waiting for the phone
+
+    def _post(self, url, data):
+        return self.http.get_json(url, data, HEADERS)
 
     # --- tokens -----------------------------------------------------------
     def _anon_token(self, fresh=False):
         with self.lock:
             if fresh or not self.token or time.time() > self.token_until - 600:
-                resp = _post(TOKEN_URL, {
+                resp = self._post(TOKEN_URL, {
                     "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
                     "scopes": "video_anonymous,photos_anonymous,profile_anonymous",
                     "isApiOauthAnonymEnabled": "false", "version": "1", "app_id": "6287487"})
@@ -156,7 +162,7 @@ class VKVideo:
                 self.token = data["access_token"]
                 self.token_until = data.get("expired_at") or time.time() + 3600
                 try:
-                    save_json(ANON_TOKEN, {"token": self.token, "until": self.token_until},
+                    save_json(self.anon_path, {"token": self.token, "until": self.token_until},
                               private=True)
                 except OSError:
                     pass
@@ -168,7 +174,7 @@ class VKVideo:
         user = None if anonymous else self.user
         for fresh in (False, True):
             params["access_token"] = given or (user["token"] if user else self._anon_token(fresh))
-            resp = _post(API % method + "?client_id=" + CLIENT_ID, params)
+            resp = self._post(API % method + "?client_id=" + CLIENT_ID, params)
             err = resp.get("error")
             if not err:
                 return resp["response"]
@@ -212,14 +218,14 @@ class VKVideo:
             if me else ""
         self.user = {"token": token, "id": resp.get("user_id") or (me and me[0]["id"]),
                      "name": name or "VK"}
-        save_json(ACCOUNT, self.user, private=True)
+        save_json(self.account_path, self.user, private=True)
         return self.account()
 
     def logout(self):
         self.user = None
         self.pending = None
         try:
-            os.remove(ACCOUNT)
+            os.remove(self.account_path)
         except OSError:
             pass
 

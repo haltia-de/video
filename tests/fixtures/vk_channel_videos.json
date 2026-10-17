@@ -1,0 +1,1453 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358840,
+"expires": 1792358840
+}
+}
+},
+{
+"url": "video.get",
+"params": {
+"owner_id": "-55155418",
+"count": "30",
+"extended": "1"
+},
+"answer": {
+"response": {
+"count": 1652,
+"groups": [
+{
+"id": 55155418,
+"is_admin": 0,
+"is_advertiser": 0,
+"is_closed": 0,
+"is_member": 0,
+"name": "VERT DIDER",
+"photo_200": "https://sun9-54.vkuserphoto.ru/s/v1/ig1/uR_tkdKGLX2PnwqhZJXjA5C8bly0Bf1c1uRicIPhhG4QA3oYgrsovqu6JI4zZVGo2pglUYii.jpg?as=200x200%2C32x32%2C48x48%2C72x72%2C108x108%2C160x160&crop=26%2C26%2C748%2C748&qua",
+"screen_name": "studio_vd",
+"type": "page",
+"verified": 0,
+"has_photo": 1,
+"is_confirmed_business": false,
+"is_educational": false,
+"is_golden_marked_business": false,
+"is_government_organization": false,
+"is_video_subscription_hidden": false,
+"member_status": 0,
+"members_count": 286001,
+"photo_avg_color": "#00293D",
+"trending": 0
+}
+],
+"items": [
+{
+"adding_date": 1791990513,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 24,
+"date": 1791990513,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/vertdider \n\nЧасто говорят, что весь современный мир держится на Linux: м",
+"duration": 3117,
+"height": 2160,
+"id": 456242652,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-7.userapi.com/s/v1/ig2/mO13D691bH2QKSQfwfZ_KDqrDzmp6vulDZNJTJhELv3HRqyfm-Ofk0MkOCdD2moFlhP0skNpZgItD3OepSZHgRRa.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-7.userapi.com/s/v1/ig2/ZgoZDjBGSav8RTh22FXtfDZz3eXIkVoo9F-JSaSwcLV5qEweusYS3eDsXPKusHvW0PgEJb5lm13D20uZyp6I-0RK.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-7.userapi.com/s/v1/ig2/1bdOmlw-UE7OnDv1Vw9dfu46mP_klaQ-QE0sdrYkBeIcU8LbBc0cJTIyXoiEAM7NlDWoszn2lUvB_Dl3ovPvWqJY.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 11275,
+"ov_id": "16155175626796",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Самая опасная хакерская атака, которую удалось избежать [Veritasium]",
+"type": "video",
+"views": 11275,
+"wall_post_id": 246322,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242652?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242652"
+},
+{
+"adding_date": 1790964751,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 18,
+"date": 1790964751,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России:  https://patreon.com/vertdider  \n\nКак часто вы обновляете свои знания о космосе? Как часто меняет",
+"duration": 807,
+"height": 2160,
+"id": 456242641,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-61.userapi.com/s/v1/ig2/UmE0u15EaH6SExN-ztIec7KP7sEcP0skY4bOpk6aFkjY6YqWQn23X8WZRO8yq_9chMBb6YkyiuhxgAgwnvNm6NCJ.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-61.userapi.com/s/v1/ig2/6jKhJ01qxwBMj5wBY1xMxZKEA2l0ZXES5T_T_8PQ4IK_e9emVoA4AxVieR9bxtYLluTEO4rl_ALvf9Xe-FPaD-ut.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-61.userapi.com/s/v1/ig2/RcOwPyoJ1cCnjqXjW1FAB_Me0VKwtfamsZsCKzSgQP1MDXspKZWcqXddnQyWrUmufLq9oaFHWfTwKPtrv8FaZV12.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 5414,
+"ov_id": "16108815919126",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Как изменился мой взгляд на космос за 27 лет? [Fraser Cain]",
+"type": "video",
+"views": 5414,
+"wall_post_id": 246193,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242641?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242641"
+},
+{
+"adding_date": 1790424741,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 14,
+"date": 1790424741,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nГенри с канала Veritasium попробует украсть деньги с телефон",
+"duration": 1460,
+"height": 2160,
+"id": 456242627,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/imqUrRTHwslA6XAhLp6MWBOQnbyxMLTj2XerHhqNkNJnC3FL6Bo_PO-TW4JPtFKIY3gDGVzEZeLdIAvn0tdurAn6.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/uxv0bonu1UY1YbNF0Ey2Eci78rMNakvRxmPm5CGFCptSNwmQCkHeM71ytKI83jwfWUE_rxfC0w0ThPGn6mlHfpXm.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/Kui82-mLSF6vBCfiCmagVqY1Q1qgWjozADL8nFBPpcrA9CSgIeiP03623QRpwKQXK7YWCF-G2B-81zSOVvmxCE4o.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 6731,
+"ov_id": "17226783336475",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Шпионские технологии: #2. Как снять $10 000 с заблокированного iPhone? [Veritasium]",
+"type": "video",
+"views": 6731,
+"wall_post_id": 246134,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242627?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242627"
+},
+{
+"adding_date": 1790269457,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 48,
+"date": 1790269457,
+"description": "Дерек Маллер и Генри с канала Veritasium расскажут о том, как секретные шпионские технологии эпохи СССР, с помощью которых велась прослушка в кабинете посла США, привели к появлению современных банков",
+"duration": 1669,
+"height": 2160,
+"id": 456242625,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-81.userapi.com/s/v1/ig2/-rCSSANLjepzN1F6qpiZUDdeFJWMc72FuCLOfyd92D5FJGo59v11dcwOjmyNCVmuTeHco_wN4TD9eysmF_3Oort9_k0CnA.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-81.userapi.com/s/v1/ig2/a7G3BYBffPDcS2hlpQA1Q3b3bX0JxTvoCCVhvYwK5CQHLA_TBcGXRqqvoUFT1GWtf5tugRRTt-OXLIjS35YrCqAHaxOaaA.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-81.userapi.com/s/v1/ig2/djcKyayYcHIRiS_YCmGl6H2qTcypOv7SttopYAtNEOgpvirYlw86c8TgJPp1SjyT6HfeY-o46CI2JNsLmCqdX3VRHbFsSA.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 23281,
+"ov_id": "16481567713497",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Шпионские технологии: #1. Банковские карты [Veritasium]",
+"type": "video",
+"views": 23281,
+"wall_post_id": 246069,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242625?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242625"
+},
+{
+"adding_date": 1789491323,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 14,
+"date": 1789491323,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nДобро пожаловать на краткий курс по нейросетям!\n\nВ первой се",
+"duration": 1131,
+"height": 1080,
+"id": 456242620,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-9.userapi.com/s/v1/ig2/7lsDxFzxKs-cxmXm44Sq_MF0jo0JKc3w_9Cjz2THLizxeBuDeLtTnfkIzs3lrngKAQfPKaYucBVxNPWfke7NjtQvvB8img.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-9.userapi.com/s/v1/ig2/t2td7Dd0ElGn_ZfHpa1tAYKIn4fTqVlhaWgDLCnTPBKJJH9W6PobkMPwStAlGp1bj-As12TyUcRQOmF7Dmy240gD_Os-3g.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-9.userapi.com/s/v1/ig2/GU4GV2tofv49Uu4CMh2nwydA4BCgSPdPjsrYP992b3qqGtR-ChrSjjVXcGVNj12D8LhRMQf_Wi75TrnRrHVSxFnS2le4Jg.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 13473,
+"ov_id": "17088816621595",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Нейросети: #1. Глубокое обучение I [3Blue1Brown]",
+"type": "video",
+"views": 13473,
+"wall_post_id": 245973,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242620?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242620"
+},
+{
+"adding_date": 1789064149,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 35,
+"date": 1789064149,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nКаспер Мёбиус с канала Veritasium рассказывает о заводе, кот",
+"duration": 3488,
+"height": 2160,
+"id": 456242617,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-2.userapi.com/s/v1/ig2/qyvawo9qkq1zG4k6AAplMiWdwFX5bTg2osnzwwE7EqLd-0yQuUgEWTdy623RRAy9P4uPrRfNOr90hU3YppYZYBCU.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-2.userapi.com/s/v1/ig2/7NGjYP_jYOhv6oa-u5C4K0GgiGhIdR_wUMxEPYQyVXLTdZ09crZhP0WfUURXUT7hTD5jVrwCt2X9xUo-xhFsQzWh.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-2.userapi.com/s/v1/ig2/vVkN_rmmqWPmpYsvwbTDJBIhgrqFbU_K4z-oLWseD5pQ3p1179dZyrYzZta8dDT5aAtLtNDqtLOdLtsOlwweZZ5k.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 25111,
+"ov_id": "16337873610873",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Антиматерия. Часть #2. Завод по производству антиматерии [Veritasium]",
+"type": "video",
+"views": 25111,
+"wall_post_id": 245917,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242617?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242617"
+},
+{
+"adding_date": 1788196152,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 15,
+"date": 1788196152,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nМожно ли раскачиваться на паутине, как это делает Человек-па",
+"duration": 1560,
+"height": 2160,
+"id": 456242609,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-48.userapi.com/s/v1/ig2/UJKIt96NzpzuRtXZPCto0I6yX6HseuYMZNao3u6IFZkqBCD13ypVAME2HDXtqY_MUJZV3usefAMGNV7DX1uj8yFn.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-48.userapi.com/s/v1/ig2/7o36ZPy0FnqRw9M6ZRrJVrNfiEmUwCJUh46kKeV51v0xpfnpIw8SJOX_BzHN2YafwBk5DcSy_RnYIR0YUyfx8SsT.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-48.userapi.com/s/v1/ig2/gTPrjDbqWgBJORWRrSy09IjmpnTyo0lhqggVL73q6oer-zwu_oyljkFHPomDGAa2wF8twDGcC_XCsxXYxumrZMSH.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 23506,
+"ov_id": "17210662791205",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Паутина крепче стали? [Veritasium]",
+"type": "video",
+"views": 23506,
+"wall_post_id": 245830,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242609?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242609"
+},
+{
+"adding_date": 1787505136,
+"can_dislike": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 0,
+"date": 1787505136,
+"description": "По вопросам рекламы: vertdider@blossom-agency.ru\n\nПоддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nДобро пожа",
+"duration": 1131,
+"id": 456242606,
+"is_favorite": false,
+"local_views": 23,
+"ov_id": "15649746855983",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"restriction": {
+"blur": 0,
+"button": {
+"action": "login",
+"title": "Войти в аккаунт"
+},
+"can_play": 0,
+"can_preview": 1,
+"card_icon": [
+{
+"height": 28,
+"url": "https://sun9-10.userapi.com/F449QiJIob1oGHTmcmLLII2WdYKSx6zPGh0m8g/Ck10SjVzHNo.png",
+"width": 28
+},
+{
+"height": 56,
+"url": "https://sun9-39.userapi.com/8LEeqUApE8jKVZ6iyA0H6JH55kO_FyyM7TkKTA/18w5KsGtfz8.png",
+"width": 56
+},
+{
+"height": 84,
+"url": "https://sun9-55.userapi.com/vjYNunx8-osZ6FxZJKmNqbUWnNl2rOM4SNK4OA/NDLBRoGvHqc.png",
+"width": 84
+},
+{
+"height": 112,
+"url": "https://sun9-67.userapi.com/vkR9HLdoLxE8j3j919erUVai0E35BcRTqiaETA/wxa3Hhua5Uc.png",
+"width": 112
+}
+],
+"disclaimer_type": 0,
+"icon_name": "block_outline",
+"list_icon": [
+{
+"height": 168,
+"url": "https://sun9-13.userapi.com/y2rxhYJ5EGcj1huLnIvjuGiZi1llKxvA3gpD1g/9-IRowZQWjU.png",
+"width": 168
+},
+{
+"height": 224,
+"url": "https://sun9-70.userapi.com/PUxglf_15D235Cwz8VzwgIkapa84LjgNBzmpQQ/0P25gPWsy64.png",
+"width": 224
+},
+{
+"height": 56,
+"url": "https://sun9-32.userapi.com/O1SQAywnOeOK4x8PyHXlQZQ--IL7NXdxkqykow/u89O2YxY6P0.png",
+"width": 56
+},
+{
+"height": 112,
+"url": "https://sun9-39.userapi.com/-tpmEbdRh67kK2AYzG9OYP2dw1xvHA-j-Hl1ZQ/fMrVJ2-sXF4.png",
+"width": 112
+}
+],
+"offer_vkvideo": 0,
+"title": "Только для авторизованных пользователей"
+},
+"title": "Нейросети: #1. Глубокое обучение I [3Blue1Brown]",
+"type": "",
+"views": 23,
+"wall_post_id": 245779,
+"direct_url": "https://vkvideo.ru/video-55155418_456242606?pl=-55155418_-2",
+"privacy_view": {
+"category": "donut",
+"is_enabled": false,
+"owners": {}
+},
+"share_url": "https://vkvideo.ru/video-55155418_456242606"
+},
+{
+"adding_date": 1786467041,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 10,
+"date": 1786467041,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nВ этом эпизоде Роберт Сапольски рассказывает о том, что изве",
+"duration": 1796,
+"height": 1080,
+"id": 456242598,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/wsT_e9RSj1ydbZGIu26gJ79TbhHRVv6eevFpamrxR-g3qjFSTGrMfV_jbk9_VQfPJAakMxqu9ySMTOVbK4OAatqqRs0LdA.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/uX4e5ECjAh4gtpIlYSz52bE4yw7n2seA9_FA79LajWWCVMEpj9GUmuF8QfKhxybXFtdlgifLLBunkNzbYvMV-3Z5_9qocQ.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/X3Ry0ytjnGHrEgQGL6eF9N62_3i3uy1m2GQm177q95iLeNWkS13fgc283drkV3lmsUDd_ELj0yVrDpFfDYLNXcroW77-sQ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 11040,
+"ov_id": "15263625128174",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Сапольски про Оземпик и кровосмешение | Интервью отца и чада #56 [Robert Sapolsky]",
+"type": "video",
+"views": 11040,
+"wall_post_id": 245599,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242598?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242598"
+},
+{
+"adding_date": 1785513508,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 98,
+"date": 1785513508,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nНаверняка многие из вас слышали о том, что асбест вызывает р",
+"duration": 3215,
+"height": 2160,
+"id": 456242592,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/33Zmd3UaHGUBnOVHkF6rFRhAvoRWoPjSXUbmFuYeiIUksjS3LiUiV3lgE48JP6NcuBx_OPcPBnTyF-w-0IVTIv3lg9_ZRw.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/WXwb8NAyj5ccvA5gwjNPzmNH5uQyijJ7B22KXXwnZ4H8fDSL0fTsm8J4Wke56m9Ky97GyKaMOYT7owY3Obk9Ud917P7SOg.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/-SmaElxKrV39Jkf82GCFz0LxSl9bG4b0F_f8pMJQaAfi2e5k9KU8n2_tt4aXx5ZggJfCx5y3m5cBlEjQLhNsL6jWirWWCw.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 59851,
+"ov_id": "16356739328083",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Асбест ещё хуже, чем вы думали [Veritasium]",
+"type": "video",
+"views": 59851,
+"wall_post_id": 245398,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242592?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242592"
+},
+{
+"adding_date": 1785139243,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 49,
+"date": 1785139243,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nЧто общего у лесных пожаров, землетрясений и соотношении зар",
+"duration": 2594,
+"height": 2160,
+"id": 456242591,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-48.userapi.com/s/v1/ig2/r_5834YrdQe-c9I4zK87FK_15Y2HBHpwMES1H9mkUbzDT591rzUZBCcppRoBLogaV3tFNlWGCsYP8XcE8rCXl-DlAtd1IQ.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-48.vkuserphoto.ru/s/v1/ig2/dBiOSpd22t032jm_FmaCIcUa3I8g8kvprN0B7cTQXD7F_94Qwc9DkW9y4a7VZxIJmIAWlme8ddxmajYtr2tYwEGnPjkGkg.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-48.userapi.com/s/v1/ig2/gzFwbHk6ttN7mcYna5iAQtAC1-4uwGUYn-WQmOGEvmFpLmUn0TGzPLjcQgHOORXel_jPOBSClNcq8_Pm-XP6RDw4krSJUQ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 34560,
+"ov_id": "15423350319287",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "График, после которого вы посмотрите на мир иначе [Veritasium]",
+"type": "video",
+"views": 34560,
+"wall_post_id": 245319,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242591?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242591"
+},
+{
+"adding_date": 1784215407,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 11,
+"date": 1784215407,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nКороткое объяснение основных принципов работы больших языков",
+"duration": 444,
+"height": 2160,
+"id": 456242580,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-52.userapi.com/s/v1/ig2/xP5VqUZf9OIhWiqZCO1ybXsmlO9O1YcsBHFB-uqPp-DZ9UdLcmAw_4MwdFtUsbrluiqwugwRbIqRcNvMnxofnnde.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-52.userapi.com/s/v1/ig2/L3sL9k8od8GIQep0haUqVKJw10jwq6-kB8nkcFAn7hCe5Ycfqwyspx1Pz8ynIHlJoBpZcDP4ylK4ftZsvVJst-xL.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-52.userapi.com/s/v1/ig2/nDtFAaYUFADzrBzI2ZQG1te7EHj1FmehqHeV7qaZ-sAHzG7jbIyoQJGA-tD_JHdL_bDbw_DCCOCnNo6a3o5Cv0nJ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 9437,
+"ov_id": "15450638985303",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Большие языковые модели — краткое объяснение [3Blue1Brown]",
+"type": "video",
+"views": 9437,
+"wall_post_id": 245125,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242580?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242580"
+},
+{
+"adding_date": 1783411203,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 10,
+"date": 1783411203,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider\n\nВ этом эпизоде Роберт Сапольски рассказывает о том, можно ли ",
+"duration": 1559,
+"height": 1080,
+"id": 456242574,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/XUUs2uLtQgj77laC750T5s9nZC67AUTzGKCFVNL4cetO_XncQwn1rXS1ttGK59x_LV3Q9JiM9WD-FGbejiGFAoS4.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/C5camIK_Z_4DmznrFjMmC9xPrYgqihRkCZ9AT2HUc40JWlav0DHl8kgnm8dwxNH40lnZG8VxZ_SwhoMeAqnqWTuz.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/TdWvEx29vgSaKdyZsoweI3eMSati57lfhcuKe1kufDxYf-Pq-auP01jXdrDELMeXXfT5iHCCcKtT7SoZe-YRMcQJ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 8469,
+"ov_id": "15517967722606",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Упражнения для мозга, типы боли и музыка | Интервью отца и чада #25 [Robert Sapolsky]",
+"type": "video",
+"views": 8469,
+"wall_post_id": 245043,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242574?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242574"
+},
+{
+"adding_date": 1782670937,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 16,
+"date": 1782670937,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nПростой и одновременно сложный способ рассчитать корни много",
+"duration": 1503,
+"height": 2160,
+"id": 456242570,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-62.userapi.com/s/v1/ig2/jU4oIhGHJLwWBMZga2iJoc086aVwQlCWCHqsBN2fIHb-LLtgvpBRuCw7Uhdix17yrRAphZQHRG4-V94OR72X97NxGUGe_A.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-62.userapi.com/s/v1/ig2/CvwhZQ1GFc-KmOwBJ7AyTWfaeO19pmc96C2nhT659u9sLf9vIMztykiuzbpsA-VWe96sDwBAHd2dLfWQhEGTcrDDGWq3_w.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-62.userapi.com/s/v1/ig2/6PVVLC1SKKCBEUfkTVRM30ftWVet4D1ejaUTEJCOSu8oDxXrwI7h3mBm0im6kZnZCnLEk5MfnLT1X59GAffrYIdEscHK7w.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 16516,
+"ov_id": "14733236119636",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Бассейны Ньютона (фракталы, о которых он сам не знал) [3Blue1Brown]",
+"type": "video",
+"views": 16516,
+"wall_post_id": 244955,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242570?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242570"
+},
+{
+"adding_date": 1782397905,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 4,
+"date": 1782397905,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nТелескоп «Джеймс Уэбб» работает уже несколько лет и с его по",
+"duration": 2163,
+"height": 1080,
+"id": 456242560,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-38.userapi.com/s/v1/ig2/bsacOmDCyBRVPCEkJR9lfA3dPGd_Pf1EYAoiLcMjzplOCHFaYwfEbx8wFVHJnoTqeNVdqqKnjqizP2bvsx3y6DPfdW9exQ.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-38.userapi.com/s/v1/ig2/mb9DLZb2ApWtY4btsHZa42Y9CJpDxk0PZxGNDPAZUaixvm_8Iz7xYFSG2E6W2atbQLOc9TXS3uahxuyLxBXUjEjRkksDDw.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-38.userapi.com/s/v1/ig2/rinFB24Z6na1Fw4vbY45IuCYFrWBjvAsHK7xPHjZC41p3xCK-i8EHR8vS4ysdOyBTrHBB8HVmb6bBuFoiVjgZyJ44j_i8A.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 22626,
+"ov_id": "14782000212118",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Главные открытия «Джеймса Уэбба» к 2026 году [Fraser Cain]",
+"type": "video",
+"views": 22626,
+"wall_post_id": 244923,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242560?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242560"
+},
+{
+"adding_date": 1781710084,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 28,
+"date": 1781710084,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nВы наверно слышали об эффекте Даннинга-Крюгера, но скорее вс",
+"duration": 1371,
+"height": 2160,
+"id": 456242548,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/foS8TfQBZNrvOHBaGXsWwF7l1Ltpc7qHHPq0BaREi_m4U5JMT1T2x6Sd_g-aW28c6iyo9iVrelk5ZZQ0COgbT1fNG6KebQ.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/MspEjyFAWLMicaUlHq8wvU4MOjPWtrYzlP-LVDE_7PZhyV7hSdfULpOCvJLPF-9br6QQG_AmKZbUnSkgyotheg5Ui34zLg.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/pEPCAh82yqQfh1iR2qkC3-omB6m7ezCruur_o8Nf-_MQs6Cw8hZWJlMAI_7KWlUyIAuCR3fWymAWAOwikcbbOJMeiq1-Hg.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 35216,
+"ov_id": "15588405553169",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Самое опасное когнитивное искажение [Veritasium]",
+"type": "video",
+"views": 35216,
+"wall_post_id": 244784,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242548?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242548"
+},
+{
+"adding_date": 1781026200,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 31,
+"date": 1781026200,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nЗастёжками-молниями мы пользуемся каждый день, но даже особо",
+"duration": 1187,
+"height": 2160,
+"id": 456242541,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-72.userapi.com/s/v1/ig2/1llCBUuZWpNeu7tAJYCb1Ynh1NEQ09zVbDECuTwzq6RsadP3zhvso4pZLzAE9anCuWEpCN7Tu56mCyBUfPQTtSStPMvV1w.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-72.userapi.com/s/v1/ig2/qhUynHy0UIC9om_EG36d2oHviEwtspoAmemQolw6OhrhaI7ha98DCzzMDOHCI4cxGoQepCdTQ734fVIx1ff4iPk5ObJ7AA.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-72.userapi.com/s/v1/ig2/gfaYaIWuFse6zc2zs2Bj8HRb9G7GGLRKKuotZtRHh1ptk0PEdzGQVFPiOM3r_ztyAMaU99YwX7EWBoCDeEYxDcrvNeOMQQ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 29277,
+"ov_id": "14903536527479",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Как работает застёжка-молния? [Veritasium]",
+"type": "video",
+"views": 29277,
+"wall_post_id": 244622,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242541?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242541"
+},
+{
+"adding_date": 1780149446,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 32,
+"date": 1780149446,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nРепликация ДНК — один из основополагающих процессов для всей ж",
+"duration": 884,
+"height": 2160,
+"id": 456242534,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/yrsJ4U7eL_pvfOyKXtBxP6P7ko_9QGCYs-hiBvuoZOFAwf4kSOtywwWYPd2RP--IivR4HJ2MbrV51nIYUcitTydvW0oGEA.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/MFhxTy36SMqFstCaYxjvlF4B8t2f7GyRyM5aIG12FkqvsD1GLeUpliylCGVVmX6zHAnfq1l454mibHYGiDmcxQI9QNJ0JA.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-45.userapi.com/s/v1/ig2/40GCpTc8DWpq9awKXM9NjpBAopRBX0dLB3mWNEvjYXIhh-dfSbk7n25_7bzVsFxEJfHcw-UKtJr65oGEDRiHtIdBbnicJA.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 11663,
+"ov_id": "14918820702378",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Конвейер, который работает 3,8 млрд лет [Clockwork]",
+"type": "video",
+"views": 11663,
+"wall_post_id": 244554,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242534?pl=-55155418_-2",
+"has_subtitles": 1,
+"share_url": "https://vkvideo.ru/video-55155418_456242534"
+},
+{
+"adding_date": 1779530730,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 15,
+"date": 1779530730,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nМногие задавались вопросом «как работает холодильник?» — кто",
+"duration": 1733,
+"height": 2160,
+"id": 456242525,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-55.userapi.com/s/v1/ig2/DVmPtSeqr8yM17Fl4p2V4mcLGIMioT81MD-ODaQFldJyXFeZqmTACK-mWczWXl7reniNOGaZGGMVxPoXOcyoDhVHEhsnFw.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-55.userapi.com/s/v1/ig2/SqXQykcrMbPu4QPtrehrgbr72PsK-ysDlwG9HTQqX9nMxF6GNXPPfIwgRFTPVuQ2xfKgF_YX76xuZHQcvs78Y3Og0UaOgw.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-55.userapi.com/s/v1/ig2/J_EBRDLA13ipMpqGHMnt3LitxJLdqD2lpl2EezPbtiC0uVdQvhlnOHyet3pM0337QLa8_tNFHAwjCuPmK2GBCX20XctKqQ.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 27853,
+"ov_id": "14319096113267",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Раньше лёд стоил миллионы [Veritasium]",
+"type": "video",
+"views": 27853,
+"wall_post_id": 244461,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242525?pl=-55155418_-2",
+"has_subtitles": 1,
+"share_url": "https://vkvideo.ru/video-55155418_456242525"
+},
+{
+"adding_date": 1778953667,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 25,
+"date": 1778953667,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nВ новой озвучке ролика Veritasium посмотрим три способа «остан",
+"duration": 1758,
+"height": 2160,
+"id": 456242519,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/3j2GD3l9VS5iIOWktCgA-rInB65VsBquDz2NTksFFHTfkw8ssoZeNXcH7kbhuarHEZOUN4WksM1ATXHsBAh3WUC-rQkRkw.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/P93jAwk5pUXYtQec_pMlrbtTYgQw-PorPcOTWXP00HknJhNvhl0mWb10h0kyR-qJstufMCtsMBji8XPPNUoS6iBYDUuYqQ.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-69.userapi.com/s/v1/ig2/eIAn3r6XF2cWq_OOMovXhPD3tqHwF3GDEP9TuReQhiP6cX5flafx0jUPANdgNRr08VmHS6uqLuCXh0Gj0dD4oylI_T1uPw.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 44524,
+"ov_id": "14535828318409",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Как заснять скорость света? [Veritasium]",
+"type": "video",
+"views": 44524,
+"wall_post_id": 244378,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242519?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242519"
+},
+{
+"adding_date": 1778400887,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 88,
+"date": 1778400887,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nВероятно, вы хотя бы раз слышали о копенгагенской интерпретаци",
+"duration": 2592,
+"height": 2160,
+"id": 456242504,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/sg79KUH7OAjdomAxrJjpajcdN8AyRVdvnesf5-pM9y-rEHCotHrgXJZlW9tXsk_pc91aNuu8iYaMd7gFzF7OiCmS.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/uCNZpBV7qJuT-xR5cgdyHl5071YzRH2vX8_o40aS9j6r27knGs7_pVmrLqIZLmCRLCzf5BpQqGoY_C4WAvQhi7ga.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-64.userapi.com/s/v1/ig2/5ZxCq_iVKvTjwrQTaoKje-aFoTPx3vaQ45RIXOVuGeLPrLQyJptx9pRUz-QqTzqUiLVgDZOHqROgxjbxKWbb5xpy.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 83408,
+"ov_id": "14618555394242",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Свет всё-таки можно обогнать? [Veritasium]",
+"type": "video",
+"views": 83408,
+"wall_post_id": 244259,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242504?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242504"
+},
+{
+"adding_date": 1778258544,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 8,
+"date": 1778258544,
+"description": "Роберт Сапольски о новом курсе «Биология поведения человека».\n\nПоддержать перевод лекций можно по ссылка:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/Ver",
+"duration": 326,
+"height": 1080,
+"id": 456242501,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-8.userapi.com/s/v1/ig2/2vOxEQoFfAVbQAQo-1e4ctmspvcnbSFG0MnTZC6PVpkc8UXJCpbeF6fUaNGFeRJENYFWOFLLkVY4pWJr-4yXZy1t.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-8.userapi.com/s/v1/ig2/nclB3lSCxPqPJCWlu4OVZoOQjbXbXr5MP3WGwkSAYiuyPsgvZmR1wHS_-bjbcRhu6-hjp_jFTiXi6nFBkvrckXRw.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-8.userapi.com/s/v1/ig2/ycPRdC9ly6xPWIuMs7m0Fgj7wk7GKVvKS0fq4FRu-cvLIPruXi1gW1DrMC24O3YBbNJGNbe4-P2hYCFHiijlgMhN.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 2228,
+"ov_id": "14399743338570",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Роберт Сапольски — Что нового в новом курсе «Биология поведения человека»? [Vert Dider]",
+"type": "video",
+"views": 2228,
+"wall_post_id": 244213,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242501?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242501"
+},
+{
+"adding_date": 1777391361,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 10,
+"date": 1777391361,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider \nЕсли вы не в России: https://www.patreon.com/VertDider \n\nВ очередном «Интервью отца и чада» Роберт Сапольски отвечает",
+"duration": 2273,
+"height": 1080,
+"id": 456242492,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-49.userapi.com/s/v1/ig2/kHHNotLFGz3p-05wTsqoj89ZL1WOEo6Ln4GSQoyqqJ1MQ-q4mOCPkbDU7YzseNaLR8xq69lHByZPUF-gtycLznXX.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-49.userapi.com/s/v1/ig2/q-9YO7wbwy9Dua0bHFt2d7HSWcz7MdRd7c0V_wGF6j2t-mgiy9plc-LGcGazKPlcbXAhavREW99SajOvmf3gZCOs.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-49.userapi.com/s/v1/ig2/atT7ssrOAgQ-rKN22WfdHhhjJYtOsyISkRkp2ITuyG4i3DeswYcmCFOcx6VdSfZy5ztzhK-sd8KYRDJANmgMlE5d.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 5580,
+"ov_id": "14150537062425",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Сапольски про болезнь Альцгеймера и деменцию | Интервью отца и чада #26 [Robert Sapolsky]",
+"type": "video",
+"views": 5580,
+"wall_post_id": 244099,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242492?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242492"
+},
+{
+"adding_date": 1777123084,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 12,
+"date": 1777123084,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nНаглядное объяснение смысла преобразования Фурье.\n\nПеревод: Ал",
+"duration": 1186,
+"height": 1080,
+"id": 456242491,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-82.userapi.com/s/v1/ig2/DXZ3hJWXNh6YDkFitKhtJPb-q7AHNGPYBocCbpQjvoIpQr2fAETP6lSWf5RmTWxufkBPg_VjT_Pq1djZjq8y2gOYL3Oxbg.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun1-95.userapi.com/s/v1/ig2/LyoDAAErWic4Ov1RPPcNEPtUBe3oW-NgPwDnT-D_FA2cxsRRxDy4bvB2PK8ejHGTyQ8ecyvMyNyk1gafVbfJG89q.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun1-95.userapi.com/s/v1/ig2/dmn9lDaIIaRL_5BmfYlNXFkoSNDn-SxqO9AnI6U5JtTOyYnyY74pRseOViP3WuNE52Nt2nvijDb-5OrSStcXb043.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 8921,
+"ov_id": "14799506188322",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Преобразование Фурье [3Blue1Brown]",
+"type": "video",
+"views": 8921,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242491?pl=-55155418_-2",
+"has_subtitles": 1,
+"share_url": "https://vkvideo.ru/video-55155418_456242491"
+},
+{
+"adding_date": 1776698887,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 65,
+"date": 1776698887,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nДерек и Каспер с канала Veritasium рассказывают о том, как Пол",
+"duration": 2028,
+"height": 2160,
+"id": 456242487,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/37EjMPZxLilQb9oe0uepOH8lsD828YNKsfc3Uj4ijdMinFOG0PJYr-Ber5bSh8pKjwpSrUT1yCMrPC8ueSeiz5Vl.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/p7PgYWPYdJue-8FLTk4YWmdLET2xLXLCDODv8zKTYwHpQPOjUFxRVdfXOmby9A7RqCAq4yTAKBnpg2O1o1HrPKzN.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/3t5v5YqfOA-5YqJ8WNAflqXTNvWezWDwbKdR2iRtzblKl2kROa4t2xDG4UXSeNfVpFF_aT8aI9etHF_yjAI5QlJh.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 43933,
+"ov_id": "13813851105528",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Антиматерия. Часть 1 [Veritasium]",
+"type": "video",
+"views": 43933,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242487?pl=-55155418_-2",
+"has_subtitles": 1,
+"share_url": "https://vkvideo.ru/video-55155418_456242487"
+},
+{
+"adding_date": 1776433439,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 7,
+"date": 1776433439,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nКрасивое доказательство Базельской задачи с помощью геометрии ",
+"duration": 1027,
+"height": 1080,
+"id": 456242484,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/Xgi34dzAHMzCK87y2GS8wqbaOEeEyw8xoRjukCxfg0iTbMCZjhWnBwhqPuH2fNXHN4RqEyPJSDQOh6weDV7zcjTq.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/cLzc3Hhi7onnxmrSnLf2ohSst1QMT1dNPK4FRtXWdBdR2UI1O0YEN5tfK98bIk4mH9SaQTUPQsrj0RWLrsRMO_OJ.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-68.userapi.com/s/v1/ig2/fr5U3UEjJLuIwaqBfPutPgqr-Z0Ase6zPg811Nd9z8ga0QC5jx_KOMfnE9Iew_jKOtEYmMzG49rRtwYOZZ2gCbyk.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 6276,
+"ov_id": "13705858066457",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Откуда здесь π? Почему в квадрате? Геометрическое решение Базельской задачи [3Blue1Brown]",
+"type": "video",
+"views": 6276,
+"wall_post_id": 243987,
+"width": 1920,
+"direct_url": "https://vkvideo.ru/video-55155418_456242484?pl=-55155418_-2",
+"share_url": "https://vkvideo.ru/video-55155418_456242484"
+},
+{
+"adding_date": 1775747561,
+"can_dislike": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"date": 1775747561,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nДерек и Каспер с канала Veritasium расскажут о самом сложном э",
+"duration": 1186,
+"id": 456242475,
+"is_favorite": false,
+"local_views": 17,
+"ov_id": "13314065967260",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"restriction": {
+"blur": 0,
+"button": {
+"action": "login",
+"title": "Войти в аккаунт"
+},
+"can_play": 0,
+"can_preview": 1,
+"card_icon": [
+{
+"height": 84,
+"url": "https://sun9-55.userapi.com/vjYNunx8-osZ6FxZJKmNqbUWnNl2rOM4SNK4OA/NDLBRoGvHqc.png",
+"width": 84
+},
+{
+"height": 112,
+"url": "https://sun9-67.userapi.com/vkR9HLdoLxE8j3j919erUVai0E35BcRTqiaETA/wxa3Hhua5Uc.png",
+"width": 112
+},
+{
+"height": 28,
+"url": "https://sun9-10.userapi.com/F449QiJIob1oGHTmcmLLII2WdYKSx6zPGh0m8g/Ck10SjVzHNo.png",
+"width": 28
+},
+{
+"height": 56,
+"url": "https://sun9-39.userapi.com/8LEeqUApE8jKVZ6iyA0H6JH55kO_FyyM7TkKTA/18w5KsGtfz8.png",
+"width": 56
+}
+],
+"disclaimer_type": 0,
+"icon_name": "block_outline",
+"list_icon": [
+{
+"height": 56,
+"url": "https://sun9-32.userapi.com/O1SQAywnOeOK4x8PyHXlQZQ--IL7NXdxkqykow/u89O2YxY6P0.png",
+"width": 56
+},
+{
+"height": 112,
+"url": "https://sun9-39.userapi.com/-tpmEbdRh67kK2AYzG9OYP2dw1xvHA-j-Hl1ZQ/fMrVJ2-sXF4.png",
+"width": 112
+},
+{
+"height": 168,
+"url": "https://sun9-13.userapi.com/y2rxhYJ5EGcj1huLnIvjuGiZi1llKxvA3gpD1g/9-IRowZQWjU.png",
+"width": 168
+},
+{
+"height": 224,
+"url": "https://sun9-70.userapi.com/PUxglf_15D235Cwz8VzwgIkapa84LjgNBzmpQQ/0P25gPWsy64.png",
+"width": 224
+}
+],
+"offer_vkvideo": 0,
+"title": "Только для авторизованных пользователей"
+},
+"title": "Преобразование Фурье [3Blue1Brown]",
+"type": "",
+"views": 17,
+"direct_url": "https://vkvideo.ru/video-55155418_456242475?pl=-55155418_-2",
+"privacy_view": {
+"category": "donut",
+"is_enabled": false,
+"owners": {}
+},
+"share_url": "https://vkvideo.ru/video-55155418_456242475"
+},
+{
+"adding_date": 1774539942,
+"can_dislike": 1,
+"can_download": 1,
+"can_edit_privacy": 1,
+"can_like": 1,
+"can_play_in_background": 1,
+"can_repost": 1,
+"can_subscribe": 1,
+"comments": 41,
+"date": 1774539942,
+"description": "Поддержать проект можно по ссылкам:\nЕсли вы в России: https://boosty.to/vertdider\nЕсли вы не в России: https://www.patreon.com/VertDider\n\nВ этом видео от канала Clockwork мы погрузимся в тонкости моле",
+"duration": 1526,
+"height": 2160,
+"id": 456242454,
+"image": [
+{
+"height": 34,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/ik6UJJadH-vUeVr4Hfi1HUYGUsiRUgs2c__DF0tKAThqY0eGMdzssOv4PoQrhGY4jSGCNYtkTk_xxDa9Hp-SSEdZ.jpg?quality=95&size=60x34",
+"width": 60,
+"with_padding": 1
+},
+{
+"height": 180,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/RdCESrc4tF3tSOCPnLvXUessaxVEiX7-XJmGKXV6OctjOiTBQ-wQCyOkEQYHrLuw8v3FQ3eNP8hrWyJ4n3Y-roqe.jpg?quality=95&size=320x180",
+"width": 320
+},
+{
+"height": 405,
+"url": "https://sun9-53.userapi.com/s/v1/ig2/48R4_tzcpG_B5fBIsY-sm2MIIA-4QizU67U7qgghXq6p6baCs9aspIIKf1BwaenGwJ2FnayB848ARMwqW8KyKR8H.jpg?quality=95&size=720x405",
+"width": 720
+}
+],
+"is_favorite": false,
+"local_views": 10106,
+"ov_id": "13404776835148",
+"ov_provider_id": 40,
+"owner_id": -55155418,
+"response_type": "full",
+"title": "Как устроено зрение? [Clockwork]",
+"type": "video",
+"views": 10106,
+"width": 3840,
+"direct_url": "https://vkvideo.ru/video-55155418_456242454?pl=-55155418_-2",
+"has_subtitles": 1,
+"share_url": "https://vkvideo.ru/video-55155418_456242454"
+}
+],
+"max_attached_short_videos": 20
+}
+}
+}
+]

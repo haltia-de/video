@@ -1,0 +1,45 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358840,
+"expires": 1792358840
+}
+}
+},
+{
+"url": "auth.getAuthCode",
+"params": {
+"device_name": "b8k-video",
+"force_regenerate": "1"
+},
+"answer": {
+"response": {
+"auth_code": "l9jVSR",
+"auth_hash": "4b089027be5f735861f1f1dd98330d28d636",
+"auth_id": "u6nHjc",
+"auth_url": "https://qr.vk.ru/ca?q=l9jVSR",
+"expires_in": 1792272620
+}
+}
+},
+{
+"url": "auth.checkAuthCode",
+"params": {},
+"answer": {
+"response": {
+"expires_in": 1792272620,
+"status": 0
+}
+}
+}
+]

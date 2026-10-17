@@ -1,0 +1,55 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358840,
+"expires": 1792358840
+}
+}
+},
+{
+"url": "utils.resolveScreenName",
+"params": {
+"screen_name": "studio_vd"
+},
+"answer": {
+"response": {
+"object_id": 55155418,
+"type": "group"
+}
+}
+},
+{
+"url": "groups.getById",
+"params": {
+"group_ids": "55155418",
+"fields": "members_count,description,photo_200,screen_name"
+},
+"answer": {
+"response": {
+"groups": [
+{
+"id": 55155418,
+"description": "Заявления РКН: № 7959135609\n\nПереводим и озвучиваем научно-популярные видео, лекции, дебаты и документальные фильмы.\n\nПриоритеты нашего проекта: популяризация науки, борьба с различными заблуждениями ",
+"members_count": 286001,
+"name": "VERT DIDER",
+"screen_name": "studio_vd",
+"is_closed": 0,
+"type": "page",
+"photo_200": "https://sun1-54.userapi.com/s/v1/ig1/QbKvO2tJNnvWGoNsM5doG4KbE9v01Vc5lIxfoslQk0vVQumw5fzeh2FOtEGPmLXANM9A_evy.jpg?quality=96&crop=26,26,748,748&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480"
+}
+],
+"profiles": []
+}
+}
+}
+]

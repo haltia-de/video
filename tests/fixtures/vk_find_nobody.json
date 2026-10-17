@@ -1,0 +1,28 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358840,
+"expires": 1792358840
+}
+}
+},
+{
+"url": "utils.resolveScreenName",
+"params": {
+"screen_name": "nosuchname_zz_qq"
+},
+"answer": {
+"response": []
+}
+}
+]

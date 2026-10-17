@@ -1,0 +1,53 @@
+[
+{
+"url": "https://login.vk.com/",
+"params": {
+"scopes": "video_anonymous,photos_anonymous,profile_anonymous",
+"isApiOauthAnonymEnabled": "false",
+"version": "1",
+"app_id": "6287487"
+},
+"answer": {
+"type": "okay",
+"data": {
+"access_token": "TOKEN",
+"expired_at": 1792358840,
+"expires": 1792358840
+}
+}
+},
+{
+"url": "utils.resolveScreenName",
+"params": {
+"screen_name": "durov"
+},
+"answer": {
+"response": {
+"object_id": 1,
+"type": "user"
+}
+}
+},
+{
+"url": "users.get",
+"params": {
+"user_ids": "1",
+"fields": "followers_count,about,photo_200,screen_name"
+},
+"answer": {
+"response": [
+{
+"id": 1,
+"photo_200": "https://sun9-81.userapi.com/s/v1/ig1/jaxoFWCdKjGxX9yT8upk25fI8JTy54FHiROT4P1KYXvSAawiddtidbEN49gresbUV4XrCwLECOLMCQ.jpg?quality=96&crop=514,119,337,337&as=32x32,48x48,72x72,108x108,160x160,240x240&ava",
+"about": "",
+"followers_count": 0,
+"screen_name": "durov",
+"first_name": "Павел",
+"last_name": "Дуров",
+"can_access_closed": true,
+"is_closed": false
+}
+]
+}
+}
+]
