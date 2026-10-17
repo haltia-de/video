@@ -80,8 +80,8 @@ class PlayerTest(unittest.TestCase):
                                    "https://vkvideo.ru/video1_2"])
         self.assertTrue(cmd[4].startswith("input-ipc-server=" + self.tmp.name))
         self.assertEqual(cmd[5], "ytdl-raw-options=js-runtimes=quickjs,cookies=/c.txt")
-        self.assertEqual(self.states[0],
-                         {"video": VIDEO, "pos": None, "duration": None, "paused": False})
+        self.assertEqual(self.states[0], {"video": VIDEO, "pos": None, "duration": None,
+                                          "paused": False, "start": None})
 
     def test_state_follows_mpv_to_the_second(self):
         p, mpv = self.started()
@@ -172,6 +172,12 @@ class PlayerTest(unittest.TestCase):
         cmd = command("mpv", VIDEO, "u", {"cookies": "/c"}, "/s")
         self.assertEqual(cmd, ["mpv", "--fs", "--force-media-title=Кино",
                                "--input-ipc-server=/s", "u", "--ytdl-raw-options=cookies=/c"])
+
+    def test_from_where_it_was_left(self):
+        self.assertIn("start=754", command("/usr/local/bin/b8k-vplay", VIDEO, "u", {}, "/s",
+                                           754.6))
+        self.assertEqual(command("mpv", VIDEO, "u", {}, "/s", 754)[4], "--start=754")
+        self.assertFalse(any("start" in c for c in command("mpv", VIDEO, "u", {}, "/s")[4:]))
 
     def test_no_ytdl_options_no_raw_list(self):
         cmd = command("/usr/local/bin/b8k-vplay", VIDEO, "u", {}, "/s")

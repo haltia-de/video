@@ -3,10 +3,11 @@
 it is playing, for the bar at the bottom of Видео.
 
     player = Player(post=...)          post(fn, *args) runs fn on the GTK side
-    player.open(video, url, ytdl)      play a Video (one at a time)
+    player.open(video, url, ytdl, start)  play a Video (one at a time),
+                                       from start seconds if given
     player.state                       None, or {"video", "pos", "duration",
-                                       "paused"} (pos and duration in seconds
-                                       or None until mpv tells them)
+                                       "paused", "start"} (pos and duration
+                                       in seconds or None until mpv tells them)
     player.watch(fn)                   fn(state) when it changes (pos: to the
                                        second, not every frame)
     player.play() / toggle() / seek(sec) / stop() / show()
@@ -35,18 +36,21 @@ CONNECT_SEC = 15  # mpv opens its socket at start, before yt-dlp is asked
 OBSERVED = ("time-pos", "duration", "pause")
 
 
-def command(player, video, url, ytdl, ipc):
-    """The command line that plays url in player (b8k-vplay, else mpv)."""
+def command(player, video, url, ytdl, ipc, start=None):
+    """The command line that plays url in player (b8k-vplay, else mpv),
+    from start seconds when given."""
     raw = dict(ytdl or {})
     if os.path.basename(player) == "b8k-vplay":
         cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc]
+        if start:
+            cmd.append("start=%d" % start)
         if raw:
             # Replaces b8k-vplay's own list, so its runtime goes too.
             raw = dict({"js-runtimes": "quickjs"}, **raw)
             cmd.append("ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
     else:
         cmd = [player, "--fs", "--force-media-title=" + video["title"],
-               "--input-ipc-server=" + ipc, url]
+               "--input-ipc-server=" + ipc] + (["--start=%d" % start] if start else []) + [url]
         if raw:
             cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
     return cmd
@@ -114,7 +118,7 @@ class Player:
             fn(self.state)
 
     # --- starting and stopping ------------------------------------------------
-    def open(self, video, url, ytdl=None):
+    def open(self, video, url, ytdl=None, start=None):
         """Play video (the one playing is closed). OSError: no player."""
         self.stop()
         self.run_no += 1
@@ -126,8 +130,9 @@ class Player:
             os.unlink(ipc)
         except OSError:
             pass
-        self.spawn(command(self.player, video, url, ytdl, ipc))
-        self.state = {"video": video, "pos": None, "duration": None, "paused": False}
+        self.spawn(command(self.player, video, url, ytdl, ipc, start))
+        self.state = {"video": video, "pos": None, "duration": None, "paused": False,
+                      "start": start}
         self._tell()
         threading.Thread(target=self._read, args=(self.run_no, ipc), daemon=True).start()
 

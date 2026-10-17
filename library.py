@@ -7,7 +7,8 @@ change, in the same form as before this module existed.
 
 Callers learn about changes through watch(fn): fn(what) with what one of
 "follow" (channels added), "unfollow", "details" (what is known about
-followed channels changed), "history" and "settings". Not thread-safe:
+followed channels changed), "history", "position" (how far a video in
+the history was watched) and "settings". Not thread-safe:
 every call comes from the GTK thread (workers hand results back there).
 """
 import os
@@ -19,12 +20,21 @@ HISTORY_MAX = 100
 # A followed channel's avatar, subscribers and description are asked for
 # again after this long; a channel followed from a card has none at all.
 DETAILS_MAX_AGE = 7 * 86400
+# Where a video goes on from: not the first seconds (start over), and not
+# its end (watched: start over next time, shown as seen whole).
+RESUME_MIN = 10
+DONE_TAIL = 30
+DONE_SHARE = 0.95
 SCOPES_ALL = "all"
 SORTS = ("date", "relevance")
 
 
 def _same(a, source, cid):
     return a["source"] == source and a["id"] == cid
+
+
+def _done(pos, duration):
+    return bool(duration) and (duration - pos < DONE_TAIL or pos / duration > DONE_SHARE)
 
 
 class Library:
@@ -41,6 +51,7 @@ class Library:
         cfg.pop("source", None)  # the single search source of 1.2
         self._cfg = cfg
         self._history = load_json(self.history_path) or []
+        self._seen = None  # (source, id): its history entry, made when asked
         self._watchers = []
 
     def watch(self, fn):
@@ -48,6 +59,8 @@ class Library:
 
     def _changed(self, what):
         if what == "history":
+            self._seen = None  # a new list; a position only changes an entry
+        if what in ("history", "position"):
             save_json(self.history_path, self._history)
         else:
             save_json(self.config_path, self._cfg)
@@ -126,12 +139,48 @@ class Library:
         return list(self._history)
 
     def played(self, video):
-        """Put a video first in the history, once."""
-        self._history = [video] + [v for v in self._history
-                                   if not (v["id"] == video["id"]
-                                           and v["source"] == video["source"])]
+        """Put a video first in the history, once (keeping how far it was
+        watched)."""
+        old = self._entry(video)
+        entry = dict(video)
+        for key in ("pos", "duration"):
+            if old and key in old:
+                entry[key] = old[key]
+        self._history = [entry] + [v for v in self._history if v is not old]
         del self._history[HISTORY_MAX:]
         self._changed("history")
+
+    def _entry(self, video):
+        if self._seen is None:
+            self._seen = {(v["source"], v["id"]): v for v in self._history}
+        return self._seen.get((video["source"], video["id"]))
+
+    def note_position(self, video, pos, duration):
+        """How far a video of the history was watched (seconds)."""
+        entry = self._entry(video)
+        if entry is None or pos is None:
+            return
+        if (entry.get("pos"), entry.get("duration")) != (pos, duration):
+            entry["pos"] = pos
+            entry["duration"] = duration
+            self._changed("position")
+
+    def resume_at(self, video):
+        """Where to go on from (seconds), or None to start at the beginning."""
+        entry = self._entry(video)
+        pos = entry and entry.get("pos")
+        if not pos or pos < RESUME_MIN or _done(pos, entry.get("duration")):
+            return None
+        return pos
+
+    def progress(self, video):
+        """How much of it was watched, 0 to 1 (1: to the end), or None."""
+        entry = self._entry(video)
+        pos = entry and entry.get("pos")
+        duration = entry and entry.get("duration")
+        if not pos or not duration:
+            return None
+        return 1.0 if _done(pos, duration) else min(pos / duration, 1.0)
 
     # --- settings ---------------------------------------------------------
     def is_disabled(self, source_id):

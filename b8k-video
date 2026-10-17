@@ -78,6 +78,9 @@ PIXBUFS_KEPT = 300
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
+# How often what is watched is written down while it plays (it is also on
+# every pause, leaving the player included, and when it closes).
+POSITION_SAVE_SEC = 30
 # Searches, feeds and sign-in checks at once; yt-dlp holds one for seconds.
 WORK_WORKERS = 6
 
@@ -111,6 +114,8 @@ button.more { min-height: 52px; font-size: 20px; }
 .card:active { background-color: #c4dcf7; }
 .card label.ttl { font-size: 20px; color: #2e3436; }
 .card label.sub { font-size: 17px; color: #5e5c64; }
+.card progressbar trough { min-height: 6px; border-radius: 0; background-color: #c0bfbc; }
+.card progressbar progress { min-height: 6px; border-radius: 0; background-color: #3584e4; }
 label.note { font-size: 24px; color: #5e5c64; }
 label.section { font-size: 28px; font-weight: bold; color: #2e3436; }
 label.hint { font-size: 20px; color: #5e5c64; }
@@ -368,6 +373,9 @@ class Video(Gtk.Application):
         self.signed_in = {sid: s.state["kind"] == "in" for sid, s in self.signins.items()}
         self.player = Player(post=lambda fn, *a: GLib.idle_add(lambda: (fn(*a), False)[1]))
         self.player.watch(self.show_bar)
+        self.player.watch(self.note_position)
+        self.play_last = None  # the player's state as last seen
+        self.play_saved = 0  # when its position was last written down
         self.seeking = False  # a finger on the bar's slider
         self.account_notes = {}  # source id: the last word on its Account's channels
         self.page = "home"
@@ -574,7 +582,16 @@ class Video(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         image = Gtk.Image()
         image.set_size_request(THUMB_W, THUMB_H)
-        box.pack_start(image, False, False, 0)
+        picture = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        picture.pack_start(image, False, False, 0)
+        seen = self.library.progress(video)
+        if seen:
+            # How much of it was watched, along the bottom of the picture.
+            strip = Gtk.ProgressBar(fraction=seen)
+            strip.set_size_request(THUMB_W, -1)
+            strip.set_halign(Gtk.Align.CENTER)
+            picture.pack_start(strip, False, False, 0)
+        box.pack_start(picture, False, False, 0)
         title = label(video["title"], "ttl", wrap=True)
         title.set_lines(2)
         title.set_ellipsize(3)  # Pango.EllipsizeMode.END
@@ -1081,7 +1098,11 @@ class Video(Gtk.Application):
 
     # --- channels ---------------------------------------------------------
     def library_changed(self, what):
-        if what == "follow":
+        if what == "position":
+            state = self.player.state
+            if state is None or state["paused"]:
+                self.redraw(self.page)  # the strips on the cards; not while one watches
+        elif what == "follow":
             self.feed.invalidate()  # the new channels' videos are not in it yet
         elif what in ("unfollow", "details"):
             self.redraw(self.page)  # Каналы, and a feed without the channel
@@ -1112,8 +1133,8 @@ class Video(Gtk.Application):
             return
         self.library.played(video)
         try:
-            self.player.open(video, src.watch_url(video),
-                             getattr(src, "ytdl_options", dict)())
+            self.player.open(video, src.watch_url(video), start=self.library.resume_at(video),
+                             ytdl=getattr(src, "ytdl_options", dict)())
         except OSError:
             self.say("Нет проигрывателя (b8k-vplay или mpv).")
 
@@ -1163,6 +1184,22 @@ class Video(Gtk.Application):
         self.bar_video = None
         return bar
 
+    def note_position(self, state):
+        """Write down how far the video was watched: on a pause (leaving
+        b8k-vplay pauses it), when it closes, and every half minute."""
+        last = self.play_last
+        if state is None:
+            if last and last["pos"] is not None:
+                self.library.note_position(last["video"], last["pos"], last["duration"])
+            self.play_last = None
+            return
+        paused_now = state["paused"] and not (last and last["paused"])
+        now = time.time()
+        if state["pos"] is not None and (paused_now or now - self.play_saved >= POSITION_SAVE_SEC):
+            self.play_saved = now
+            self.library.note_position(state["video"], state["pos"], state["duration"])
+        self.play_last = dict(state)
+
     def watch_on(self):
         state = self.player.state
         if not state:
@@ -1190,8 +1227,9 @@ class Video(Gtk.Application):
             self.bar_thumb.clear()
             self.thumbs.get(video.get("thumb"), self.bar_thumb, (128, 72))
         pos, dur = state["pos"], state["duration"]
-        when = ("%s из %s" % (nice_duration(pos) or "0:00", nice_duration(dur))
-                if dur else "загрузка…")
+        when = ("%s из %s" % (nice_duration(pos) or "0:00", nice_duration(dur)) if dur
+                else "загрузка…" + (" с %s" % nice_duration(state["start"])
+                                     if state.get("start") else ""))
         bits = [video.get("channel") or "", "на паузе" if state["paused"] else "", when]
         self.bar_sub.set_text(" · ".join(b for b in bits if b))
         if dur and not self.seeking:

@@ -123,6 +123,56 @@ class LibraryTest(unittest.TestCase):
         lib.played(video(1, "vk"))
         self.assertEqual(len(lib.history()), 2)
 
+    def test_position_is_kept_and_resumed(self):
+        lib = self.library()
+        lib.played(video(1))
+        self.events.clear()
+        lib.note_position(video(1), 754.0, 2700.0)
+        self.assertEqual(self.events, ["position"])
+        self.assertEqual(lib.resume_at(video(1)), 754.0)
+        self.assertAlmostEqual(lib.progress(video(1)), 754 / 2700)
+        again = Library(self.conf, self.data)  # written to history.json
+        self.assertEqual(again.resume_at(video(1)), 754.0)
+
+    def test_the_first_seconds_start_over(self):
+        lib = self.library()
+        lib.played(video(1))
+        lib.note_position(video(1), 9.0, 600.0)
+        self.assertIsNone(lib.resume_at(video(1)))
+
+    def test_watched_to_the_end_starts_over_and_shows_whole(self):
+        lib = self.library()
+        lib.played(video(1))
+        lib.note_position(video(1), 580.0, 600.0)  # 20 s left
+        self.assertIsNone(lib.resume_at(video(1)))
+        self.assertEqual(lib.progress(video(1)), 1.0)
+        lib.played(video(2))
+        lib.note_position(video(2), 3500.0, 3600.0)  # 97%, 100 s left
+        self.assertEqual(lib.progress(video(2)), 1.0)
+
+    def test_playing_again_keeps_the_position(self):
+        lib = self.library()
+        lib.played(video(1))
+        lib.note_position(video(1), 100.0, 600.0)
+        lib.played(video(2))
+        lib.played(dict(video(1), title="new title"))
+        self.assertEqual(lib.history()[0]["title"], "new title")
+        self.assertEqual(lib.resume_at(video(1)), 100.0)
+
+    def test_positions_of_videos_not_played_are_ignored(self):
+        lib = self.library()
+        lib.note_position(video(9), 100.0, 600.0)
+        self.assertEqual((lib.history(), self.events), ([], []))
+        self.assertIsNone(lib.progress(video(9)))
+
+    def test_same_position_written_once(self):
+        lib = self.library()
+        lib.played(video(1))
+        self.events.clear()
+        lib.note_position(video(1), 100.0, 600.0)
+        lib.note_position(video(1), 100.0, 600.0)
+        self.assertEqual(self.events, ["position"])
+
     def test_settings(self):
         lib = self.library()
         self.assertTrue(lib.set_enabled("vk", False))
