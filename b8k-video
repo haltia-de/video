@@ -330,6 +330,7 @@ class Video(Gtk.Application):
         self.config.setdefault("channels", [])
         self.config.setdefault("disabled", [])
         self.config.setdefault("scope", "all")
+        self.config.setdefault("sort", "date")  # search results: newest first
         self.config.pop("source", None)  # the single source of 1.2
         self.history = load_json(HISTORY, [])
         self.thumbs = Thumbs()
@@ -566,9 +567,20 @@ class Video(Gtk.Application):
         hold.set_property("delay-factor", 1.2)
         ev._gestures = (tap, hold)  # keep them alive with the widget
         state = {"held": False}
-        tap.connect("pressed", lambda *_a: state.update(held=False))
+
+        def pressed(*_a):
+            # Lit and felt like a button: an event box has neither by itself.
+            state["held"] = False
+            ev.set_state_flags(Gtk.StateFlags.ACTIVE, False)
+            self.buzz()
+
+        tap.connect("pressed", pressed)
         tap.connect("released", lambda *_a: None if state["held"] else self.play(video))
-        hold.connect("pressed", lambda *_a: (state.update(held=True), self.follow_menu(video)))
+        # Ends also when a scroll takes the finger over.
+        tap.connect("end", lambda *_a: ev.unset_state_flags(Gtk.StateFlags.ACTIVE))
+        hold.connect("pressed", lambda *_a: (state.update(held=True),
+                                             ev.unset_state_flags(Gtk.StateFlags.ACTIVE),
+                                             self.follow_menu(video)))
         return ev
 
     def section(self, box, title, action=None):
@@ -935,12 +947,26 @@ class Video(Gtk.Application):
         several = len(sub["sources"]) > 1
         waiting = [s.label for s in sub["sources"] if s.id not in results]
         failed = [s.label for s in sub["sources"] if s.id in results and results[s.id] is None]
-        found = False
-        for src in sub["sources"]:
+        found = any(results.get(s.id) for s in sub["sources"])
+        newest = sub["kind"] == "search" and self.config["sort"] == "date"
+        if sub["kind"] == "search" and found:
+            order = Gtk.Button(label="Сначала новые" if newest else "Сначала подходящие")
+            order.get_style_context().add_class("more")
+            order.set_halign(Gtk.Align.START)
+            order.connect("clicked", lambda _b: self.toggle_sort(sub))
+            box.pack_start(order, False, False, 0)
+        if newest:
+            # The sources find by relevance (asked for the newest, they
+            # bring the newest of anything, matching or not): what they
+            # found, all sources together, newest first.
+            videos = [v for s in sub["sources"] for v in results.get(s.id) or []]
+            videos.sort(key=lambda v: v.get("published") or 0, reverse=True)
+            if videos:
+                box.pack_start(self.grid(videos), False, False, 0)
+        for src in [] if newest else sub["sources"]:
             got = results.get(src.id)
             if not got:
                 continue
-            found = True
             if several:
                 self.section(box, src.label)
             if sub["kind"] == "search":
@@ -959,6 +985,12 @@ class Video(Gtk.Application):
                          else "Каналы не найдены.")
         self.say(" ".join(notes))
         self.set_content(box)
+
+    def toggle_sort(self, sub):
+        self.config["sort"] = "relevance" if self.config["sort"] == "date" else "date"
+        save_json(CONFIG, self.config)
+        if self.sub is sub:
+            self.show_results(sub)
 
     def follow_button(self, chan, sub):
         if self.is_followed(chan["source"], chan["id"]):

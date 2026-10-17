@@ -46,7 +46,10 @@ def _ydl(extra=None, cookies=None):
     import yt_dlp  # slow to import: only when first needed
 
     opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-            "extract_flat": "in_playlist", "socket_timeout": 20}
+            "extract_flat": "in_playlist", "socket_timeout": 20,
+            # A list of results carries no dates, only "3 days ago": this
+            # turns that into a time (to the day) for the cards.
+            "extractor_args": {"youtubetab": {"approximate_date": [""]}}}
     if cookies if cookies is not None else _signed_in():
         opts["cookiefile"] = COOKIES
     opts.update(extra or {})
