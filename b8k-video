@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0
+"""Видео: videos in large cards, played full screen by b8k-vplay.
+
+Three pages under the search field: Подписки (the newest videos of the
+channels one follows, all together), Каналы (those channels; a tap shows
+one, the cross unfollows) and История (what was played). A search shows its
+results in place of the page. A tap on a card plays the video; a long press
+follows or unfollows its channel.
+
+Where the videos come from is a set of sources (the sources package next to
+this file, or /usr/local/lib/b8k-video/sources): YouTube now, others the
+same way. Followed channels are kept in ~/.config/b8k/video.json, the
+history in ~/.local/share/b8k-video/history.json, card pictures in
+~/.cache/b8k-video/.
+"""
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
+
+# The shell's shared pieces (haptics, header, questions): optional.
+sys.path.insert(0, "/usr/local/share/b8k/python")
+try:
+    import b8k_ui
+except ImportError:
+    b8k_ui = None
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+for path in (HERE, "/usr/local/lib/b8k-video"):
+    if os.path.isdir(os.path.join(path, "sources")):
+        sys.path.insert(0, path)
+        break
+import sources  # noqa: E402
+
+CONFIG = os.path.expanduser("~/.config/b8k/video.json")
+HISTORY = os.path.expanduser("~/.local/share/b8k-video/history.json")
+CACHE = os.path.expanduser("~/.cache/b8k-video")
+PLAYER = "/usr/local/bin/b8k-vplay"
+HISTORY_MAX = 100
+FEED_MAX = 48
+FEED_REFRESH_SEC = 30 * 60
+THUMB_W, THUMB_H = 352, 198
+UA = "Mozilla/5.0 (X11; Linux armv7l; rv:151.0) Gecko/20100101 Firefox/151.0"
+
+CSS = b"""
+window, .page { background-color: #e6e6e4; }
+headerbar label.title { font-size: 34px; font-weight: bold; color: #2e3436; }
+entry.search {
+  font-size: 26px;
+  min-height: 64px;
+  border-radius: 16px;
+  padding: 0 16px;
+}
+button.find, button.tab, button.add {
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-height: 64px;
+  font-size: 24px;
+  padding: 0 24px;
+}
+button.find, button.add { background-color: #3584e4; color: #ffffff; }
+button.find:disabled { background-color: #99c1f1; }
+button.tab { background-color: #f2f2f0; color: #2e3436; }
+button.tab.current { background-color: #c4dcf7; }
+.card {
+  background-color: #f2f2f0;
+  border-radius: 16px;
+  padding: 0 0 12px 0;
+}
+.card:active { background-color: #c4dcf7; }
+.card label.ttl { font-size: 20px; color: #2e3436; }
+.card label.sub { font-size: 17px; color: #5e5c64; }
+label.note { font-size: 24px; color: #5e5c64; }
+.chan { background-color: #f2f2f0; border-radius: 16px; padding: 12px 20px; }
+.chan label { font-size: 26px; color: #2e3436; }
+button.drop {
+  background-image: none;
+  background-color: #e6e6e4;
+  border: none;
+  box-shadow: none;
+  border-radius: 16px;
+  min-width: 72px;
+  min-height: 64px;
+  font-size: 28px;
+}
+"""
+
+
+def buzzer():
+    return b8k_ui.Buzz() if b8k_ui else (lambda *_a: True)
+
+
+def load_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
+
+
+def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".new", "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False)
+    os.replace(path + ".new", path)
+
+
+def ask(question, yes):
+    if b8k_ui:
+        return b8k_ui.ask(question, yes)
+    return True
+
+
+def nice_duration(sec):
+    if not sec:
+        return ""
+    sec = int(sec)
+    if sec >= 3600:
+        return "%d:%02d:%02d" % (sec // 3600, sec // 60 % 60, sec % 60)
+    return "%d:%02d" % (sec // 60, sec % 60)
+
+
+def nice_age(ts):
+    if not ts:
+        return ""
+    days = int((time.time() - ts) // 86400)
+    if days <= 0:
+        hours = max(1, int((time.time() - ts) // 3600))
+        return "%d ч назад" % hours
+    if days < 30:
+        return "%d дн назад" % days
+    return time.strftime("%d.%m.%Y", time.localtime(ts))
+
+
+class Thumbs:
+    """Card pictures, fetched by a few workers and kept on disk."""
+
+    def __init__(self):
+        self.pool = ThreadPoolExecutor(max_workers=3)
+        os.makedirs(CACHE, exist_ok=True)
+
+    def get(self, url, image):
+        name = hashlib.sha1(url.encode()).hexdigest() + ".jpg"
+        path = os.path.join(CACHE, name)
+        if os.path.exists(path):
+            self._show(path, image)
+            return
+        self.pool.submit(self._fetch, url, path, image)
+
+    def _fetch(self, url, path, image):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = resp.read(512 * 1024)
+            with open(path + ".new", "wb") as fh:
+                fh.write(data)
+            os.replace(path + ".new", path)
+        except OSError:
+            return
+        GLib.idle_add(self._show, path, image)
+
+    @staticmethod
+    def _show(path, image):
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, THUMB_W, THUMB_H, True)
+            image.set_from_pixbuf(pix)
+        except GLib.Error:
+            pass
+        return False
+
+
+class Video(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="b8k.Video")
+        self.sources = sources.load()
+        self.config = load_json(CONFIG, {"channels": []})
+        self.history = load_json(HISTORY, [])
+        self.thumbs = Thumbs()
+        self.feed = []
+        self.feed_time = 0
+        self.page = "feed"
+        self.channel = None  # the channel shown on its own page
+        self.win = None
+
+    # --- layout ---------------------------------------------------------
+    def do_activate(self):
+        if self.win:
+            self.win.present()
+            return
+        self.buzz = buzzer()
+        # The class must exist before a hook on its signal can be added.
+        GObject.type_class_ref(Gtk.Button)
+        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
+        provider = Gtk.CssProvider()
+        provider.load_from_data((b8k_ui.HEADER_CSS if b8k_ui else b"") + CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.win = Gtk.ApplicationWindow(application=self, title="Видео")
+        self.win.set_default_size(1160, 800)
+        header = Gtk.HeaderBar(title="Видео")
+        self.back_btn = Gtk.Button(label="←")
+        self.back_btn.get_style_context().add_class("back")
+        self.back_btn.connect("clicked", lambda *_a: self.show_page(self.page))
+        self.back_btn.set_no_show_all(True)
+        header.pack_start(self.back_btn)
+        self.win.set_titlebar(header)
+        self.header = header
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(16)
+        box.get_style_context().add_class("page")
+
+        row = Gtk.Box(spacing=12)
+        self.entry = Gtk.Entry(placeholder_text="Найти видео")
+        self.entry.get_style_context().add_class("search")
+        self.entry.connect("activate", lambda *_a: self.search())
+        row.pack_start(self.entry, True, True, 0)
+        self.find_btn = Gtk.Button(label="Найти")
+        self.find_btn.get_style_context().add_class("find")
+        self.find_btn.connect("clicked", lambda *_a: self.search())
+        row.pack_start(self.find_btn, False, False, 0)
+        box.pack_start(row, False, False, 0)
+
+        tabs = Gtk.Box(spacing=12, homogeneous=True)
+        self.tabs = {}
+        for key, label in (("feed", "Подписки"), ("channels", "Каналы"),
+                           ("history", "История")):
+            btn = Gtk.Button(label=label)
+            btn.get_style_context().add_class("tab")
+            btn.connect("clicked", lambda _b, k=key: self.show_page(k))
+            tabs.pack_start(btn, True, True, 0)
+            self.tabs[key] = btn
+        box.pack_start(tabs, False, False, 0)
+        self.tabs_box = tabs
+
+        self.note = Gtk.Label()
+        self.note.get_style_context().add_class("note")
+        self.note.set_line_wrap(True)
+        self.note.set_no_show_all(True)
+        box.pack_start(self.note, False, False, 12)
+
+        self.scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.scroll.set_kinetic_scrolling(True)
+        box.pack_start(self.scroll, True, True, 0)
+        self.win.add(box)
+        self.win.show_all()
+        # No field in focus at start, or the keyboard comes up unasked.
+        self.win.set_focus(None)
+        self.show_page("feed")
+        # yt-dlp takes seconds to import on this CPU: do it while one types.
+        threading.Thread(target=self.warm_up, daemon=True).start()
+
+    def warm_up(self):
+        for src in self.sources.values():
+            try:
+                getattr(src, "warm_up", lambda: None)()
+            except Exception:
+                pass
+
+    def say(self, text):
+        if text:
+            self.note.set_text(text)
+            self.note.show()
+        else:
+            self.note.hide()
+
+    def set_content(self, widget):
+        child = self.scroll.get_child()
+        if child:
+            self.scroll.remove(child)
+            child.destroy()
+        self.scroll.add(widget)
+        self.scroll.get_vadjustment().set_value(0)
+        widget.show_all()
+
+    def mark_tab(self, key):
+        for k, btn in self.tabs.items():
+            ctx = btn.get_style_context()
+            (ctx.add_class if k == key else ctx.remove_class)("current")
+
+    # --- cards ------------------------------------------------------------
+    def grid(self, videos):
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                           max_children_per_line=3, min_children_per_line=3,
+                           row_spacing=16, column_spacing=16)
+        flow.set_valign(Gtk.Align.START)
+        for video in videos:
+            flow.add(self.card(video))
+        return flow
+
+    def card(self, video):
+        ev = Gtk.EventBox()
+        ev.get_style_context().add_class("card")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        image = Gtk.Image()
+        image.set_size_request(THUMB_W, THUMB_H)
+        box.pack_start(image, False, False, 0)
+        title = Gtk.Label(label=video["title"], xalign=0)
+        title.set_line_wrap(True)
+        title.set_lines(2)
+        title.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        title.set_max_width_chars(28)
+        title.get_style_context().add_class("ttl")
+        title.set_margin_start(12)
+        title.set_margin_end(12)
+        box.pack_start(title, False, False, 0)
+        bits = [video.get("channel") or "", nice_duration(video.get("duration")),
+                nice_age(video.get("published"))]
+        sub = Gtk.Label(label=" · ".join(b for b in bits if b), xalign=0)
+        sub.set_ellipsize(3)
+        sub.get_style_context().add_class("sub")
+        sub.set_margin_start(12)
+        sub.set_margin_end(12)
+        box.pack_start(sub, False, False, 0)
+        ev.add(box)
+        self.thumbs.get(video["thumb"], image)
+
+        # A tap plays; a long press follows or unfollows the channel.
+        tap = Gtk.GestureMultiPress(widget=ev)
+        hold = Gtk.GestureLongPress(widget=ev)
+        hold.set_property("delay-factor", 1.2)
+        ev._gestures = (tap, hold)  # keep them alive with the widget
+        state = {"held": False}
+        tap.connect("pressed", lambda *_a: state.update(held=False))
+        tap.connect("released", lambda *_a: None if state["held"] else self.play(video))
+        hold.connect("pressed", lambda *_a: (state.update(held=True), self.follow_menu(video)))
+        return ev
+
+    # --- pages ------------------------------------------------------------
+    def show_page(self, key):
+        self.page = key
+        self.channel = None
+        self.back_btn.hide()
+        self.header.set_title("Видео")
+        self.mark_tab(key)
+        self.say("")
+        if key == "feed":
+            self.show_feed()
+        elif key == "channels":
+            self.show_channels()
+        else:
+            self.show_history()
+
+    def show_feed(self):
+        if self.feed and time.time() - self.feed_time < FEED_REFRESH_SEC:
+            self.set_content(self.grid(self.feed))
+            return
+        chans = self.config.get("channels", [])
+        if not chans:
+            self.set_content(Gtk.Box())
+            self.say("Здесь будут новые видео каналов, на которые вы подписаны. "
+                     "Найдите видео и подержите палец на нём, чтобы подписаться "
+                     "на канал, или добавьте канал на странице «Каналы».")
+            return
+        self.say("Загружаю новые видео…")
+        self.set_content(self.grid(self.feed))
+        self.work(self._load_feed, chans, done=self._feed_ready)
+
+    def _load_feed(self, chans):
+        out = []
+        for chan in chans:
+            src = self.sources.get(chan.get("source"))
+            if not src:
+                continue
+            try:
+                out.extend(src.channel_videos(chan))
+            except Exception as exc:
+                sys.stderr.write("b8k-video: %s: %s\n" % (chan.get("title"), exc))
+        out.sort(key=lambda v: v.get("published") or 0, reverse=True)
+        return out[:FEED_MAX]
+
+    def _feed_ready(self, videos, error):
+        if error or videos is None:
+            if self.page == "feed":
+                self.say("Не удалось загрузить: нет связи?")
+            return
+        self.feed = videos
+        self.feed_time = time.time()
+        if self.page == "feed" and not self.channel:
+            self.say("" if videos else "У каналов пока нет видео.")
+            self.set_content(self.grid(videos))
+
+    def show_channels(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        add = Gtk.Box(spacing=12)
+        entry = Gtk.Entry(placeholder_text="Ссылка на канал или @имя")
+        entry.get_style_context().add_class("search")
+        add.pack_start(entry, True, True, 0)
+        btn = Gtk.Button(label="Добавить")
+        btn.get_style_context().add_class("add")
+        add.pack_start(btn, False, False, 0)
+        box.pack_start(add, False, False, 0)
+
+        def do_add(*_a):
+            text = entry.get_text().strip()
+            if not text:
+                return
+            self.say("Ищу канал…")
+            src = self.sources.get("youtube") or next(iter(self.sources.values()))
+            self.work(src.find_channel, text, done=self._channel_found)
+
+        entry.connect("activate", do_add)
+        btn.connect("clicked", do_add)
+        for chan in self.config.get("channels", []):
+            row = Gtk.Box(spacing=12)
+            row.get_style_context().add_class("chan")
+            name = Gtk.Button(label=chan["title"], relief=Gtk.ReliefStyle.NONE)
+            name.get_child().set_xalign(0)
+            name.connect("clicked", lambda _b, c=chan: self.show_channel(c))
+            row.pack_start(name, True, True, 0)
+            drop = Gtk.Button(label="✕")
+            drop.get_style_context().add_class("drop")
+            drop.connect("clicked", lambda _b, c=chan: self.unfollow(c))
+            row.pack_start(drop, False, False, 0)
+            box.pack_start(row, False, False, 0)
+        if not self.config.get("channels"):
+            self.say("Подписок пока нет.")
+        self.set_content(box)
+
+    def _channel_found(self, chan, error):
+        if error or not chan:
+            self.say("Канал не найден.")
+            return
+        self.follow(chan)
+        if self.page == "channels":
+            self.show_page("channels")
+
+    def show_channel(self, chan):
+        self.channel = chan
+        self.header.set_title(chan["title"])
+        self.back_btn.show()
+        self.say("Загружаю…")
+        self.set_content(Gtk.Box())
+        src = self.sources.get(chan.get("source"))
+        if src:
+            self.work(src.channel_videos, chan, done=self._channel_ready)
+
+    def _channel_ready(self, videos, error):
+        if not self.channel:
+            return
+        if error:
+            self.say("Не удалось загрузить: нет связи?")
+            return
+        self.say("" if videos else "У канала пока нет видео.")
+        self.set_content(self.grid(videos))
+
+    def show_history(self):
+        self.say("" if self.history else "Здесь будут видео, которые вы смотрели.")
+        self.set_content(self.grid(self.history))
+
+    # --- search -----------------------------------------------------------
+    def search(self):
+        query = self.entry.get_text().strip()
+        if not query or not self.find_btn.get_sensitive():
+            return
+        self.entry.select_region(0, 0)
+        self.win.set_focus(None)  # the keyboard goes away
+        self.channel = {"search": query}
+        self.header.set_title("Поиск")
+        self.back_btn.show()
+        self.mark_tab(None)
+        self.say("Ищу «%s»…" % query)
+        self.set_content(Gtk.Box())
+        self.find_btn.set_sensitive(False)
+        src = self.sources.get("youtube") or next(iter(self.sources.values()))
+        self.work(src.search, query, done=self._search_ready)
+
+    def _search_ready(self, videos, error):
+        self.find_btn.set_sensitive(True)
+        if not self.channel or "search" not in self.channel:
+            return
+        if error:
+            self.say("Поиск не удался: нет связи?")
+            return
+        self.say("" if videos else "Ничего не найдено.")
+        self.set_content(self.grid(videos))
+
+    # --- channels -----------------------------------------------------------
+    def followed(self, video):
+        return any(c["id"] == video.get("channel_id") and c["source"] == video["source"]
+                   for c in self.config.get("channels", []))
+
+    def follow_menu(self, video):
+        if not video.get("channel_id"):
+            return
+        name = video.get("channel") or "канал"
+
+        def worker():
+            if self.followed(video):
+                yes = ask("«%s»" % name, "Отписаться от канала")
+                if yes:
+                    GLib.idle_add(self.unfollow, {"source": video["source"],
+                                                  "id": video["channel_id"]})
+            else:
+                yes = ask("«%s»" % name, "Подписаться на канал")
+                if yes:
+                    GLib.idle_add(self.follow, {"source": video["source"],
+                                                "id": video["channel_id"], "title": name})
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def follow(self, chan):
+        chans = [c for c in self.config.get("channels", [])
+                 if not (c["id"] == chan["id"] and c["source"] == chan["source"])]
+        chans.append(chan)
+        self.config["channels"] = chans
+        save_json(CONFIG, self.config)
+        self.feed_time = 0
+        return False
+
+    def unfollow(self, chan):
+        self.config["channels"] = [c for c in self.config.get("channels", [])
+                                   if not (c["id"] == chan["id"] and c["source"] == chan["source"])]
+        save_json(CONFIG, self.config)
+        self.feed = [v for v in self.feed if v.get("channel_id") != chan["id"]]
+        if self.page == "channels" and not self.channel:
+            self.show_page("channels")
+        return False
+
+    # --- playing ------------------------------------------------------------
+    def play(self, video):
+        src = self.sources.get(video["source"])
+        if not src:
+            return
+        url = src.watch_url(video)
+        self.history = [video] + [v for v in self.history
+                                  if not (v["id"] == video["id"] and v["source"] == video["source"])]
+        del self.history[HISTORY_MAX:]
+        save_json(HISTORY, self.history)
+        cmd = ([PLAYER, "--title", video["title"], url] if os.access(PLAYER, os.X_OK)
+               else ["mpv", "--fs", "--force-media-title=" + video["title"], url])
+        try:
+            subprocess.Popen(cmd, start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            self.say("Нет проигрывателя (b8k-vplay или mpv).")
+
+    # --- background work ------------------------------------------------------
+    def work(self, func, arg, done):
+        """func(arg) in a thread; done(result, error) back on the GTK side."""
+
+        def worker():
+            try:
+                res, err = func(arg), None
+            except Exception as exc:
+                sys.stderr.write("b8k-video: %s\n" % exc)
+                res, err = None, exc
+
+            def back():
+                done(res, err)
+                return False
+
+            GLib.idle_add(back)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+if __name__ == "__main__":
+    sys.exit(Video().run(sys.argv))
