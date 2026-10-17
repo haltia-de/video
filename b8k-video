@@ -411,7 +411,8 @@ class Video(Gtk.Application):
         self.back_btn.connect("clicked", lambda *_a: self.show_page(self.page))
         self.back_btn.set_no_show_all(True)
         header.pack_start(self.back_btn)
-        gear = Gtk.Button(label="⚙")
+        # The same gear picture as the other programs' headers.
+        gear = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.DIALOG)
         gear.get_style_context().add_class("back")
         gear.connect("clicked", lambda *_a: self.show_settings())
         header.pack_end(gear)
