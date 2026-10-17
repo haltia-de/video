@@ -141,6 +141,33 @@ class PlayerTest(unittest.TestCase):
         p.show()
         self.assertEqual(len(self.spawned), 1, "no b8k-focus: nothing run")
 
+    def test_sockets_live_where_only_this_user_reaches(self):
+        import os
+        import stat
+        from player import private_dir
+        mine = private_dir(self.tmp.name)
+        self.assertEqual(mine, os.path.join(self.tmp.name, "b8k-video"))
+        self.assertEqual(stat.S_IMODE(os.stat(mine).st_mode), 0o700)
+        # Someone's link in its place, or a directory open to others: not used.
+        other = os.path.join(self.tmp.name, "other")
+        os.makedirs(os.path.join(other, "elsewhere"))
+        os.symlink(os.path.join(other, "elsewhere"), os.path.join(other, "b8k-video"))
+        self.assertNotEqual(private_dir(other), os.path.join(other, "b8k-video"))
+        opened = os.path.join(self.tmp.name, "opened")
+        os.makedirs(os.path.join(opened, "b8k-video"))
+        os.chmod(os.path.join(opened, "b8k-video"), 0o777)
+        self.assertNotEqual(private_dir(opened), os.path.join(opened, "b8k-video"))
+        # No runtime directory at all: a new private one, not /tmp/b8k-video.
+        fresh = private_dir(None)
+        self.addCleanup(os.rmdir, fresh)
+        self.assertEqual(stat.S_IMODE(os.stat(fresh).st_mode), 0o700)
+
+    def test_socket_names_are_not_guessable(self):
+        p, _mpv = self.started()
+        first = self.spawned[0][4]
+        p.open(VIDEO, "u")
+        self.assertNotEqual(first.rsplit("-", 1)[1], self.spawned[1][4].rsplit("-", 1)[1])
+
     def test_mpv_elsewhere(self):
         cmd = command("mpv", VIDEO, "u", {"cookies": "/c"}, "/s")
         self.assertEqual(cmd, ["mpv", "--fs", "--force-media-title=Кино",

@@ -12,7 +12,8 @@ it is playing, for the bar at the bottom of Видео.
     player.play() / toggle() / seek(sec) / stop() / show()
 
 The player is started with mpv's JSON IPC (input-ipc-server, which
-b8k-vplay passes on to libmpv), and a thread of this module reads it;
+b8k-vplay passes on to libmpv), on a socket with an unguessable name in a
+directory only this user can reach, and a thread of this module reads it;
 spawn, connect and focus can be replaced (the tests talk through a
 socketpair). When the window is closed or the video ends, the socket
 closes and the state goes back to None. Not thread-safe apart from that
@@ -20,8 +21,11 @@ reader: every call comes from the GTK thread.
 """
 import json
 import os
+import secrets
 import socket
+import stat
 import subprocess
+import tempfile
 import threading
 import time
 
@@ -61,6 +65,27 @@ def connect_unix(path, give_up):
     return None
 
 
+def private_dir(runtime_dir):
+    """A directory for the sockets that only this user can reach: b8k-video
+    in the runtime directory if it is ours and closed to others, else a new
+    one (someone else's directory, or a link to it, would let them answer
+    in mpv's place)."""
+    if runtime_dir:
+        path = os.path.join(runtime_dir, "b8k-video")
+        try:
+            os.mkdir(path, 0o700)
+        except FileExistsError:
+            pass
+        except OSError:
+            path = None
+        if path:
+            st = os.lstat(path)
+            if (stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid()
+                    and not st.st_mode & 0o077):
+                return path
+    return tempfile.mkdtemp(prefix="b8k-video-")
+
+
 def popen(cmd):
     return subprocess.Popen(cmd, start_new_session=True,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -72,8 +97,8 @@ class Player:
         self.post = post
         self.spawn = spawn
         self.connect = connect
-        run = runtime_dir or os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-        self.sock_dir = os.path.join(run, "b8k-video")
+        self.runtime_dir = runtime_dir or os.environ.get("XDG_RUNTIME_DIR")
+        self.sock_dir = None  # made at the first open
         self.player = player or (PLAYER if os.access(PLAYER, os.X_OK) else "mpv")
         self.focus = focus
         self.state = None
@@ -93,8 +118,10 @@ class Player:
         """Play video (the one playing is closed). OSError: no player."""
         self.stop()
         self.run_no += 1
-        os.makedirs(self.sock_dir, mode=0o700, exist_ok=True)
-        ipc = os.path.join(self.sock_dir, "mpv-%d-%d.sock" % (os.getpid(), self.run_no))
+        if self.sock_dir is None:
+            self.sock_dir = private_dir(self.runtime_dir)
+        ipc = os.path.join(self.sock_dir, "mpv-%d-%d-%s.sock"
+                           % (os.getpid(), self.run_no, secrets.token_hex(4)))
         try:
             os.unlink(ipc)
         except OSError:
