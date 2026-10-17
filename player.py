@@ -1,0 +1,205 @@
+# SPDX-License-Identifier: GPL-2.0
+"""The player: b8k-vplay (mpv elsewhere) as a process of its own, and what
+it is playing, for the bar at the bottom of Видео.
+
+    player = Player(post=...)          post(fn, *args) runs fn on the GTK side
+    player.open(video, url, ytdl)      play a Video (one at a time)
+    player.state                       None, or {"video", "pos", "duration",
+                                       "paused"} (pos and duration in seconds
+                                       or None until mpv tells them)
+    player.watch(fn)                   fn(state) when it changes (pos: to the
+                                       second, not every frame)
+    player.play() / toggle() / seek(sec) / stop() / show()
+
+The player is started with mpv's JSON IPC (input-ipc-server, which
+b8k-vplay passes on to libmpv), and a thread of this module reads it;
+spawn, connect and focus can be replaced (the tests talk through a
+socketpair). When the window is closed or the video ends, the socket
+closes and the state goes back to None. Not thread-safe apart from that
+reader: every call comes from the GTK thread.
+"""
+import json
+import os
+import socket
+import subprocess
+import threading
+import time
+
+PLAYER = "/usr/local/bin/b8k-vplay"
+FOCUS = "/usr/local/bin/b8k-focus"
+CONNECT_SEC = 15  # mpv opens its socket at start, before yt-dlp is asked
+OBSERVED = ("time-pos", "duration", "pause")
+
+
+def command(player, video, url, ytdl, ipc):
+    """The command line that plays url in player (b8k-vplay, else mpv)."""
+    raw = dict(ytdl or {})
+    if os.path.basename(player) == "b8k-vplay":
+        cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc]
+        if raw:
+            # Replaces b8k-vplay's own list, so its runtime goes too.
+            raw = dict({"js-runtimes": "quickjs"}, **raw)
+            cmd.append("ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
+    else:
+        cmd = [player, "--fs", "--force-media-title=" + video["title"],
+               "--input-ipc-server=" + ipc, url]
+        if raw:
+            cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
+    return cmd
+
+
+def connect_unix(path, give_up):
+    """mpv's socket once it is there (or None by give_up, a time)."""
+    while time.time() < give_up:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.connect(path)
+            return sock
+        except OSError:
+            sock.close()
+            time.sleep(0.2)
+    return None
+
+
+def popen(cmd):
+    return subprocess.Popen(cmd, start_new_session=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+class Player:
+    def __init__(self, post, spawn=popen, connect=connect_unix, runtime_dir=None,
+                 player=None, focus=FOCUS):
+        self.post = post
+        self.spawn = spawn
+        self.connect = connect
+        run = runtime_dir or os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+        self.sock_dir = os.path.join(run, "b8k-video")
+        self.player = player or (PLAYER if os.access(PLAYER, os.X_OK) else "mpv")
+        self.focus = focus
+        self.state = None
+        self.watchers = []
+        self.sock = None
+        self.run_no = 0  # each open() is a run; older runs' events are dropped
+
+    def watch(self, fn):
+        self.watchers.append(fn)
+
+    def _tell(self):
+        for fn in list(self.watchers):
+            fn(self.state)
+
+    # --- starting and stopping ------------------------------------------------
+    def open(self, video, url, ytdl=None):
+        """Play video (the one playing is closed). OSError: no player."""
+        self.stop()
+        self.run_no += 1
+        os.makedirs(self.sock_dir, mode=0o700, exist_ok=True)
+        ipc = os.path.join(self.sock_dir, "mpv-%d-%d.sock" % (os.getpid(), self.run_no))
+        try:
+            os.unlink(ipc)
+        except OSError:
+            pass
+        self.spawn(command(self.player, video, url, ytdl, ipc))
+        self.state = {"video": video, "pos": None, "duration": None, "paused": False}
+        self._tell()
+        threading.Thread(target=self._read, args=(self.run_no, ipc), daemon=True).start()
+
+    def stop(self):
+        if self.state is not None:
+            self._send("quit")
+            self._ended(self.run_no)
+
+    # --- the reader thread ----------------------------------------------------
+    def _read(self, run_no, ipc):
+        sock = self.connect(ipc, time.time() + CONNECT_SEC)
+        if sock is None:
+            self.post(self._ended, run_no)
+            return
+        self.post(self._connected, run_no, sock)
+        for n, name in enumerate(OBSERVED, 1):
+            sock.sendall((json.dumps({"command": ["observe_property", n, name]})
+                          + "\n").encode())
+        buf = b""
+        while True:
+            try:
+                data = sock.recv(65536)
+            except OSError:
+                data = b""
+            if not data:
+                break
+            buf += data
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if msg.get("event") == "property-change":
+                    self.post(self._changed, run_no, msg.get("name"), msg.get("data"))
+        sock.close()
+        try:
+            os.unlink(ipc)
+        except OSError:
+            pass
+        self.post(self._ended, run_no)
+
+    def _connected(self, run_no, sock):
+        if run_no != self.run_no or self.state is None:
+            sock.close()  # stopped meanwhile
+            return
+        self.sock = sock
+
+    def _changed(self, run_no, name, value):
+        if run_no != self.run_no or self.state is None:
+            return
+        key = {"time-pos": "pos", "duration": "duration", "pause": "paused"}.get(name)
+        if key is None:
+            return
+        old = self.state[key]
+        if key == "paused":
+            value = bool(value)
+        same = (old == value if key != "pos" or None in (old, value)
+                else int(old) == int(value))
+        self.state[key] = value
+        if not same:
+            self._tell()
+
+    def _ended(self, run_no):
+        if run_no != self.run_no or self.state is None:
+            return
+        self.state = None
+        if self.sock:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            self.sock = None
+        self._tell()
+
+    # --- control ---------------------------------------------------------------
+    def _send(self, *cmd):
+        if self.sock is None:
+            return False
+        try:
+            self.sock.sendall((json.dumps({"command": list(cmd)}) + "\n").encode())
+            return True
+        except OSError:
+            return False
+
+    def play(self):
+        self._send("set_property", "pause", False)
+
+    def toggle(self):
+        if self.state:
+            self._send("set_property", "pause", not self.state["paused"])
+
+    def seek(self, sec):
+        self._send("seek", float(sec), "absolute")
+
+    def show(self):
+        """Bring the player's window to the front (the shell's b8k-focus)."""
+        if self.state and os.access(self.focus, os.X_OK):
+            try:
+                self.spawn([self.focus, "activate", "b8k-vplay"])
+            except OSError:
+                pass
