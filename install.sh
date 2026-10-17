@@ -9,6 +9,7 @@ root=${1:-}
 root=${root%/}
 here=$(cd "$(dirname "$0")" && pwd)
 install -D -m 755 "$here/b8k-video" "$root/usr/local/bin/b8k-video"
+install -D -m 644 "$here/library.py" "$root/usr/local/lib/b8k-video/library.py"
 for f in "$here"/sources/*.py; do
 	install -D -m 644 "$f" "$root/usr/local/lib/b8k-video/sources/${f##*/}"
 done

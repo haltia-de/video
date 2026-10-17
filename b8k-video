@@ -51,15 +51,13 @@ for path in (HERE, "/usr/local/lib/b8k-video"):
         sys.path.insert(0, path)
         break
 import sources  # noqa: E402
+from library import Library  # noqa: E402
 from sources import load_json, net, save_json  # noqa: E402
 
-CONFIG = os.path.expanduser("~/.config/b8k/video.json")
-HISTORY = os.path.expanduser("~/.local/share/b8k-video/history.json")
 CACHE = sources.CACHE_DIR
 FEED_CACHE = os.path.join(CACHE, "feed.json")
 HOME_CACHE = os.path.join(CACHE, "home.json")
 PLAYER = "/usr/local/bin/b8k-vplay"
-HISTORY_MAX = 100
 FEED_MAX = 48
 FEED_REFRESH_SEC = 30 * 60
 HOME_REFRESH_SEC = 60 * 60
@@ -70,7 +68,6 @@ HOME_SOURCE = 12
 THUMB_W, THUMB_H = 352, 198
 AVATAR = 96
 QR_SIZE = 320
-CHANNEL_INFO_SEC = 7 * 86400
 LOGIN_POLL_MS = 3000
 LOGIN_RETRIES = 5
 # Cards made at once; the rest follow in batches while the first are
@@ -326,13 +323,8 @@ class Video(Gtk.Application):
     def __init__(self):
         super().__init__(application_id="b8k.Video")
         self.sources = sources.load()
-        self.config = load_json(CONFIG, None) or {"channels": []}
-        self.config.setdefault("channels", [])
-        self.config.setdefault("disabled", [])
-        self.config.setdefault("scope", "all")
-        self.config.setdefault("sort", "date")  # search results: newest first
-        self.config.pop("source", None)  # the single source of 1.2
-        self.history = load_json(HISTORY, [])
+        self.library = Library()
+        self.library.watch(self.library_changed)
         self.thumbs = Thumbs()
         self.pool = ThreadPoolExecutor(max_workers=WORK_WORKERS)
         # What was fetched last time, shown at once while it is fetched again.
@@ -358,15 +350,15 @@ class Video(Gtk.Application):
         return sorted(self.sources.values(), key=lambda s: (s.id != "youtube", s.label))
 
     def enabled(self):
-        return [s for s in self.ordered() if s.id not in self.config["disabled"]]
+        return [s for s in self.ordered() if not self.library.is_disabled(s.id)]
 
     def is_enabled(self, source_id):
-        return source_id in self.sources and source_id not in self.config["disabled"]
+        return source_id in self.sources and not self.library.is_disabled(source_id)
 
     def scope(self):
         """The sources a search goes to."""
         on = self.enabled()
-        one = [s for s in on if s.id == self.config["scope"]]
+        one = [s for s in on if s.id == self.library.scope]
         return one or on
 
     def scope_label(self):
@@ -375,10 +367,8 @@ class Video(Gtk.Application):
 
     def next_scope(self):
         choices = ["all"] + [s.id for s in self.enabled()]
-        now = self.config["scope"] if self.config["scope"] in choices else "all"
-        self.config["scope"] = choices[(choices.index(now) + 1) % len(choices)]
-        save_json(CONFIG, self.config)
-        self.update_scope()
+        now = self.library.scope if self.library.scope in choices else "all"
+        self.library.set_scope(choices[(choices.index(now) + 1) % len(choices)])
         # A search on show is redone where it now goes.
         if self.sub and self.sub["kind"] == "search":
             self.search(self.sub["query"])
@@ -624,7 +614,7 @@ class Video(Gtk.Application):
         more.get_style_context().add_class("more")
         more.connect("clicked", lambda *_a: self.show_page("feed"))
         self.section(box, "Новое в подписках", more if self.feed_shown() else None)
-        if not self.config["channels"]:
+        if not self.library.channels():
             box.pack_start(label("Найдите видео и подержите палец на нём, чтобы "
                                  "подписаться на канал, или добавьте канал на "
                                  "странице «Каналы».", "hint", wrap=True), False, False, 0)
@@ -674,10 +664,12 @@ class Video(Gtk.Application):
 
     # Подписки -----------------------------------------------------------
     def feed_shown(self):
-        return [v for v in self.feed if self.is_enabled(v["source"])]
+        # Unfollowed since the feed was fetched: gone at once all the same.
+        return [v for v in self.feed if self.is_enabled(v["source"])
+                and self.library.is_followed(v["source"], v.get("channel_id"))]
 
     def show_feed(self):
-        if not self.config["channels"]:
+        if not self.library.channels():
             self.set_content(Gtk.Box())
             self.say("Здесь будут новые видео каналов, на которые вы подписаны. "
                      "Найдите видео и подержите палец на нём, чтобы подписаться "
@@ -694,7 +686,7 @@ class Video(Gtk.Application):
         """Fetch the feed again when it is old; true while it is fetched."""
         if self.feed_loading:
             return True
-        chans = [c for c in self.config["channels"] if self.is_enabled(c.get("source"))]
+        chans = [c for c in self.library.channels() if self.is_enabled(c.get("source"))]
         if not chans or (not force and time.time() - self.feed_time < FEED_REFRESH_SEC):
             return False
         self.feed_loading = True
@@ -735,16 +727,7 @@ class Video(Gtk.Application):
                 self.say("Не удалось загрузить: нет связи?")
             return
         videos, latest = result
-        # Kept with the channels, so that Каналы can tell it before the
-        # feed is loaded again.
-        changed = False
-        for chan in self.config["channels"]:
-            when = latest.get((chan["source"], chan["id"]))
-            if when and when != chan.get("latest"):
-                chan["latest"] = when
-                changed = True
-        if changed:
-            save_json(CONFIG, self.config)
+        self.library.note_latest(latest)
         self.feed = videos
         self.feed_time = time.time()
         try:
@@ -758,12 +741,13 @@ class Video(Gtk.Application):
     def show_channels(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.pack_start(self.channel_finder(), False, False, 0)
-        for chan in self.config["channels"]:
+        for chan in self.library.channels():
             drop = Gtk.Button(label="✕")
             drop.get_style_context().add_class("drop")
-            drop.connect("clicked", lambda _b, c=chan: self.unfollow(c))
+            drop.connect("clicked",
+                         lambda _b, c=chan: self.library.unfollow(c["source"], c["id"]))
             box.pack_start(self.channel_row(chan, drop), False, False, 0)
-        if not self.config["channels"]:
+        if not self.library.channels():
             self.say("Подписок пока нет. Найдите канал по названию или "
                      "вставьте ссылку на него.")
         self.set_content(box)
@@ -834,10 +818,8 @@ class Video(Gtk.Application):
         by name (followed from a card) or whose details are a week old."""
         if self.refreshing:
             return
-        now = time.time()
-        stale = [c for c in self.config["channels"]
-                 if now - c.get("updated", 0) > CHANNEL_INFO_SEC
-                 and self.is_enabled(c["source"])
+        stale = [c for c in self.library.lacking_details()
+                 if self.is_enabled(c["source"])
                  and (c["source"], c["id"]) not in self.refresh_tried]
         if not stale:
             return
@@ -859,15 +841,7 @@ class Video(Gtk.Application):
 
     def _channel_info_ready(self, infos, error):
         self.refreshing = False
-        if not infos:
-            return
-        now = time.time()
-        for info in infos:
-            for chan in self.config["channels"]:
-                if chan["id"] == info["id"] and chan["source"] == info["source"]:
-                    chan.update(info, updated=now)
-        save_json(CONFIG, self.config)
-        self.redraw("channels")
+        self.library.add_details(infos or [])
 
     def show_channel(self, chan):
         self.open_sub({"kind": "channel", "chan": chan}, chan["title"])
@@ -897,8 +871,9 @@ class Video(Gtk.Application):
 
     # История ------------------------------------------------------------
     def show_history(self):
-        self.say("" if self.history else "Здесь будут видео, которые вы смотрели.")
-        self.set_content(self.grid(self.history))
+        history = self.library.history()
+        self.say("" if history else "Здесь будут видео, которые вы смотрели.")
+        self.set_content(self.grid(history))
 
     # --- search -----------------------------------------------------------
     def search(self, query=None):
@@ -949,7 +924,7 @@ class Video(Gtk.Application):
         waiting = [s.label for s in sub["sources"] if s.id not in results]
         failed = [s.label for s in sub["sources"] if s.id in results and results[s.id] is None]
         found = any(results.get(s.id) for s in sub["sources"])
-        newest = sub["kind"] == "search" and self.config["sort"] == "date"
+        newest = sub["kind"] == "search" and self.library.sort == "date"
         if sub["kind"] == "search" and found:
             order = Gtk.Button(label="Сначала новые" if newest else "Сначала подходящие")
             order.get_style_context().add_class("more")
@@ -988,21 +963,21 @@ class Video(Gtk.Application):
         self.set_content(box)
 
     def toggle_sort(self, sub):
-        self.config["sort"] = "relevance" if self.config["sort"] == "date" else "date"
-        save_json(CONFIG, self.config)
+        self.library.set_sort("relevance" if self.library.sort == "date" else "date")
         if self.sub is sub:
             self.show_results(sub)
 
     def follow_button(self, chan, sub):
-        if self.is_followed(chan["source"], chan["id"]):
+        if self.library.is_followed(chan["source"], chan["id"]):
             btn = Gtk.Button(label="Отписаться")
             btn.get_style_context().add_class("drop")
             btn.get_style_context().add_class("wide")
-            btn.connect("clicked", lambda _b: (self.unfollow(chan), self.redraw_sub(sub)))
+            btn.connect("clicked", lambda _b: (self.library.unfollow(chan["source"], chan["id"]),
+                                               self.redraw_sub(sub)))
         else:
             btn = Gtk.Button(label="Подписаться")
             btn.get_style_context().add_class("add")
-            btn.connect("clicked", lambda _b: (self.follow(chan), self.redraw_sub(sub)))
+            btn.connect("clicked", lambda _b: (self.library.follow(chan), self.redraw_sub(sub)))
         return btn
 
     def redraw_sub(self, sub):
@@ -1092,15 +1067,7 @@ class Video(Gtk.Application):
         return row
 
     def set_enabled(self, src, on):
-        disabled = [i for i in self.config["disabled"] if i != src.id]
-        if not on:
-            disabled.append(src.id)
-        if disabled == self.config["disabled"]:
-            return
-        self.config["disabled"] = disabled
-        save_json(CONFIG, self.config)
-        self.update_scope()
-        if on:
+        if self.library.set_enabled(src.id, on) and on:
             # What it missed while off.
             self.feed_time = 0
             self.home_time.pop(src.id, None)
@@ -1193,10 +1160,8 @@ class Video(Gtk.Application):
             if error:
                 text = "Не удалось загрузить каналы: нет связи?"
             else:
-                new = [c for c in chans or [] if not self.is_followed(c["source"], c["id"])]
-                for chan in new:
-                    self.follow(chan)
-                text = ("Добавлено каналов: %d." % len(new)) if new else \
+                new = self.library.follow_all(chans or [])
+                text = ("Добавлено каналов: %d." % new) if new else \
                     "Все каналы аккаунта уже здесь."
             sub["login"][src.id] = {"note": text}
             if self.sub is sub:
@@ -1205,52 +1170,30 @@ class Video(Gtk.Application):
         self.work(src.subscriptions, done=done)
 
     # --- channels ---------------------------------------------------------
-    def is_followed(self, source, cid):
-        return any(c["id"] == cid and c["source"] == source for c in self.config["channels"])
-
-    def followed(self, video):
-        return self.is_followed(video["source"], video.get("channel_id"))
+    def library_changed(self, what):
+        if what == "follow":
+            self.feed_time = 0  # the new channels' videos are not in it yet
+        elif what in ("unfollow", "details"):
+            self.redraw(self.page)  # Каналы, and a feed without the channel
+        elif what == "settings":
+            self.update_scope()
 
     def follow_menu(self, video):
         if not video.get("channel_id"):
             return
         name = video.get("channel") or "канал"
 
+        source, cid = video["source"], video["channel_id"]
+
         def worker():
-            if self.followed(video):
-                yes = ask("«%s»" % name, "Отписаться от канала")
-                if yes:
-                    GLib.idle_add(self.unfollow, {"source": video["source"],
-                                                  "id": video["channel_id"]})
-            else:
-                yes = ask("«%s»" % name, "Подписаться на канал")
-                if yes:
-                    GLib.idle_add(self.follow, {"source": video["source"],
-                                                "id": video["channel_id"], "title": name})
+            if self.library.is_followed(source, cid):
+                if ask("«%s»" % name, "Отписаться от канала"):
+                    GLib.idle_add(lambda: self.library.unfollow(source, cid) and False)
+            elif ask("«%s»" % name, "Подписаться на канал"):
+                GLib.idle_add(lambda: self.library.follow({"source": source, "id": cid,
+                                                           "title": name}) and False)
 
         threading.Thread(target=worker, daemon=True).start()
-
-    def follow(self, chan):
-        chans = [c for c in self.config["channels"]
-                 if not (c["id"] == chan["id"] and c["source"] == chan["source"])]
-        chan = dict(chan)
-        if chan.get("thumb") or chan.get("subscribers") is not None:
-            chan["updated"] = time.time()  # found with its details
-        chans.append(chan)
-        self.config["channels"] = chans
-        save_json(CONFIG, self.config)
-        self.feed_time = 0
-        return False
-
-    def unfollow(self, chan):
-        self.config["channels"] = [c for c in self.config["channels"]
-                                   if not (c["id"] == chan["id"]
-                                           and c["source"] == chan["source"])]
-        save_json(CONFIG, self.config)
-        self.feed = [v for v in self.feed
-                     if not (v.get("channel_id") == chan["id"] and v["source"] == chan["source"])]
-        self.redraw("channels")
-        return False
 
     # --- playing ----------------------------------------------------------
     def play(self, video):
@@ -1258,10 +1201,7 @@ class Video(Gtk.Application):
         if not src:
             return
         url = src.watch_url(video)
-        self.history = [video] + [v for v in self.history
-                                  if not (v["id"] == video["id"] and v["source"] == video["source"])]
-        del self.history[HISTORY_MAX:]
-        save_json(HISTORY, self.history)
+        self.library.played(video)
         raw = getattr(src, "ytdl_options", dict)()
         if os.access(PLAYER, os.X_OK):
             cmd = [PLAYER, "--title", video["title"], url]
