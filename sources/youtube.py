@@ -134,6 +134,11 @@ class YouTube:
             })
         return out
 
+    def owns(self, text):
+        text = text.strip()
+        return (re.fullmatch(r"UC[\w-]{22}", text) is not None
+                or "youtube.com/" in text or "youtu.be/" in text)
+
     def search_channels(self, query):
         query = query.strip()
         if _is_link(query):

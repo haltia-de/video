@@ -11,8 +11,9 @@ results in place of the page. A tap on a card plays the video; a long press
 follows or unfollows its channel.
 
 Where the videos come from is a set of sources (the sources package next to
-this file, or /usr/local/lib/b8k-video/sources): YouTube now, others the
-same way. Followed channels are kept in ~/.config/b8k/video.json, the
+this file, or /usr/local/lib/b8k-video/sources): YouTube and VK Видео now,
+others the same way. A button by the search field chooses where searches
+go; followed channels and the history hold videos of every source. Followed channels are kept in ~/.config/b8k/video.json, the
 history in ~/.local/share/b8k-video/history.json, card pictures in
 ~/.cache/b8k-video/.
 """
@@ -68,7 +69,7 @@ entry.search {
   border-radius: 16px;
   padding: 0 16px;
 }
-button.find, button.tab, button.add {
+button.find, button.tab, button.add, button.source {
   background-image: none;
   border: none;
   box-shadow: none;
@@ -79,7 +80,7 @@ button.find, button.tab, button.add {
 }
 button.find, button.add { background-color: #3584e4; color: #ffffff; }
 button.find:disabled { background-color: #99c1f1; }
-button.tab { background-color: #f2f2f0; color: #2e3436; }
+button.tab, button.source { background-color: #f2f2f0; color: #2e3436; }
 button.tab.current { background-color: #c4dcf7; }
 .card {
   background-color: #f2f2f0;
@@ -223,6 +224,7 @@ class Video(Gtk.Application):
         super().__init__(application_id="b8k.Video")
         self.sources = sources.load()
         self.config = load_json(CONFIG, {"channels": []})
+        self.config.setdefault("source", "youtube")
         self.history = load_json(HISTORY, [])
         self.thumbs = Thumbs()
         self.feed = []
@@ -263,6 +265,11 @@ class Video(Gtk.Application):
         box.get_style_context().add_class("page")
 
         row = Gtk.Box(spacing=12)
+        self.source_btn = Gtk.Button(label=self.source().label)
+        self.source_btn.get_style_context().add_class("source")
+        self.source_btn.connect("clicked", lambda *_a: self.next_source())
+        if len(self.sources) > 1:
+            row.pack_start(self.source_btn, False, False, 0)
         self.entry = Gtk.Entry(placeholder_text="Найти видео")
         self.entry.get_style_context().add_class("search")
         self.entry.connect("activate", lambda *_a: self.search())
@@ -306,6 +313,22 @@ class Video(Gtk.Application):
         self.show_page("feed")
         # yt-dlp takes seconds to import on this CPU: do it while one types.
         threading.Thread(target=self.warm_up, daemon=True).start()
+
+    def source(self):
+        """Where searches go: the one chosen, or any there is."""
+        return self.sources.get(self.config["source"]) or next(iter(self.sources.values()))
+
+    def next_source(self):
+        ids = sorted(self.sources, key=lambda k: self.sources[k].label.lower() != "youtube")
+        now = self.source().id
+        self.config["source"] = ids[(ids.index(now) + 1) % len(ids)] if now in ids else ids[0]
+        save_json(CONFIG, self.config)
+        self.source_btn.set_label(self.source().label)
+        # A search on show is redone where it now goes.
+        if self.channel and "search" in self.channel:
+            self.search(self.channel["search"])
+        elif self.channel and "channels" in self.channel:
+            self.find_channels(self.channel["channels"])
 
     def warm_up(self):
         for src in self.sources.values():
@@ -505,7 +528,9 @@ class Video(Gtk.Application):
         name.get_style_context().add_class("cname")
         text.pack_start(name, False, False, 0)
         latest = nice_age(chan.get("latest"))
-        bits = [chan.get("handle") or "", nice_subscribers(chan.get("subscribers")),
+        src = self.sources.get(chan["source"])
+        bits = [src.label if src and len(self.sources) > 1 else "",
+                chan.get("handle") or "", nice_subscribers(chan.get("subscribers")),
                 ("новое видео " + latest) if latest else ""]
         bits = [b for b in bits if b]
         if bits:
@@ -532,18 +557,22 @@ class Video(Gtk.Application):
         return row
 
     def find_channels(self, query):
+        """Channels matching the words, in the source chosen; a link finds
+        its channel where it points."""
         self.win.set_focus(None)  # the keyboard goes away
-        self.channel = {"channels": query}
+        src = next((s for s in self.sources.values()
+                    if getattr(s, "owns", lambda _t: False)(query)), self.source())
+        self.channel = {"channels": query, "source": src}
         self.header.set_title("Поиск каналов")
         self.back_btn.show()
-        self.say("Ищу каналы «%s»…" % query)
+        self.say("Ищу каналы «%s» (%s)…" % (query, src.label))
         self.set_content(self.channel_finder(query))
-        src = self.sources.get("youtube") or next(iter(self.sources.values()))
         self.work(src.search_channels, query,
-                  done=lambda chans, error: self._channels_found(query, chans, error))
+                  done=lambda chans, error: self._channels_found(query, src, chans, error))
 
-    def _channels_found(self, query, chans, error):
-        if not self.channel or self.channel.get("channels") != query:
+    def _channels_found(self, query, src, chans, error):
+        if (not self.channel or self.channel.get("channels") != query
+                or self.channel.get("source") is not src):
             return  # left, or another search began
         if error:
             self.say("Поиск не удался: нет связи?")
@@ -637,9 +666,9 @@ class Video(Gtk.Application):
         self.set_content(self.grid(self.history))
 
     # --- search -----------------------------------------------------------
-    def search(self):
-        query = self.entry.get_text().strip()
-        if not query or not self.find_btn.get_sensitive():
+    def search(self, query=None):
+        query = (query or self.entry.get_text()).strip()
+        if not query:
             return
         self.entry.select_region(0, 0)
         self.win.set_focus(None)  # the keyboard goes away
@@ -647,16 +676,16 @@ class Video(Gtk.Application):
         self.header.set_title("Поиск")
         self.back_btn.show()
         self.mark_tab(None)
-        self.say("Ищу «%s»…" % query)
+        src = self.source()
+        self.say("Ищу «%s» (%s)…" % (query, src.label))
         self.set_content(Gtk.Box())
-        self.find_btn.set_sensitive(False)
-        src = self.sources.get("youtube") or next(iter(self.sources.values()))
-        self.work(src.search, query, done=self._search_ready)
+        self.work(src.search, query,
+                  done=lambda videos, error: self._search_ready(query, src, videos, error))
 
-    def _search_ready(self, videos, error):
-        self.find_btn.set_sensitive(True)
-        if not self.channel or "search" not in self.channel:
-            return
+    def _search_ready(self, query, src, videos, error):
+        if (not self.channel or self.channel.get("search") != query
+                or src is not self.source()):
+            return  # left, or another search began
         if error:
             self.say("Поиск не удался: нет связи?")
             return

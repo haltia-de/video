@@ -13,7 +13,9 @@ SOURCE has:
                             everything known about it, or None
   watch_url(video)          what the player opens; it goes through mpv's
                             yt-dlp hook, so a page link is enough
-and may have warm_up(), called once in the background at start.
+and may have warm_up(), called once in the background at start, and
+owns(text), true when the text is a link to this source (a channel link
+pasted to search finds the channel there, whichever source is chosen).
 
 A video is a dict:
   source, id, title, channel, channel_id, duration (seconds or None),
