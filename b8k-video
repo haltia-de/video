@@ -249,14 +249,19 @@ class Video(Gtk.Application):
         box.pack_start(tabs, False, False, 0)
         self.tabs_box = tabs
 
+        # The note and the cards scroll together: a wrapped label outside
+        # the scrolled part made the window taller than the room the
+        # on-screen keyboard leaves, and the window covered its top row.
+        self.scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.scroll.set_kinetic_scrolling(True)
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.note = Gtk.Label()
         self.note.get_style_context().add_class("note")
         self.note.set_line_wrap(True)
         self.note.set_no_show_all(True)
-        box.pack_start(self.note, False, False, 12)
-
-        self.scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        self.scroll.set_kinetic_scrolling(True)
+        self.note.set_margin_top(12)
+        self.body.pack_start(self.note, False, False, 0)
+        self.scroll.add(self.body)
         box.pack_start(self.scroll, True, True, 0)
         self.win.add(box)
         self.win.show_all()
@@ -281,11 +286,11 @@ class Video(Gtk.Application):
             self.note.hide()
 
     def set_content(self, widget):
-        child = self.scroll.get_child()
-        if child:
-            self.scroll.remove(child)
-            child.destroy()
-        self.scroll.add(widget)
+        for child in self.body.get_children():
+            if child is not self.note:
+                self.body.remove(child)
+                child.destroy()
+        self.body.pack_start(widget, False, False, 0)
         self.scroll.get_vadjustment().set_value(0)
         widget.show_all()
 
