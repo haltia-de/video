@@ -51,8 +51,9 @@ for path in (HERE, "/usr/local/lib/b8k-video"):
         sys.path.insert(0, path)
         break
 import sources  # noqa: E402
+from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
-from sources import load_json, net, save_json  # noqa: E402
+from sources import net  # noqa: E402
 
 CACHE = sources.CACHE_DIR
 FEED_CACHE = os.path.join(CACHE, "feed.json")
@@ -327,17 +328,21 @@ class Video(Gtk.Application):
         self.library.watch(self.library_changed)
         self.thumbs = Thumbs()
         self.pool = ThreadPoolExecutor(max_workers=WORK_WORKERS)
-        # What was fetched last time, shown at once while it is fetched again.
-        feed = load_json(FEED_CACHE, {}) or {}
-        self.feed = feed.get("videos", [])
-        self.feed_time = feed.get("time", 0)
-        self.feed_loading = False
-        home = load_json(HOME_CACHE, {}) or {}
-        self.home = home.get("sources", {})  # source id: {"title", "videos"}
-        self.home_time = home.get("time", {})
-        self.home_loading = set()
-        self.searches = {}  # (kind, source id, query): (time, result)
-        self.channel_videos = {}  # (source, id): (time, videos)
+        # What was fetched, shown at once while it is fetched again: the
+        # feed and Главная from the last start too.
+        self.feed = Kept(self._load_feed, FEED_REFRESH_SEC, self.work, path=FEED_CACHE,
+                         prepare=lambda _key: (self.feed_channels(),))
+        self.feed.watch(self._feed_came)
+        self.home = Kept(lambda sid: self.sources[sid].home(), HOME_REFRESH_SEC, self.work,
+                         path=HOME_CACHE)  # by source id: {"title", "videos"} or None
+        self.home.watch(lambda _key, error: error or self.redraw("home"))
+        self.searches = Kept(self._search, SEARCH_KEEP_SEC, self.work)  # (kind, source, query)
+        self.searches.watch(self._search_came)
+        self.channel_wanted = {}  # (source, id): the channel, for its fetch
+        self.channel_videos = Kept(
+            lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
+            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
+        self.channel_videos.watch(self._channel_came)
         self.page = "home"
         self.sub = None  # a page over the tabs: search, a channel, settings
         self.refreshing = False  # followed channels' details being fetched
@@ -621,10 +626,10 @@ class Video(Gtk.Application):
         elif self.feed_shown():
             box.pack_start(self.grid(self.feed_shown()[:HOME_NEW]), False, False, 0)
         else:
-            box.pack_start(label("Загружаю…" if self.feed_loading else "Пока ничего нет.",
-                                 "hint"), False, False, 0)
+            box.pack_start(label("Загружаю…" if self.feed.is_loading("feed")
+                                 else "Пока ничего нет.", "hint"), False, False, 0)
         for src in self.enabled():
-            got = self.home.get(src.id)
+            got = self.home.get(src.id) if hasattr(src, "home") else None
             if got and got.get("videos"):
                 self.section(box, got["title"])
                 box.pack_start(self.grid(got["videos"][:HOME_SOURCE]), False, False, 0)
@@ -634,38 +639,16 @@ class Video(Gtk.Application):
                                      "в настройках (⚙)." % src.label, "hint", wrap=True),
                                False, False, 0)
         self.set_content(box)
-        self.load_feed()
-        self.load_home()
-
-    def load_home(self, force=False):
-        now = time.time()
-        for src in self.enabled():
-            if not hasattr(src, "home") or src.id in self.home_loading:
-                continue
-            if not force and now - self.home_time.get(src.id, 0) < HOME_REFRESH_SEC:
-                continue
-            self.home_loading.add(src.id)
-            self.work(src.home, done=lambda got, error, s=src: self._home_ready(s, got, error))
-
-    def _home_ready(self, src, got, error):
-        self.home_loading.discard(src.id)
-        if error:
-            return  # keep what was shown before
-        self.home_time[src.id] = time.time()
-        if got:
-            self.home[src.id] = got
-        else:
-            self.home.pop(src.id, None)
-        try:
-            save_json(HOME_CACHE, {"sources": self.home, "time": self.home_time})
-        except OSError:
-            pass
-        self.redraw("home")
 
     # Подписки -----------------------------------------------------------
+    def feed_channels(self):
+        return [c for c in self.library.channels() if self.is_enabled(c.get("source"))]
+
     def feed_shown(self):
-        # Unfollowed since the feed was fetched: gone at once all the same.
-        return [v for v in self.feed if self.is_enabled(v["source"])
+        """The feed as kept (fetched again when old). Unfollowed since it
+        was fetched, or of a source switched off: left out all the same."""
+        got = self.feed.get("feed") if self.feed_channels() else None
+        return [v for v in (got or {}).get("videos", []) if self.is_enabled(v["source"])
                 and self.library.is_followed(v["source"], v.get("channel_id"))]
 
     def show_feed(self):
@@ -676,24 +659,13 @@ class Video(Gtk.Application):
                      "на канал, или добавьте канал на странице «Каналы».")
             return
         videos = self.feed_shown()
-        if self.load_feed() and not videos:
-            self.say("Загружаю новые видео…")
-        elif not videos:
-            self.say("У каналов пока нет видео.")
+        if not videos:
+            self.say("Загружаю новые видео…" if self.feed.is_loading("feed")
+                     else "Не удалось загрузить: нет связи?" if self.feed.has_failed("feed")
+                     else "У каналов пока нет видео.")
         self.set_content(self.grid(videos))
 
-    def load_feed(self, force=False):
-        """Fetch the feed again when it is old; true while it is fetched."""
-        if self.feed_loading:
-            return True
-        chans = [c for c in self.library.channels() if self.is_enabled(c.get("source"))]
-        if not chans or (not force and time.time() - self.feed_time < FEED_REFRESH_SEC):
-            return False
-        self.feed_loading = True
-        self.work(self._load_feed, chans, done=self._feed_ready)
-        return True
-
-    def _load_feed(self, chans):
+    def _load_feed(self, _key, chans):
         # A request per channel: in parallel, the feed takes about as long
         # as its slowest channel instead of all of them in turn.
         def one(chan):
@@ -704,7 +676,7 @@ class Video(Gtk.Application):
                 return chan, None
 
         out = []
-        latest = {}  # (source, id): the time of the channel's newest video
+        latest = []  # [source, id, the time of the channel's newest video]
         failed = 0
         with ThreadPoolExecutor(max_workers=NET_WORKERS) as pool:
             for chan, videos in pool.map(one, chans):
@@ -714,26 +686,16 @@ class Video(Gtk.Application):
                 out.extend(videos)
                 times = [v["published"] for v in videos if v.get("published")]
                 if times:
-                    latest[(chan["source"], chan["id"])] = max(times)
-        if failed == len(chans):
+                    latest.append([chan["source"], chan["id"], max(times)])
+        if chans and failed == len(chans):
             raise OSError("no channel answered")
         out.sort(key=lambda v: v.get("published") or 0, reverse=True)
-        return out[:FEED_MAX], latest
+        return {"videos": out[:FEED_MAX], "latest": latest}
 
-    def _feed_ready(self, result, error):
-        self.feed_loading = False
-        if error or result is None:
-            if self.on_page("feed"):
-                self.say("Не удалось загрузить: нет связи?")
-            return
-        videos, latest = result
-        self.library.note_latest(latest)
-        self.feed = videos
-        self.feed_time = time.time()
-        try:
-            save_json(FEED_CACHE, {"videos": videos, "time": self.feed_time})
-        except OSError:
-            pass
+    def _feed_came(self, _key, error):
+        if not error:
+            got = self.feed.get("feed")
+            self.library.note_latest({(s, i): t for s, i, t in got["latest"]})
         self.redraw("feed")
         self.redraw("home")
 
@@ -843,31 +805,24 @@ class Video(Gtk.Application):
         self.refreshing = False
         self.library.add_details(infos or [])
 
-    def show_channel(self, chan):
-        self.open_sub({"kind": "channel", "chan": chan}, chan["title"])
+    def show_channel(self, chan, again=False):
         key = (chan["source"], chan["id"])
-        kept = self.channel_videos.get(key)
-        if kept and time.time() - kept[0] < CHANNEL_KEEP_SEC:
-            self.say("" if kept[1] else "У канала пока нет видео.")
-            self.set_content(self.grid(kept[1]))
+        if not again:
+            self.open_sub({"kind": "channel", "chan": chan, "key": key}, chan["title"])
+        if chan["source"] not in self.sources:
             return
-        self.say("Загружаю…")
-        self.set_content(Gtk.Box())
-        src = self.sources.get(chan["source"])
-        if src:
-            self.work(src.channel_videos, chan,
-                      done=lambda videos, error: self._channel_ready(chan, videos, error))
+        self.channel_wanted[key] = chan
+        videos = self.channel_videos.get(key)
+        if videos is None:
+            self.say("Не удалось загрузить: нет связи?" if self.channel_videos.has_failed(key)
+                     else "Загружаю…")
+        else:
+            self.say("" if videos else "У канала пока нет видео.")
+        self.set_content(self.grid(videos or []))
 
-    def _channel_ready(self, chan, videos, error):
-        if not error:
-            self.channel_videos[(chan["source"], chan["id"])] = (time.time(), videos)
-        if not self.on_sub("channel", chan=chan):
-            return
-        if error:
-            self.say("Не удалось загрузить: нет связи?")
-            return
-        self.say("" if videos else "У канала пока нет видео.")
-        self.set_content(self.grid(videos))
+    def _channel_came(self, key, _error):
+        if self.on_sub("channel", key=key):
+            self.show_channel(self.sub["chan"], again=True)
 
     # История ------------------------------------------------------------
     def show_history(self):
@@ -895,34 +850,32 @@ class Video(Gtk.Application):
         self.run_search("channels", query, owner[:1] or self.scope(), "Поиск каналов")
 
     def run_search(self, kind, query, srcs, title):
-        sub = {"kind": kind, "query": query, "sources": srcs, "results": {}}
+        sub = {"kind": kind, "query": query, "sources": srcs}
         self.open_sub(sub, title)
-        now = time.time()
-        for src in srcs:
-            kept = self.searches.get((kind, src.id, query))
-            if kept and now - kept[0] < SEARCH_KEEP_SEC:
-                sub["results"][src.id] = kept[1]
-                continue
-            func = src.search if kind == "search" else src.search_channels
-            self.work(func, query,
-                      done=lambda res, error, s=src: self._search_ready(sub, s, res, error))
         self.show_results(sub)
 
-    def _search_ready(self, sub, src, result, error):
-        if not error:
-            self.searches[(sub["kind"], src.id, sub["query"])] = (time.time(), result)
-        sub["results"][src.id] = None if error else result
-        if self.sub is sub:
+    def _search(self, key):
+        kind, sid, query = key
+        src = self.sources[sid]
+        return src.search(query) if kind == "search" else src.search_channels(query)
+
+    def _search_came(self, key, _error):
+        sub = self.sub
+        if (sub and sub["kind"] == key[0] and sub["query"] == key[2]
+                and key[1] in [s.id for s in sub["sources"]]):
             keep_scroll(self.scroll, lambda: self.show_results(sub))
 
     def show_results(self, sub):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         if sub["kind"] == "channels":
             box.pack_start(self.channel_finder(sub["query"]), False, False, 0)
-        results = sub["results"]
+        keys = {s.id: (sub["kind"], s.id, sub["query"]) for s in sub["sources"]}
+        results = {sid: self.searches.get(key) for sid, key in keys.items()}
         several = len(sub["sources"]) > 1
-        waiting = [s.label for s in sub["sources"] if s.id not in results]
-        failed = [s.label for s in sub["sources"] if s.id in results and results[s.id] is None]
+        waiting = [s.label for s in sub["sources"]
+                   if results[s.id] is None and self.searches.is_loading(keys[s.id])]
+        failed = [s.label for s in sub["sources"]
+                  if results[s.id] is None and self.searches.has_failed(keys[s.id])]
         found = any(results.get(s.id) for s in sub["sources"])
         newest = sub["kind"] == "search" and self.library.sort == "date"
         if sub["kind"] == "search" and found:
@@ -1069,8 +1022,8 @@ class Video(Gtk.Application):
     def set_enabled(self, src, on):
         if self.library.set_enabled(src.id, on) and on:
             # What it missed while off.
-            self.feed_time = 0
-            self.home_time.pop(src.id, None)
+            self.feed.invalidate()
+            self.home.invalidate(src.id)
 
     def login_start(self, src, sub, tries=0):
         sub["login"][src.id] = {"note": "Получаю код…", "tries": tries}
@@ -1132,9 +1085,9 @@ class Video(Gtk.Application):
         self.work(src.login_check, done=done)
 
     def after_login(self, src):
-        # Главная of a signed-in source is the account's own.
-        self.home_time.pop(src.id, None)
-        self.searches.clear()
+        # Главная and searches of a signed-in source are the account's own.
+        self.home.forget(src.id)
+        self.searches.forget()
 
     def logout(self, src, sub):
         def worker():
@@ -1145,7 +1098,6 @@ class Video(Gtk.Application):
             src.logout()
             sub["login"].pop(src.id, None)
             self.after_login(src)
-            self.home.pop(src.id, None)
             if self.sub is sub:
                 self.show_settings()
             return False
@@ -1172,7 +1124,7 @@ class Video(Gtk.Application):
     # --- channels ---------------------------------------------------------
     def library_changed(self, what):
         if what == "follow":
-            self.feed_time = 0  # the new channels' videos are not in it yet
+            self.feed.invalidate()  # the new channels' videos are not in it yet
         elif what in ("unfollow", "details"):
             self.redraw(self.page)  # Каналы, and a feed without the channel
         elif what == "settings":
