@@ -1,12 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0
 """YouTube: search through yt-dlp (no account, no API key), a channel's
 newest videos from its public Atom feed (one small request instead of a
-page of JavaScript), playback through mpv's yt-dlp hook."""
+page of JavaScript), playback through mpv's yt-dlp hook.
+
+YouTube lets no program sign in on its own any more, and it shows no
+trends to a guest: signing in is a cookies file taken from a browser where
+one is signed in. With it, Главная has the account's recommendations,
+the account's channels can be followed here, and searches and playback go
+as that account."""
+import os
 import re
 import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
+
+from . import CONFIG_DIR, load_json, net, save_json
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
 NS = {
@@ -14,8 +22,10 @@ NS = {
     "yt": "http://www.youtube.com/xml/schemas/2015",
     "media": "http://search.yahoo.com/mrss/",
 }
-UA = "Mozilla/5.0 (X11; Linux armv7l; rv:151.0) Gecko/20100101 Firefox/151.0"
+COOKIES = os.path.join(CONFIG_DIR, "youtube-cookies.txt")
+ACCOUNT = os.path.join(CONFIG_DIR, "video-youtube.json")
 SEARCH_COUNT = 24
+HOME_COUNT = 24
 CHANNEL_COUNT = 12
 AVATAR_SIZE = 176
 # The "channels only" filter of YouTube's search page.
@@ -28,11 +38,17 @@ def _thumb(video_id):
     return "https://i.ytimg.com/vi/%s/mqdefault.jpg" % video_id
 
 
-def _ydl(extra=None):
+def _signed_in():
+    return os.path.exists(COOKIES) and load_json(ACCOUNT) is not None
+
+
+def _ydl(extra=None, cookies=None):
     import yt_dlp  # slow to import: only when first needed
 
     opts = {"quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 20}
+    if cookies if cookies is not None else _signed_in():
+        opts["cookiefile"] = COOKIES
     opts.update(extra or {})
     return yt_dlp.YoutubeDL(opts)
 
@@ -93,6 +109,53 @@ def _is_link(text):
 class YouTube:
     id = "youtube"
     label = "YouTube"
+    login = "cookies"
+    login_hint = ("Выгрузите cookies сайта youtube.com из браузера, где вы вошли "
+                  "в аккаунт (расширение «Get cookies.txt LOCALLY»), и положите "
+                  "файл сюда: " + COOKIES.replace(os.path.expanduser("~"), "~"))
+
+    def account(self):
+        return load_json(ACCOUNT) if os.path.exists(COOKIES) else None
+
+    def login_check(self):
+        if not os.path.exists(COOKIES):
+            return None
+        # The account's own list of channels opens only to the account.
+        with _ydl({"playlistend": 1}, cookies=True) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/feed/channels", download=False)
+        if not info or info.get("entries") is None:
+            return None
+        account = {"name": "аккаунт Google"}
+        save_json(ACCOUNT, account)
+        return account
+
+    def logout(self):
+        for path in (ACCOUNT, COOKIES):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def subscriptions(self):
+        with _ydl() as ydl:
+            info = ydl.extract_info("https://www.youtube.com/feed/channels", download=False)
+        out = []
+        for entry in info.get("entries") or []:
+            cid = (entry or {}).get("channel_id") or (entry or {}).get("id") or ""
+            if cid.startswith("UC"):
+                out.append(_channel(entry, cid))
+        return out
+
+    def home(self):
+        if not _signed_in():
+            return None
+        with _ydl({"playlistend": HOME_COUNT}) as ydl:
+            info = ydl.extract_info(":ytrec", download=False)
+        videos = [v for v in (_video(e or {}) for e in info.get("entries") or []) if v]
+        return {"title": "Рекомендации YouTube", "videos": videos} if videos else None
+
+    def ytdl_options(self):
+        return {"cookies": COOKIES} if _signed_in() else {}
 
     def warm_up(self):
         import yt_dlp  # noqa: F401  (the import is the slow part)
@@ -109,9 +172,7 @@ class YouTube:
         return out
 
     def channel_videos(self, channel):
-        req = urllib.request.Request(FEED % channel["id"], headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            root = ET.fromstring(resp.read(2 * 1024 * 1024))
+        root = ET.fromstring(net.request(FEED % channel["id"], limit=2 * 1024 * 1024))
         out = []
         for entry in root.findall("atom:entry", NS):
             vid = entry.findtext("yt:videoId", "", NS)

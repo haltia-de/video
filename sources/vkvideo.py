@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0
 """VK Видео: search, channels and their videos through the VK API with the
-anonymous token vkvideo.ru itself gets (no account), playback through
-mpv's yt-dlp hook. A channel is a VK community or a person; its id is the
-owner id as text ("-55155418" for a community)."""
-import json
+anonymous token vkvideo.ru itself gets (no account), or with a person's
+own after a sign-in confirmed on a phone (a link or QR code, as a TV
+does); playback through mpv's yt-dlp hook. A channel is a VK community or
+a person; its id is the owner id as text ("-55155418" for a community)."""
+import os
 import re
 import threading
 import time
-import urllib.parse
-import urllib.request
+
+from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json
 
 API = "https://api.vk.com/method/%s"
 API_VERSION = "5.274"
@@ -17,12 +18,17 @@ CLIENT_ID = "52461373"
 CLIENT_SECRET = "o557NLIkAErNhakXrQ7A"
 TOKEN_URL = "https://login.vk.com/?act=get_anonym_token"
 SITE = "https://vkvideo.ru"
-UA = "Mozilla/5.0 (X11; Linux armv7l; rv:151.0) Gecko/20100101 Firefox/151.0"
+HEADERS = {"Origin": SITE, "Referer": SITE + "/"}
+ANON_TOKEN = os.path.join(CACHE_DIR, "vk-anonym.json")
+ACCOUNT = os.path.join(CONFIG_DIR, "video-vk.json")
 CHANNEL_COUNT = 30
 DESCRIPTION_MAX = 300
 GROUP_FIELDS = "members_count,description,photo_200,screen_name"
 USER_FIELDS = "followers_count,about,photo_200,screen_name"
 LINK = re.compile(r"(?:https?://)?(?:[\w-]+\.)?(?:vkvideo\.ru|vk\.com|vk\.ru)/(.*)")
+# auth.checkAuthCode: 0 waiting, 1 seen on the phone, 2 confirmed; others
+# (expired, declined) end the sign-in.
+WAITING = (0, 1)
 
 
 class ApiError(Exception):
@@ -32,10 +38,7 @@ class ApiError(Exception):
 
 
 def _post(url, data):
-    req = urllib.request.Request(url, data=urllib.parse.urlencode(data).encode(), headers={
-        "User-Agent": UA, "Origin": SITE, "Referer": SITE + "/"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read(8 * 1024 * 1024))
+    return net.get_json(url, data, HEADERS)
 
 
 def _thumb(images):
@@ -83,6 +86,22 @@ def _video(item, names):
     }
 
 
+def _videos_in_order(resp, ids):
+    """The videos of a catalog answer, in the order of ids, each once."""
+    names = _owner_names(resp)
+    items = {}
+    for entry in (resp.get("catalog_videos") or []) + (resp.get("videos") or []):
+        item = entry.get("video", entry)
+        items["%s_%s" % (item.get("owner_id"), item.get("id"))] = item
+    out, seen = [], set()
+    for vid in ids:
+        video = vid not in seen and vid in items and _video(items[vid], names)
+        if video:
+            seen.add(vid)
+            out.append(video)
+    return out
+
+
 def _group(g):
     return {
         "source": "vk",
@@ -111,13 +130,20 @@ def _user(u):
 class VKVideo:
     id = "vk"
     label = "VK Видео"
+    login = "code"
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.token = None
-        self.token_until = 0
+        # The anonymous token outlives a run of the program: kept on disk,
+        # it spares a round trip at every start.
+        anon = load_json(ANON_TOKEN, {}) or {}
+        self.token = anon.get("token")
+        self.token_until = anon.get("until", 0)
+        self.user = load_json(ACCOUNT, None)
+        self.pending = None  # the sign-in waiting for the phone
 
-    def _token(self, fresh=False):
+    # --- tokens -----------------------------------------------------------
+    def _anon_token(self, fresh=False):
         with self.lock:
             if fresh or not self.token or time.time() > self.token_until - 600:
                 resp = _post(TOKEN_URL, {
@@ -129,43 +155,115 @@ class VKVideo:
                     raise ApiError("token", resp)
                 self.token = data["access_token"]
                 self.token_until = data.get("expired_at") or time.time() + 3600
+                try:
+                    save_json(ANON_TOKEN, {"token": self.token, "until": self.token_until},
+                              private=True)
+                except OSError:
+                    pass
             return self.token
 
-    def _api(self, method, **params):
+    def _api(self, method, anonymous=False, **params):
         params.update(v=API_VERSION, lang="ru")
+        given = params.pop("access_token", None)
+        user = None if anonymous else self.user
         for fresh in (False, True):
-            params["access_token"] = self._token(fresh)
+            params["access_token"] = given or (user["token"] if user else self._anon_token(fresh))
             resp = _post(API % method + "?client_id=" + CLIENT_ID, params)
             err = resp.get("error")
             if not err:
                 return resp["response"]
             if err.get("error_code") != 5 or fresh:  # 5: the token went stale
                 raise ApiError(err.get("error_code"), err.get("error_msg"))
+            if user:
+                # The person's token was revoked: carry on as a guest.
+                self.logout()
+                user = None
         return None
 
+    # --- account ----------------------------------------------------------
+    def account(self):
+        return {"name": self.user["name"]} if self.user else None
+
+    def login_start(self):
+        resp = self._api("auth.getAuthCode", anonymous=True, device_name="b8k-video",
+                         client_id=CLIENT_ID, force_regenerate=1)
+        self.pending = resp
+        return {"url": resp["auth_url"], "code": resp["auth_code"]}
+
+    def login_poll(self):
+        if not self.pending:
+            raise ApiError("login", "no sign-in started")
+        resp = self._api("auth.checkAuthCode", anonymous=True,
+                         auth_hash=self.pending["auth_hash"], client_id=CLIENT_ID)
+        status = resp.get("status")
+        token = resp.get("access_token")
+        if not token and resp.get("super_app_token"):
+            token = self._api("auth.exchangeSilentAuthToken", anonymous=True,
+                              token=resp["super_app_token"],
+                              uuid=self.pending["auth_id"])["access_token"]
+        if not token:
+            if status in WAITING:
+                return None
+            self.pending = None
+            raise ApiError("login", "the code expired or was declined")
+        self.pending = None
+        me = self._api("users.get", anonymous=True, access_token=token)
+        name = ("%s %s" % (me[0].get("first_name", ""), me[0].get("last_name", ""))).strip() \
+            if me else ""
+        self.user = {"token": token, "id": resp.get("user_id") or (me and me[0]["id"]),
+                     "name": name or "VK"}
+        save_json(ACCOUNT, self.user, private=True)
+        return self.account()
+
+    def logout(self):
+        self.user = None
+        self.pending = None
+        try:
+            os.remove(ACCOUNT)
+        except OSError:
+            pass
+
+    def subscriptions(self):
+        """The communities the person follows that have videos."""
+        resp = self._api("groups.get", extended=1, count=1000, fields=GROUP_FIELDS)
+        groups = resp.get("items") or []
+        ids = [g["id"] for g in groups]
+        with_videos = set()
+        for i in range(0, len(ids), 400):
+            got = self._api("groups.getById", group_ids=",".join(map(str, ids[i:i + 400])),
+                            fields="counters")
+            for g in got.get("groups") or []:
+                if (g.get("counters") or {}).get("videos"):
+                    with_videos.add(g["id"])
+        return [_group(g) for g in groups if g["id"] in with_videos]
+
+    # --- videos -----------------------------------------------------------
     def owns(self, text):
         return LINK.match(text.strip()) is not None
 
     def search(self, query):
         resp = self._api("catalog.getVideoSearchWeb2", q=query)
-        names = _owner_names(resp)
-        items = {}
-        for entry in resp.get("catalog_videos") or []:
-            item = entry.get("video") or {}
-            items["%s_%s" % (item.get("owner_id"), item.get("id"))] = item
         # The catalog's blocks tell the order; clips (vertical, short) are
         # in blocks of their own and left out.
-        out, seen = [], set()
+        ids = []
         for section in (resp.get("catalog") or {}).get("sections") or []:
             for block in section.get("blocks") or []:
-                if block.get("data_type") != "catalog_videos":
-                    continue
-                for vid in block.get("videos_ids") or []:
-                    video = vid not in seen and items.get(vid) and _video(items[vid], names)
-                    if video:
-                        seen.add(vid)
-                        out.append(video)
-        return out
+                if block.get("data_type") == "catalog_videos":
+                    ids.extend(block.get("videos_ids") or [])
+        return _videos_in_order(resp, ids)
+
+    def home(self):
+        cat = self._api("catalog.getVideo")
+        sections = (cat.get("catalog") or {}).get("sections") or []
+        if not sections:
+            return None
+        resp = self._api("catalog.getSection", section_id=sections[0]["id"])
+        ids = []
+        for block in (resp.get("section") or {}).get("blocks") or []:
+            if block.get("data_type") == "videos":
+                ids.extend(block.get("videos_ids") or [])
+        videos = _videos_in_order(resp, ids)
+        return {"title": "Популярное в VK Видео", "videos": videos} if videos else None
 
     def channel_videos(self, channel):
         resp = self._api("video.get", owner_id=channel["id"], count=CHANNEL_COUNT, extended=1)
