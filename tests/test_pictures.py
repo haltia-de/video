@@ -51,6 +51,15 @@ class DecodeTest(unittest.TestCase):
         self.assertIsNone(pictures.decode(junk, (352, 198)))
         self.assertIsNone(pictures.decode(os.path.join(self.dir, "none.jpg"), (352, 198)))
 
+    def test_only_the_formats_cards_come_in(self):
+        self.assertIsNotNone(pictures.decode(self.picture(64, 36, "WEBP"), (352, 198)))
+        for fmt in ("BMP", "GIF", "TIFF"):
+            self.assertIsNone(pictures.decode(self.picture(64, 36, fmt), (352, 198)), fmt)
+        eps = os.path.join(self.dir, "card.jpg")  # what an .eps would start with
+        with open(eps, "wb") as fh:
+            fh.write(b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\nshowpage\n")
+        self.assertIsNone(pictures.decode(eps, (352, 198)))
+
     def test_without_pillow_gdk_pixbuf_one_at_a_time(self):
         saved = pictures.Image
         pictures.Image = None

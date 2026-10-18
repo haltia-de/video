@@ -9,8 +9,10 @@ loader deadlocked and every GdkPixbuf call in the program waited for it,
 the GTK thread included. So pictures are decoded with Pillow (JPEG at a
 reduced scale already, which is also quicker on the tablet's CPU) and the
 pixels handed to GdkPixbuf as bytes, which needs no loader. Without Pillow
-gdk-pixbuf decodes them, one at a time. Pictures over max_pixels (told
-before decoding) are refused: they come from the network.
+gdk-pixbuf decodes them, one at a time. They come from the network: only
+the formats cards come in are opened (not, say, EPS, which Pillow hands
+to Ghostscript), and pictures over max_pixels (told before decoding) are
+refused.
 """
 import threading
 
@@ -25,6 +27,7 @@ except ImportError:  # gdk-pixbuf then, one picture at a time
     Image = None
 
 MAX_PIXELS = 4 * 1000 * 1000  # cards are 320x180, avatars at most 900x900
+FORMATS = ("JPEG", "PNG", "WEBP")
 _one_at_a_time = threading.Lock()
 
 
@@ -39,7 +42,7 @@ def decode(path, size, max_pixels=MAX_PIXELS):
 
 
 def _with_pillow(path, size, max_pixels):
-    with Image.open(path) as im:
+    with Image.open(path, formats=FORMATS) as im:
         w, h = im.size
         if w <= 0 or h <= 0 or w * h > max_pixels:
             return None
