@@ -91,8 +91,11 @@ def private_dir(runtime_dir):
 
 
 def popen(cmd):
-    return subprocess.Popen(cmd, start_new_session=True,
+    proc = subprocess.Popen(cmd, start_new_session=True,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Waited for when it exits: else every player closed stays a zombie.
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return proc
 
 
 class Player:

@@ -56,6 +56,7 @@ for path in (HERE, os.path.join(os.path.dirname(HERE), "lib", "b8k-video")):
 import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
+import pictures  # noqa: E402
 from player import Player  # noqa: E402
 from search import view as search_view  # noqa: E402
 from signin import SignIn  # noqa: E402
@@ -79,7 +80,6 @@ QR_SIZE = 320
 CARDS_AT_ONCE = 9
 CARDS_PER_IDLE = 6
 PIXBUFS_KEPT = 300
-PICTURE_MAX_PIXELS = 4 * 1000 * 1000  # cards are 320x180, avatars at most 900x900
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
@@ -295,12 +295,9 @@ class Thumbs:
                 with open(path + ".new", "wb") as fh:
                     fh.write(data)
                 os.replace(path + ".new", path)
-            # From the network: told its size first, a picture far larger
-            # than any card or avatar is not decoded at all.
-            _fmt, w, h = GdkPixbuf.Pixbuf.get_file_info(path)
-            if w <= 0 or h <= 0 or w * h > PICTURE_MAX_PIXELS:
-                raise OSError("not a card picture: %s" % url)
-            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size[0], size[1], True)
+            # Not through gdk-pixbuf's loaders (pictures.py: one stuck
+            # loader froze the whole program on the tablet).
+            pix = pictures.decode(path, size)
         except (OSError, GLib.Error):
             pass
         with self.lock:

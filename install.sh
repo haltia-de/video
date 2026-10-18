@@ -18,7 +18,7 @@ id=io.github.trudenboy.Video
 install -D -m 755 "$here/b8k-video" "$root$prefix/bin/b8k-video"
 lib=$root$prefix/lib/b8k-video
 rm -rf "$lib"
-for f in library.py kept.py search.py signin.py player.py; do
+for f in library.py kept.py search.py signin.py player.py pictures.py; do
 	install -D -m 644 "$here/$f" "$lib/$f"
 done
 for f in "$here"/sources/*.py; do

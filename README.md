@@ -49,7 +49,8 @@ libmpv, кадры масштабирует видеокарта), а где е�
 
 Нужны Python 3 с PyGObject (GTK 3),
 [b8k-compat](https://github.com/trudenboy/b8k-compat), yt-dlp с
-JavaScript-движком (QuickJS) и `b8k-vplay` или `mpv`; для QR-кода входа —
+JavaScript-движком (QuickJS), Pillow (картинки карточек) и `b8k-vplay`
+или `mpv`; для QR-кода входа —
 модуль `qrcode` (без него показываются ссылка и код).
 
 Установка: `sh install.sh [ROOT] [PREFIX]` (PREFIX по умолчанию
