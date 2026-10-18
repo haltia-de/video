@@ -1,6 +1,6 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
 pkgname=b8k-video
-pkgver=1.12.2
+pkgver=1.12.3
 pkgrel=0
 pkgdesc="Видео: videos from YouTube and VK Video in large cards (GTK 3)"
 url="https://github.com/trudenboy/b8k-video"
@@ -8,7 +8,7 @@ url="https://github.com/trudenboy/b8k-video"
 arch="all"
 license="GPL-2.0-only"
 depends="python3 py3-gobject3 gtk+3.0 py3-b8k-compat yt-dlp quickjs py3-qrcode"
-makedepends="mpv-dev pango-dev cairo-dev wayland-dev wayland-protocols glib-dev"
+makedepends="pkgconf mpv-dev pango-dev cairo-dev wayland-dev wayland-protocols glib-dev"
 source="$pkgname-$pkgver.tar.gz::https://github.com/trudenboy/b8k-video/archive/v$pkgver.tar.gz"
 
 build() {
