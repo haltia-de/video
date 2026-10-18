@@ -130,10 +130,12 @@ class VKVideo:
     label = "VK Видео"
     login = "code"
 
-    def __init__(self, http=net, config_dir=CONFIG_DIR, cache_dir=CACHE_DIR):
+    def __init__(self, http=net, config_dir=CONFIG_DIR, cache_dir=CACHE_DIR, clock=time.time):
         """http: what fetches (get_json(url, data, headers)); the sources
-        package's net, or recorded answers in the tests."""
+        package's net, or recorded answers in the tests, which also give a
+        clock (a recorded token's expiry is a date that passes)."""
         self.http = http
+        self.clock = clock
         self.anon_path = os.path.join(cache_dir, "vk-anonym.json")
         self.account_path = os.path.join(config_dir, "video-vk.json")
         self.lock = threading.Lock()
@@ -151,7 +153,7 @@ class VKVideo:
     # --- tokens -----------------------------------------------------------
     def _anon_token(self, fresh=False):
         with self.lock:
-            if fresh or not self.token or time.time() > self.token_until - 600:
+            if fresh or not self.token or self.clock() > self.token_until - 600:
                 resp = self._post(TOKEN_URL, {
                     "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
                     "scopes": "video_anonymous,photos_anonymous,profile_anonymous",
@@ -160,7 +162,7 @@ class VKVideo:
                 if not data.get("access_token"):
                     raise ApiError("token", resp)
                 self.token = data["access_token"]
-                self.token_until = data.get("expired_at") or time.time() + 3600
+                self.token_until = data.get("expired_at") or self.clock() + 3600
                 try:
                     save_json(self.anon_path, {"token": self.token, "until": self.token_until},
                               private=True)

@@ -12,6 +12,12 @@ from sources import vkvideo, youtube
 from tests.replay import Replay, exchange, load
 
 TOKEN = load("vk_search")[0]  # the anonymous token exchange, as recorded
+# The tests' time: an hour before the recorded tokens expire (each
+# recording's expiry is a real date, long past by the time tests run).
+NOW = min(ex["answer"]["data"]["expired_at"]
+          for name in ("vk_search", "vk_home", "vk_search_channels", "vk_find_community",
+                       "vk_find_person", "vk_find_nobody", "vk_channel_videos", "vk_login_start")
+          for ex in load(name) if ex["url"] == TOKEN["url"]) - 3600
 VK_API = "auth.checkAuthCode"
 
 
@@ -23,7 +29,8 @@ class Dirs(unittest.TestCase):
 
     def vk(self, *scenarios, exchanges=()):
         self.http = Replay(*scenarios, exchanges=exchanges)
-        return vkvideo.VKVideo(http=self.http, config_dir=self.home, cache_dir=self.home)
+        return vkvideo.VKVideo(http=self.http, config_dir=self.home, cache_dir=self.home,
+                               clock=lambda: NOW)
 
     def assertAllAsked(self):
         self.assertTrue(self.http.done(), "left unasked: %s" % self.http.queue[:1])
@@ -185,7 +192,7 @@ class VKSignInTest(Dirs):
         self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         self.assertEqual(self.http.asked[-1][1]["access_token"], "USER")
         # A new start is signed in, and asks as the person.
-        again = vkvideo.VKVideo(http=Replay(exchanges=load("vk_find_nobody")[1:]),
+        again = vkvideo.VKVideo(http=Replay(exchanges=load("vk_find_nobody")[1:]), clock=lambda: NOW,
                                 config_dir=self.home, cache_dir=self.home)
         self.assertEqual(again.account(), {"name": "Анна Котова"})
         again.find_channel("nosuchname_zz_qq")
