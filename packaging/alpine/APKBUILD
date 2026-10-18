@@ -1,6 +1,6 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
 pkgname=b8k-video
-pkgver=1.12.1
+pkgver=1.12.2
 pkgrel=0
 pkgdesc="Видео: videos from YouTube and VK Video in large cards (GTK 3)"
 url="https://github.com/trudenboy/b8k-video"

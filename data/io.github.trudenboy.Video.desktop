@@ -12,3 +12,4 @@ Keywords=video;youtube;vk;видео;ютуб;вк;
 StartupNotify=true
 X-B8K-Home=true
 X-B8K-Replaces=video
+X-B8K-Windows=b8k-vplay

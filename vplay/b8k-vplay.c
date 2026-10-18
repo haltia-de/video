@@ -20,9 +20,8 @@
  * A tap shows the controls for four seconds: the title, the middle buttons
  * that go back 10 s, pause or play, and go on 10 s, and the bar
  * at the bottom seeks (tap or drag). While the video plays, a logind
- * (systemd-logind or elogind) "idle" inhibitor keeps the screen on, and,
- * for the b8k shell's b8k-sleep until it reads only logind, so does the
- * file $XDG_RUNTIME_DIR/b8k-awake/<pid>.screen. The window draws no close
+ * (systemd-logind or elogind) "idle" inhibitor keeps the screen on. The
+ * window draws no close
  * button: a desktop's own closes it (the b8k shell's «✕» in the corner).
  * Another window taking the screen pauses the video: hidden, the window
  * gets no frame callbacks, and the sound went on with no picture and no
@@ -110,7 +109,6 @@ static char title[256];
 static char error_text[128];
 static double t_pos = -1, t_dur = -1;
 static int paused, last_sec = -1, was_active;
-static char awake_path[512];
 
 /* A finger on the controls. */
 static int press_x, press_y, pressing, dragging;
@@ -161,18 +159,10 @@ static void logind_hold(int on)
 	g_object_unref(bus);
 }
 
-/* Hold the screen on while the video plays: logind, and the file the b8k
- * shell's b8k-sleep reads (ADR 0001 retires it once the shell reads only
- * logind). */
+/* Hold the screen on while the video plays. */
 static void hold_screen(int on)
 {
 	logind_hold(on);
-	if (!awake_path[0])
-		return;
-	if (on)
-		close(open(awake_path, O_WRONLY | O_CREAT | O_CLOEXEC, 0600));
-	else
-		unlink(awake_path);
 }
 
 static void fmt_time(double t, char *out, size_t n)
@@ -914,7 +904,6 @@ static void mpv_events(void)
 
 int main(int argc, char **argv)
 {
-	const char *run = getenv("XDG_RUNTIME_DIR");
 	const char *url = NULL;
 	struct xdg_surface *xs;
 	struct xdg_toplevel *tl;
@@ -930,13 +919,6 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	url = argv[i++];
-	if (run && run[0] == '/') {
-		char dir[400];
-
-		snprintf(dir, sizeof(dir), "%s/b8k-awake", run);
-		mkdir(dir, 0700);
-		snprintf(awake_path, sizeof(awake_path), "%s/%d.screen", dir, getpid());
-	}
 	if (pipe2(wake, O_CLOEXEC | O_NONBLOCK) < 0)
 		return 1;
 	ui_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);

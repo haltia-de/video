@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 [lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux) shell, but a self-contained desktop program (its ADR 0001: device / shell / programs; programs meet the shell only through freedesktop standards — the .desktop file, logind inhibit, Unity LauncherEntry). Large touch cards, search, followed channels, history. Playback is `b8k-vplay` from `vplay/` here (libmpv), falling back to `mpv`. Target CPU is a slow ARMv7 tablet with an on-screen keyboard.
 
 - No shell code: questions are `b8k_compat.dialogs` (in-window GTK dialogs; b8k-compat is a normal dependency, `/mnt/data/Projects/b8k-compat` locally — put it on `PYTHONPATH` to run from the repo); the look comes from the desktop's GTK theme (the shell's `b8k` theme makes header and dialogs large); the shell's touch filter buzzes, so nothing here does. `GLib.set_prgname(APP_ID)` runs before GTK is imported: it is the Wayland app id the .desktop file matches.
-- What still meets the shell, and degrades without it: `Player.show()` runs the shell's `b8k-focus activate b8k-vplay` to bring the player window back (nothing elsewhere); b8k-vplay also writes `$XDG_RUNTIME_DIR/b8k-awake/<pid>.screen` next to its logind "idle" inhibitor until the shell reads only logind.
+- What still meets the shell, and degrades without it: `Player.show()` runs the shell's `b8k-focus activate b8k-vplay` to bring the player window back (nothing elsewhere). The .desktop file's `X-B8K-Windows=b8k-vplay` makes the shell count the player window as Видео's (panel, «✕»).
 
 ## Commands
 
@@ -47,7 +47,7 @@ There is no build step or linter config. Domain terms (Source, Channel, Followed
 - Threading: source calls block on network, so they run through `Video.work(func, *args, done=...)` on a 6-worker pool, with `done(result, error)` delivered on the GTK main loop via `GLib.idle_add`. Never touch GTK widgets from worker threads.
 - State files: followed channels and settings `~/.config/b8k/video.json`, history `~/.local/share/b8k-video/history.json` (capped at 100), both owned by `library.py`; accounts `~/.config/b8k/video-vk.json`, `video-youtube.json`, `youtube-cookies.txt`.
 - The player: `b8k-vplay --title T URL [option=value ...]` (`vplay/b8k-vplay.c`, moved here from the shell repo); extra mpv options after the URL override its defaults, so `ytdl-raw-options` passed for cookies must repeat its `js-runtimes=quickjs`. It draws no close button (the desktop's closes it), pauses when another window takes the screen, and keeps the screen on through logind while it plays. `Player` finds it on PATH (`shutil.which`).
-- The player window's app id is `b8k-vplay` (other programs, Файлы, open it too).
+- The player window's app id is `b8k-vplay` (other programs, Файлы, open it too); the .desktop file names it in `X-B8K-Windows`.
 
 ## Conventions
 
