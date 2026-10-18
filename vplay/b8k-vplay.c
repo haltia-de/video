@@ -63,6 +63,10 @@
 #define TOP_H 112
 #define SEEK_STEP 10
 #define MID_H 200
+/* The largest frame drawn: a file's own size, from any file, must not size
+ * a buffer past what wl_shm (int32) and memory take. 4096 is beyond what
+ * this CPU converts in time anyway. */
+#define FRAME_MAX 4096
 
 struct buf {
 	struct wl_buffer *wb;
@@ -216,12 +220,18 @@ static void buf_free(struct buf *b)
 
 static int buf_make(struct buf *b, int w, int h, uint32_t format)
 {
-	int stride = (w * 4 + 63) & ~63;
-	size_t size = (size_t)stride * h;
-	int fd = memfd_create("b8k-vplay", MFD_CLOEXEC);
+	size_t stride, size;
+	int fd;
 	void *data;
 	struct wl_shm_pool *pool;
 
+	if (w <= 0 || h <= 0 || w > 16384 || h > 16384)
+		return -1;
+	stride = ((size_t)w * 4 + 63) & ~(size_t)63;
+	size = stride * (size_t)h;
+	if (size > INT32_MAX)
+		return -1;
+	fd = memfd_create("b8k-vplay", MFD_CLOEXEC);
 	if (fd < 0)
 		return -1;
 	if (ftruncate(fd, (off_t)size) < 0) {
@@ -234,7 +244,7 @@ static int buf_make(struct buf *b, int w, int h, uint32_t format)
 		return -1;
 	}
 	pool = wl_shm_create_pool(shm, fd, (int32_t)size);
-	b->wb = wl_shm_pool_create_buffer(pool, 0, w, h, stride, format);
+	b->wb = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride, format);
 	wl_shm_pool_destroy(pool);
 	close(fd);
 	wl_buffer_add_listener(b->wb, &buf_listener, b);
@@ -242,7 +252,7 @@ static int buf_make(struct buf *b, int w, int h, uint32_t format)
 	b->size = size;
 	b->w = w;
 	b->h = h;
-	b->stride = stride;
+	b->stride = (int)stride;
 	b->busy = 0;
 	return 0;
 }
@@ -478,6 +488,17 @@ static void draw_video(void)
 	mpv_get_property(mpv, "dheight", MPV_FORMAT_INT64, &h);
 	if (w <= 0 || h <= 0)
 		return;
+	if (w > FRAME_MAX || h > FRAME_MAX) {
+		if (!error_text[0]) {
+			snprintf(error_text, sizeof(error_text),
+				 "Видео слишком большое: %lldx%lld", (long long)w, (long long)h);
+			mpv_set_property_string(mpv, "pause", "yes"); /* no sound without picture */
+			show_ui(1);
+			ui_dirty = 1;
+		}
+		want_frame = 0;
+		return;
+	}
 	b = free_buf(vbufs, (int)w, (int)h, WL_SHM_FORMAT_XRGB8888);
 	if (!b)
 		return;
