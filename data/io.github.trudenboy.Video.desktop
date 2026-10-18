@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Video
+Name[ru]=Видео
+Comment=Videos from YouTube and VK Video in large cards
+Comment[ru]=Видео с YouTube и VK Видео крупными карточками
+Exec=b8k-video
+Icon=io.github.trudenboy.Video
+Terminal=false
+Categories=GTK;AudioVideo;Video;Player;
+Keywords=video;youtube;vk;видео;ютуб;вк;
+StartupNotify=true
+X-B8K-Home=true
+X-B8K-Replaces=video

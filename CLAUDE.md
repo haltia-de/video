@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-«Видео» — a GTK 3 (PyGObject) video app for the Lenovo YOGA Tablet 10 (B8000-H) running the
-[lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux) shell: large touch cards,
-search, followed channels, history. Playback is handed off to the shell's `b8k-vplay` (libmpv),
-falling back to `mpv` on other machines. Target CPU is a slow ARMv7 tablet with an on-screen keyboard.
+«Видео» (`io.github.trudenboy.Video`) — a GTK 3 (PyGObject) video program made for the Lenovo YOGA Tablet 10 (B8000-H) with the
+[lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux) shell, but a self-contained desktop program (its ADR 0001: device / shell / programs; programs meet the shell only through freedesktop standards — the .desktop file, logind inhibit, Unity LauncherEntry). Large touch cards, search, followed channels, history. Playback is `b8k-vplay` from `vplay/` here (libmpv), falling back to `mpv`. Target CPU is a slow ARMv7 tablet with an on-screen keyboard.
+
+- No shell code: questions are `b8k_compat.dialogs` (in-window GTK dialogs; b8k-compat is a normal dependency, `/mnt/data/Projects/b8k-compat` locally — put it on `PYTHONPATH` to run from the repo); the look comes from the desktop's GTK theme (the shell's `b8k` theme makes header and dialogs large); the shell's touch filter buzzes, so nothing here does. `GLib.set_prgname(APP_ID)` runs before GTK is imported: it is the Wayland app id the .desktop file matches.
+- What still meets the shell, and degrades without it: `Player.show()` runs the shell's `b8k-focus activate b8k-vplay` to bring the player window back (nothing elsewhere); b8k-vplay also writes `$XDG_RUNTIME_DIR/b8k-awake/<pid>.screen` next to its logind "idle" inhibitor until the shell reads only logind.
 
 ## Commands
 
@@ -17,8 +18,9 @@ There is no build step or linter config. Domain terms (Source, Channel, Followed
 - Sources are tested on recorded answers (`tests/fixtures/*.json`, replayed by `tests/replay.py`). When VK or YouTube changes what it answers: `B8K_LIVE=1 python3 -m unittest tests.test_live` (live checks, skipped by default) to see it, then `python3 -m tests.record [scenario ...]` to re-record (trims answers and replaces tokens) and fix what `tests/test_sources.py` then reports.
 
 - Run locally: `./b8k-video` (needs Python 3 + PyGObject/GTK 3, `yt-dlp` with a JS runtime such as QuickJS, and `mpv` if `b8k-vplay` is absent).
-- Install into a root file system: `sh install.sh [ROOT]` (empty or `/` = this system). The tablet shell's image build calls this script, so keep its paths stable:
-  `/usr/local/bin/b8k-video`, `/usr/local/lib/b8k-video/sources/`, `/usr/local/share/b8k/video.svg`, `/usr/local/share/b8k/apps.d/video.conf`.
+- Install: `sh install.sh [ROOT] [PREFIX]` (ROOT empty or `/` = this system; PREFIX `/usr/local` unless given, the Alpine package passes `/usr`). It installs `PREFIX/bin/b8k-video`, the modules into `PREFIX/lib/b8k-video/` (the program finds them next to itself or at `../lib/b8k-video`), `vplay/b8k-vplay` as `PREFIX/bin/b8k-vplay` when it has been built, and `data/`: `io.github.trudenboy.Video.desktop` (`X-B8K-Home=true`, `X-B8K-Replaces=video`), the hicolor icon and AppStream metainfo; and removes the shell's old `apps.d/video.conf`. The tablet's image (lenovo-b8000h-linux) pins a tag of this repository in its `linux-port/apps/sources` and runs install.sh — that repository is not edited from here: tell its session the tag and commit.
+- `b8k-vplay` (C, `vplay/b8k-vplay.c`): `vplay/build.sh` cross-builds it for the tablet in the `b8000h-build:3.24` image against the keyboard build's sysroot (`OUT=` for the output; default `vplay/b8k-vplay`, gitignored); `packaging/alpine/APKBUILD`'s `build()` is the native build. Links pangocairo, wayland-client, gio-unix-2.0, mpv.
+- Package: `packaging/alpine/APKBUILD` (bump `pkgver` and the metainfo `<release>` with each tag).
 - Exercise a source without the UI: `python3 -c 'import sources; s = sources.load()["vk"]; print(s.search("test")[:2])'` from the repo root (`youtube` needs `yt_dlp` importable).
 - Try the UI against a throwaway profile: `HOME=/some/dir ./b8k-video` (config, history, cache and accounts all live under `$HOME`).
 
@@ -43,10 +45,9 @@ There is no build step or linter config. Domain terms (Source, Channel, Followed
   - `Thumbs`: 4 workers fetch and decode JPEGs off the GTK thread, a disk cache by URL SHA-1 (pruned at start to 30 days / 150 MB), an in-memory LRU of decoded pixbufs, one in-flight fetch per URL, and fetches for cards already destroyed are dropped (tracked by each image's `destroy` signal, since cards are built before `set_content` swaps the page).
   - `grid()` builds the first 9 cards at once and the rest in low-priority idle batches.
 - Threading: source calls block on network, so they run through `Video.work(func, *args, done=...)` on a 6-worker pool, with `done(result, error)` delivered on the GTK main loop via `GLib.idle_add`. Never touch GTK widgets from worker threads.
-- Optional shell integration: `/usr/local/share/b8k/python/b8k_ui` provides haptics (`Buzz`, hooked onto every `Gtk.Button` "pressed"), shared header CSS, and `ask()` confirmation dialogs (blocking — called from a worker thread). Everything must keep working when it is missing.
 - State files: followed channels and settings `~/.config/b8k/video.json`, history `~/.local/share/b8k-video/history.json` (capped at 100), both owned by `library.py`; accounts `~/.config/b8k/video-vk.json`, `video-youtube.json`, `youtube-cookies.txt`.
-- The player: `b8k-vplay --title T URL [option=value ...]` (source in the shell repo, `linux-port/tools-arm/b8k-vplay.c`); extra mpv options after the URL override its defaults, so `ytdl-raw-options` passed for cookies must repeat its `js-runtimes=quickjs`.
-- `video.conf` registers the app with the shell's launcher (`b8k-apps`); `app_ids` must include the player's id `b8k-vplay` so the player window is grouped with the app.
+- The player: `b8k-vplay --title T URL [option=value ...]` (`vplay/b8k-vplay.c`, moved here from the shell repo); extra mpv options after the URL override its defaults, so `ytdl-raw-options` passed for cookies must repeat its `js-runtimes=quickjs`. It draws no close button (the desktop's closes it), pauses when another window takes the screen, and keeps the screen on through logind while it plays. `Player` finds it on PATH (`shutil.which`).
+- The player window's app id is `b8k-vplay` (other programs, Файлы, open it too).
 
 ## Conventions
 

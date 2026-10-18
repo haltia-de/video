@@ -1,2 +1,4 @@
 claude-security-guidance-*/
 __pycache__/
+vplay/b8k-vplay
+vplay/*-protocol.[ch]

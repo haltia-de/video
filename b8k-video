@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
-"""Видео: videos in large cards, played full screen by b8k-vplay.
+"""Видео (io.github.trudenboy.Video): videos in large cards, played full
+screen by b8k-vplay (built from vplay/ in this repository), mpv elsewhere.
+A GTK 3 program of its own: its questions are b8k-compat's in-window
+dialogs; a desktop's theme gives the look (the b8k tablet shell's theme
+makes the header and dialogs large, and its touch filter buzzes).
 
 Four pages under the search field: Главная (what is new in the followed
 channels, then what each source finds popular or picks for the account;
@@ -31,21 +35,21 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 import gi
+from gi.repository import GLib
+
+APP_ID = "io.github.trudenboy.Video"
+# Before GTK starts: the Wayland app id, which the .desktop file matches.
+GLib.set_prgname(APP_ID)
 
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Gtk
-
-# The shell's shared pieces (haptics, header, questions): optional.
-sys.path.insert(0, "/usr/local/share/b8k/python")
-try:
-    import b8k_ui
-except ImportError:
-    b8k_ui = None
+from b8k_compat import dialogs  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-for path in (HERE, "/usr/local/lib/b8k-video"):
+# Next to it in the repository, or PREFIX/lib/b8k-video when installed.
+for path in (HERE, os.path.join(os.path.dirname(HERE), "lib", "b8k-video")):
     if os.path.isdir(os.path.join(path, "sources")):
         sys.path.insert(0, path)
         break
@@ -75,6 +79,7 @@ QR_SIZE = 320
 CARDS_AT_ONCE = 9
 CARDS_PER_IDLE = 6
 PIXBUFS_KEPT = 300
+PICTURE_MAX_PIXELS = 4 * 1000 * 1000  # cards are 320x180, avatars at most 900x900
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
@@ -162,16 +167,6 @@ switch { min-width: 96px; min-height: 48px; }
 .bar button.watch { background-color: #3584e4; color: #ffffff; }
 .bar button.close { background-color: #e6e6e4; color: #2e3436; min-width: 72px; padding: 0; }
 """
-
-
-def buzzer():
-    return b8k_ui.Buzz() if b8k_ui else (lambda *_a: True)
-
-
-def ask(question, yes):
-    if b8k_ui:
-        return b8k_ui.ask(question, yes)
-    return True
 
 
 def nice_duration(sec):
@@ -300,6 +295,11 @@ class Thumbs:
                 with open(path + ".new", "wb") as fh:
                     fh.write(data)
                 os.replace(path + ".new", path)
+            # From the network: told its size first, a picture far larger
+            # than any card or avatar is not decoded at all.
+            _fmt, w, h = GdkPixbuf.Pixbuf.get_file_info(path)
+            if w <= 0 or h <= 0 or w * h > PICTURE_MAX_PIXELS:
+                raise OSError("not a card picture: %s" % url)
             pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size[0], size[1], True)
         except (OSError, GLib.Error):
             pass
@@ -342,7 +342,7 @@ class Thumbs:
 
 class Video(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id="b8k.Video")
+        super().__init__(application_id=APP_ID)
         self.sources = sources.load()
         self.library = Library()
         self.library.watch(self.library_changed)
@@ -424,12 +424,8 @@ class Video(Gtk.Application):
         if self.win:
             self.win.present()
             return
-        self.buzz = buzzer()
-        # The class must exist before a hook on its signal can be added.
-        GObject.type_class_ref(Gtk.Button)
-        GObject.add_emission_hook(Gtk.Button, "pressed", self.buzz)
         provider = Gtk.CssProvider()
-        provider.load_from_data((b8k_ui.HEADER_CSS if b8k_ui else b"") + CSS)
+        provider.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
@@ -617,10 +613,9 @@ class Video(Gtk.Application):
         state = {"held": False}
 
         def pressed(*_a):
-            # Lit and felt like a button: an event box has neither by itself.
+            # Lit like a button: an event box is not by itself.
             state["held"] = False
             ev.set_state_flags(Gtk.StateFlags.ACTIVE, False)
-            self.buzz()
 
         tap.connect("pressed", pressed)
         tap.connect("released", lambda *_a: None if state["held"] else self.play(video))
@@ -1073,11 +1068,8 @@ class Video(Gtk.Application):
             self.show_settings()
 
     def logout(self, src):
-        def worker():
-            if ask(src.label, "Выйти из аккаунта"):
-                GLib.idle_add(lambda: self.signins[src.id].logout() and False)
-
-        threading.Thread(target=worker, daemon=True).start()
+        if dialogs.ask(self.win, src.label, "Выйти из аккаунта"):
+            self.signins[src.id].logout()
 
     def import_subscriptions(self, src):
         def note(text):
@@ -1116,15 +1108,17 @@ class Video(Gtk.Application):
 
         source, cid = video["source"], video["channel_id"]
 
-        def worker():
+        def question():
+            # After the long press is over: a dialog's own loop inside a
+            # gesture's handler would leave the gesture holding the touch.
             if self.library.is_followed(source, cid):
-                if ask("«%s»" % name, "Отписаться от канала"):
-                    GLib.idle_add(lambda: self.library.unfollow(source, cid) and False)
-            elif ask("«%s»" % name, "Подписаться на канал"):
-                GLib.idle_add(lambda: self.library.follow({"source": source, "id": cid,
-                                                           "title": name}) and False)
+                if dialogs.ask(self.win, "«%s»" % name, "Отписаться от канала"):
+                    self.library.unfollow(source, cid)
+            elif dialogs.ask(self.win, "«%s»" % name, "Подписаться на канал"):
+                self.library.follow({"source": source, "id": cid, "title": name})
+            return False
 
-        threading.Thread(target=worker, daemon=True).start()
+        GLib.idle_add(question)
 
     # --- playing ----------------------------------------------------------
     def play(self, video):

@@ -23,6 +23,7 @@ reader: every call comes from the GTK thread.
 import json
 import os
 import secrets
+import shutil
 import socket
 import stat
 import subprocess
@@ -30,8 +31,7 @@ import tempfile
 import threading
 import time
 
-PLAYER = "/usr/local/bin/b8k-vplay"
-FOCUS = "/usr/local/bin/b8k-focus"
+FOCUS = "/usr/local/bin/b8k-focus"  # the b8k shell's; elsewhere show() does nothing
 CONNECT_SEC = 15  # mpv opens its socket at start, before yt-dlp is asked
 OBSERVED = ("time-pos", "duration", "pause")
 
@@ -103,7 +103,9 @@ class Player:
         self.connect = connect
         self.runtime_dir = runtime_dir or os.environ.get("XDG_RUNTIME_DIR")
         self.sock_dir = None  # made at the first open
-        self.player = player or (PLAYER if os.access(PLAYER, os.X_OK) else "mpv")
+        # b8k-vplay where it is installed (PREFIX/bin: /usr/local, or /usr
+        # from the package), else mpv.
+        self.player = player or shutil.which("b8k-vplay") or "mpv"
         self.focus = focus
         self.state = None
         self.watchers = []

@@ -1,10 +1,11 @@
 # b8k-video
 
-Видео для планшета Lenovo YOGA Tablet 10 (B8000-H) с оболочкой
-[lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux):
-крупные карточки, поиск, подписки на каналы, история. Видео открывается на
-весь экран в проигрывателе оболочки `b8k-vplay` (libmpv, кадры масштабирует
-видеокарта), на другом компьютере — в `mpv`.
+«Видео» (`io.github.trudenboy.Video`): крупные карточки, поиск, подписки на
+каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H) с
+оболочкой [lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux),
+но это обычная программа GTK 3: работает и в GNOME, и в KDE. Видео
+открывается на весь экран в `b8k-vplay` из этого же репозитория (`vplay/`:
+libmpv, кадры масштабирует видеокарта), а где его нет — в `mpv`.
 
 - **Главная** (открывается первой) — новое в подписках, затем популярное в
   VK Видео и, после входа в YouTube, его рекомендации.
@@ -46,9 +47,15 @@
 ключом, как у самого vkvideo.ru, или с вашим после входа); Vimeo и другие
 добавляются так же, файлом в `sources/`.
 
-Нужны Python 3 с PyGObject (GTK 3), yt-dlp с JavaScript-движком (QuickJS) и
-`b8k-vplay` или `mpv`; для QR-кода входа — модуль `qrcode` (без него
-показываются ссылка и код). Установка: `sh install.sh [ROOT]`.
+Нужны Python 3 с PyGObject (GTK 3),
+[b8k-compat](https://github.com/trudenboy/b8k-compat), yt-dlp с
+JavaScript-движком (QuickJS) и `b8k-vplay` или `mpv`; для QR-кода входа —
+модуль `qrcode` (без него показываются ссылка и код).
+
+Установка: `sh install.sh [ROOT] [PREFIX]` (PREFIX по умолчанию
+`/usr/local`). Она кладёт `.desktop`-файл, значок и metainfo, а
+`b8k-vplay` — если он собран: `vplay/build.sh` собирает его для планшета,
+пакет Alpine (`packaging/alpine/APKBUILD`) — сам.
 
 Подписки и настройки — `~/.config/b8k/video.json`, вход в VK —
 `~/.config/b8k/video-vk.json`, история —
