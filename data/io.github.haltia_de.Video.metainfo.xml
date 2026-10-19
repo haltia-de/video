@@ -18,8 +18,16 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
-    <release version="2.0.1" date="2026-10-19"/>
-    <release version="2.0.0" date="2026-10-19"/>
+    <release version="2.0.1" date="2026-10-19">
+      <description>
+        <p xml:lang="ru">Новая иконка в стиле Haltia. Видео теперь ставится и на 64-битные устройства с postmarketOS.</p>
+      </description>
+    </release>
+    <release version="2.0.0" date="2026-10-19">
+      <description>
+        <p xml:lang="ru">Программа теперь часть Haltia. Подписки, история, настройки и вход в аккаунты переезжают сами при первом запуске.</p>
+      </description>
+    </release>
     <release version="1.12.6" date="2026-10-19"/>
     <release version="1.12.5" date="2026-10-18"/>
     <release version="1.12.4" date="2026-10-18"/>
