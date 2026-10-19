@@ -18,18 +18,27 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.1.1" date="2026-10-19">
+      <description>
+        <p>The release also carries packages for Debian, Ubuntu and Flatpak. On a desktop, YouTube videos open in mpv again.</p>
+        <p xml:lang="ru">В выпуске теперь есть и пакеты для Debian, Ubuntu и Flatpak. На обычном компьютере видео с YouTube снова открываются в mpv.</p>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-10-19">
       <description>
+        <p>Signing in to YouTube is one button: Video takes the sign-in from Firefox or Chromium, no cookies to export any more. The VK and YouTube sign-ins are kept in the system's keyring, not in a plain file. On a desktop, videos open in mpv.</p>
         <p xml:lang="ru">Вход в YouTube одной кнопкой: Видео само берёт вход из Firefox или Chromium, выгружать cookies больше не нужно. Вход в VK и YouTube хранится в связке ключей системы, а не в открытом файле. На обычном компьютере видео открывается в mpv.</p>
       </description>
     </release>
     <release version="2.0.1" date="2026-10-19">
       <description>
+        <p>A new icon in Haltia's style. Video now installs on 64-bit devices with postmarketOS too.</p>
         <p xml:lang="ru">Новая иконка в стиле Haltia. Видео теперь ставится и на 64-битные устройства с postmarketOS.</p>
       </description>
     </release>
     <release version="2.0.0" date="2026-10-19">
       <description>
+        <p>The program is part of Haltia now. Followed channels, history, settings and sign-ins move over by themselves at the first start.</p>
         <p xml:lang="ru">Программа теперь часть Haltia. Подписки, история, настройки и вход в аккаунты переезжают сами при первом запуске.</p>
       </description>
     </release>

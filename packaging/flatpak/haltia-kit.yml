@@ -1,0 +1,27 @@
+# haltia-kit as a module of a program's Flatpak manifest (Flatpak has no
+# libraries shared between programs):
+#
+#   modules:
+#     - https://raw.githubusercontent.com/haltia-de/kit/v2.1.0/packaging/flatpak/haltia-kit.yml
+#
+# or a copy of this file next to the manifest. It brings haltia_kit,
+# python-mpv and mutagen; libmpv itself (for haltia_kit.sound) and ffmpeg
+# (video frames in haltia_kit.photos) are the program's own modules or the
+# org.freedesktop.Platform.ffmpeg-full extension, when it needs them.
+name: haltia-kit
+buildsystem: simple
+build-commands:
+  - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+    --prefix=${FLATPAK_DEST} --no-build-isolation --no-deps mutagen python-mpv
+  - pip3 install --verbose --no-index --prefix=${FLATPAK_DEST} --no-build-isolation --no-deps ./kit
+sources:
+  - type: file
+    url: https://files.pythonhosted.org/packages/b0/7a/620f945b96be1f6ee357d211d5bf74ab1b7fe72a9f1525aafbfe3aee6875/mutagen-1.47.0-py3-none-any.whl
+    sha256: edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719
+  - type: file
+    url: https://files.pythonhosted.org/packages/22/f3/4c632eaacebfc62ab9414586137aecf6c0ea2a1e99708cf5a4c0dec13ae0/python_mpv-1.0.8-py3-none-any.whl
+    sha256: b5296403e990fb7348df4ca2211937a030f524bf638657bda7e45a00bc2df0cd
+  - type: git
+    url: https://github.com/haltia-de/kit.git
+    tag: v2.1.0
+    dest: kit

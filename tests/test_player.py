@@ -196,7 +196,10 @@ class PlayerTest(unittest.TestCase):
     def test_mpv_elsewhere(self):
         cmd = command("mpv", VIDEO, "u", {"cookies": "/c"}, "/s")
         self.assertEqual(cmd, ["mpv", "--fs", "--force-media-title=Кино",
-                               "--input-ipc-server=/s", "u", "--ytdl-raw-options=cookies=/c"])
+                               "--input-ipc-server=/s", "u",
+                               "--ytdl-raw-options=js-runtimes=quickjs,cookies=/c"])
+        self.assertEqual(command("mpv", VIDEO, "u", {}, "/s")[-1],
+                         "--ytdl-raw-options=js-runtimes=quickjs")
 
     def test_from_where_it_was_left(self):
         self.assertIn("start=754", command("/usr/bin/haltia-vplay", VIDEO, "u", {}, "/s",

@@ -62,6 +62,18 @@ libsecret; для QR-кода входа —
 `haltia-vplay` — если он собран: `vplay/build.sh` собирает его для планшета,
 пакет Alpine (`packaging/alpine/APKBUILD`) — сам.
 
+Для обычных компьютеров есть Flatpak и deb, оба без `haltia-vplay`: видео
+играет `mpv`.
+
+- Flatpak (`packaging/flatpak/io.github.haltia_de.Video.yml`, GNOME 51)
+  собирает в себя haltia-kit, Pillow, qrcode, yt-dlp, QuickJS и mpv;
+  FFmpeg и кодеки даёт среда GNOME. Сборка:
+  `flatpak-builder --user --install build packaging/flatpak/io.github.haltia_de.Video.yml`.
+- deb (`debian/`, Ubuntu 24.04 и Debian 13) берёт из дистрибутива mpv,
+  Pillow, qrcode и libsecret, а `python3-haltia-kit` — из пакетов Haltia.
+  Свои yt-dlp и QuickJS он везёт в `/usr/lib/haltia-video/vendor`: в
+  дистрибутивах они слишком старые для YouTube.
+
 Вход в VK и файл cookies YouTube хранятся в связке ключей системы
 (Secret Service; во Flatpak — через портал), а где её нет, как на
 планшете, — файлами в `~/.config/haltia-video/`, доступными только вам.

@@ -2,3 +2,12 @@ claude-security-guidance-*/
 __pycache__/
 vplay/haltia-vplay
 vplay/*-protocol.[ch]
+.flatpak-builder/
+build/
+*.flatpak
+debian/haltia-video/
+debian/vendor/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/debhelper-build-stamp

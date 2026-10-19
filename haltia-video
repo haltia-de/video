@@ -54,6 +54,14 @@ for path in (HERE, os.path.join(os.path.dirname(HERE), "lib", "haltia-video")):
     if os.path.isdir(os.path.join(path, "sources")):
         sys.path.insert(0, path)
         break
+# The deb brings a newer yt-dlp than the distribution's, and QuickJS, in
+# vendor/ next to the modules: its packages go first on sys.path, its
+# commands (yt-dlp, which mpv runs, and qjs, which yt-dlp runs) first on
+# PATH.
+VENDOR = os.path.join(path, "vendor")
+if os.path.isdir(VENDOR):
+    sys.path.insert(0, VENDOR)
+    os.environ["PATH"] = os.path.join(VENDOR, "bin") + os.pathsep + os.environ.get("PATH", "")
 import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402

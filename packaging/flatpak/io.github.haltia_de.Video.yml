@@ -1,0 +1,185 @@
+# Видео as a Flatpak: flatpak-builder --user --install build packaging/flatpak/io.github.haltia_de.Video.yml
+# Python 3, PyGObject, GTK 3 and libsecret (Secret-1; the accounts go to
+# the Secret portal) come with the GNOME runtime, and so does FFmpeg: the
+# runtime's org.freedesktop.Platform.codecs-extra extension (which took the
+# place of ffmpeg-full in 25.08) brings the codecs it leaves out, H.264
+# among them, by itself. The rest is built here at the versions of
+# requirements.txt and requirements-yt-dlp.txt: haltia-kit, Pillow, qrcode,
+# yt-dlp with its EJS scripts and QuickJS to run them, and mpv to play
+# (io.mpv.Mpv's recipe, cut to what Видео uses; no haltia-vplay, which is
+# the tablet's). Built from this checkout (CI checks out the tag).
+id: io.github.haltia_de.Video
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: haltia-video
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+modules:
+  - haltia-kit.yml
+
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --no-index --prefix=${FLATPAK_DEST} pybind11-*.whl
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation pillow
+    cleanup:
+      - /bin/pybind11-config
+      - /lib/python3*/site-packages/pybind11*
+      - /share/cmake
+    sources:
+      # Only to build Pillow.
+      - type: file
+        url: https://files.pythonhosted.org/packages/33/fd/8762f7ee3e4e4be6d1d846cffb4916dd9bb02b2f800d3603718a0efe494c/pybind11-3.1.0-py3-none-any.whl
+        sha256: b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0
+      - type: file
+        url: https://files.pythonhosted.org/packages/8c/21/c2bcdd5906101a30244eaffc1b6e6ce71a31bd0742a01eb89e660ebfac2d/pillow-12.2.0.tar.gz
+        sha256: a830b1a40919539d07806aa58e1b114df53ddd43213d9c8b75847eee6c0182b5
+
+  - name: python3-qrcode
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation --no-deps qrcode
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/dd/b8/d2d6d731733f51684bbf76bf34dab3b70a9148e8f2cef2bb544fccec681a/qrcode-8.2-py3-none-any.whl
+        sha256: 16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f
+
+  # yt-dlp is raised on its own (requirements-yt-dlp.txt); the EJS scripts
+  # answer YouTube's JavaScript challenges, run by QuickJS.
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation --no-deps yt-dlp yt-dlp-ejs
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl
+        sha256: 1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf
+      - type: file
+        url: https://files.pythonhosted.org/packages/e3/bd/520769863744b669440a924271a6159ddd82ad5ae26b4ac4d4b69e9f8d44/yt_dlp_ejs-0.8.0-py3-none-any.whl
+        sha256: 79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4
+
+  - name: quickjs
+    buildsystem: simple
+    build-commands:
+      - make qjs
+      - install -D -m 755 qjs ${FLATPAK_DEST}/bin/qjs
+    sources:
+      - type: archive
+        url: https://bellard.org/quickjs/quickjs-2025-09-13-2.tar.xz
+        mirror-urls:
+          - https://distfiles.alpinelinux.org/distfiles/v3.24/quickjs-2025-09-13-2.tar.xz
+        sha256: 996c6b5018fc955ad4d06426d0e9cb713685a00c825aa5c0418bd53f7df8b0b4
+
+  # mpv: io.mpv.Mpv's recipe (flathub), with the runtime's FFmpeg and only
+  # what playing a stream in a window needs.
+  - name: luajit
+    no-autogen: true
+    make-args:
+      - BUILDMODE=dynamic
+      - PREFIX=${FLATPAK_DEST}
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+    cleanup:
+      - /bin
+    sources:
+      - type: git
+        url: https://github.com/openresty/luajit2.git
+        tag: v2.1-20260724
+        commit: 982cd8323eafd8604a9e5f2a916aa50b9f67d9ed
+
+  # mpv's X11 output, for desktops on X11 (fallback-x11).
+  - name: libXpresent
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/lib/libxpresent.git
+        tag: libXpresent-1.0.2
+        commit: 4d92149372461bf575e8a09b1064a2884c38c3aa
+
+  - name: libass
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+      - -Ddemos=false
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dbuild-date=false
+      - -Dcplayer=true
+      - -Dlibmpv=false
+      - -Dlua=luajit
+      - -Djavascript=disabled
+      - -Dwayland=enabled
+      - -Dx11=enabled
+      - -Dgl=enabled
+      - -Degl=enabled
+      - -Degl-wayland=enabled
+      - -Degl-x11=enabled
+      - -Dvulkan=enabled
+      - -Dvaapi=enabled
+      - -Dpipewire=enabled
+      - -Dpulse=enabled
+      - -Dwerror=false
+    cleanup:
+      - /share/applications
+      - /share/icons
+      - /share/bash-completion
+      - /share/zsh
+      - /share/fish
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  - name: haltia-video
+    buildsystem: simple
+    build-commands:
+      - install -D -m 755 haltia-video /app/bin/haltia-video
+      - for f in library.py kept.py search.py signin.py player.py pictures.py renamed.py; do
+        install -D -m 644 $f /app/lib/haltia-video/$f; done
+      - for f in sources/*.py; do install -D -m 644 $f /app/lib/haltia-video/$f; done
+      - install -D -m 644 data/io.github.haltia_de.Video.desktop /app/share/applications/io.github.haltia_de.Video.desktop
+      - install -D -m 644 data/io.github.haltia_de.Video.svg /app/share/icons/hicolor/scalable/apps/io.github.haltia_de.Video.svg
+      - install -D -m 644 data/io.github.haltia_de.Video.metainfo.xml /app/share/metainfo/io.github.haltia_de.Video.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .remember
+          - build
+          - .flatpak-builder

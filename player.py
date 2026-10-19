@@ -66,8 +66,10 @@ def command(player, video, url, ytdl, ipc, start=None):
     else:
         cmd = [player, "--fs", "--force-media-title=" + video["title"],
                "--input-ipc-server=" + ipc] + (["--start=%d" % start] if start else []) + [url]
-        if raw:
-            cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
+        # yt-dlp's own default is deno alone; QuickJS is what comes with
+        # Видео (the deb and Flatpak bring it, as Alpine does).
+        raw = dict({"js-runtimes": "quickjs"}, **raw)
+        cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
     return cmd
 
 

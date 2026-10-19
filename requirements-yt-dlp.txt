@@ -1,3 +1,7 @@
 # yt-dlp, apart from requirements.txt: YouTube changes and yt-dlp with it,
-# so its version is raised on its own (Alpine 3.24 has this one).
+# so its version is raised on its own (Alpine 3.24 has this one). Its EJS
+# scripts answer YouTube's JavaScript challenges (run by QuickJS). The
+# Flatpak manifest (packaging/flatpak) and debian/vendor.sh fetch these
+# files by their sha256: raise them there too.
 yt-dlp==2026.8.19
+yt-dlp-ejs==0.8.0

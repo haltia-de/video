@@ -1,0 +1,6 @@
+haltia-video (2.1.1) unstable; urgency=medium
+
+  * Packages for Flatpak and Debian; mpv is told to run yt-dlp's
+    JavaScript with QuickJS.
+
+ -- Haltia <rensomail@gmail.com>  Mon, 19 Oct 2026 21:00:00 +0300

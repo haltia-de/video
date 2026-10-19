@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+# yt-dlp follows YouTube, and the distributions' is too old for it (noble
+# 2024.04, trixie 2025.04), as is noble's QuickJS (2021) for yt-dlp: both
+# come in the package's vendor/ (debian/vendor.sh).
+override_dh_auto_build:
+	sh debian/vendor.sh build debian/vendor
+
+override_dh_auto_install:
+	sh install.sh $(CURDIR)/debian/haltia-video /usr
+	sh debian/vendor.sh install debian/vendor debian/haltia-video/usr/lib/haltia-video/vendor
+	# The names from before ADR 0004 are for the Haltia tablet only.
+	rm -f debian/haltia-video/usr/bin/b8k-video \
+		debian/haltia-video/usr/share/applications/io.github.trudenboy.Video.desktop
+
+override_dh_auto_clean:
+	rm -rf debian/vendor
+
+# The modules (the program's and vendor's) are compiled when installed.
+override_dh_python3:
+	dh_python3 usr/lib/haltia-video

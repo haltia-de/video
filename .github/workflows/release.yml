@@ -1,5 +1,6 @@
 # The release (ADR 0002 in haltia-de/device-lenovo-b8000h): a vX.Y.Z tag
-# builds the signed Alpine package and puts it into the GitHub release.
+# builds the signed Alpine package, the Debian and Ubuntu packages and the
+# Flatpak, and puts them into the GitHub release.
 name: release
 on:
   push:
@@ -13,3 +14,11 @@ jobs:
       # haltia-vplay is C: a package per architecture.
       arch: armv7 aarch64 x86_64
     secrets: inherit
+  deb:
+    needs: apk
+    uses: haltia-de/ci/.github/workflows/deb.yml@v1
+  flatpak:
+    needs: apk
+    uses: haltia-de/ci/.github/workflows/flatpak.yml@v1
+    with:
+      manifest: packaging/flatpak/io.github.haltia_de.Video.yml
