@@ -50,29 +50,62 @@ libmpv, кадры масштабирует видеокарта), а где е�
 ключом, как у самого vkvideo.ru, или с вашим после входа); Vimeo и другие
 добавляются так же, файлом в `sources/`.
 
-Нужны Python 3 с PyGObject (GTK 3),
+## Установка
+
+**Ubuntu 24.04, Debian 13** (и elementary OS 8, Linux Mint 22; только
+amd64) — из репозитория apt Haltia:
+
+```
+sudo curl -fsSLo /usr/share/keyrings/haltia-archive-keyring.gpg https://haltia-de.github.io/packages/apt/haltia-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/haltia-archive-keyring.gpg] https://haltia-de.github.io/packages/apt $(. /etc/os-release; echo $VERSION_CODENAME) main" | sudo tee /etc/apt/sources.list.d/haltia.list
+sudo apt update && sudo apt install haltia-video
+```
+
+mpv, Pillow, qrcode и libsecret пакет берёт из дистрибутива, а свои yt-dlp
+и QuickJS везёт в `/usr/lib/haltia-video/vendor`: в дистрибутивах они
+слишком старые для YouTube.
+
+**Flatpak** (любой дистрибутив; среда GNOME — с Flathub):
+
+```
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists haltia https://haltia-de.github.io/packages/flatpak/haltia.flatpakrepo
+flatpak install haltia io.github.haltia_de.Video
+```
+
+В Flatpak всё лежит в `~/.var/app/io.github.haltia_de.Video/`: подписки и
+настройки — в `config/haltia-video/video.json`, история — в
+`data/haltia-video/`, кэш — в `cache/haltia-video/`. Файл cookies YouTube
+кладётся в `~/.var/app/io.github.haltia_de.Video/config/haltia-video/youtube-cookies.txt`
+(вход через Firefox песочница не видит), вход хранится в связке ключей
+через портал.
+
+**Alpine и postmarketOS** — пакет `haltia-video` из
+[репозитория apk Haltia](https://github.com/haltia-de/packages), для
+armv7, aarch64 и x86_64, вместе с `haltia-vplay`.
+
+**Из исходников:** нужны Python 3 с PyGObject (GTK 3),
 [haltia-kit](https://github.com/haltia-de/kit), yt-dlp с
-JavaScript-движком (QuickJS), Pillow (картинки карточек) и `haltia-vplay`
-(на планшете) или `mpv` (на обычном компьютере); для связки ключей —
-libsecret; для QR-кода входа —
+JavaScript-движком QuickJS, Pillow (картинки карточек) и `mpv` (или
+`haltia-vplay`); для связки ключей — libsecret; для QR-кода входа —
 модуль `qrcode` (без него показываются ссылка и код).
 
-Установка: `sh install.sh [ROOT] [PREFIX]` (PREFIX по умолчанию
-`/usr/local`). Она кладёт `.desktop`-файл, значок и metainfo, а
-`haltia-vplay` — если он собран: `vplay/build.sh` собирает его для планшета,
-пакет Alpine (`packaging/alpine/APKBUILD`) — сам.
+```
+sh install.sh            # в /usr/local (нужен root)
+sh install.sh /mnt/root  # в другой корень, например при сборке образа
+```
 
-Для обычных компьютеров есть Flatpak и deb, оба без `haltia-vplay`: видео
-играет `mpv`.
+`install.sh [ROOT] [PREFIX]` кладёт `.desktop`-файл, значок и metainfo, а
+`haltia-vplay` — если он собран (`vplay/build.sh` собирает его для
+планшета, пакет Alpine — сам). Сборка пакетов: `packaging/alpine/`,
+`debian/` и `packaging/flatpak/`; выпуск по тегу собирает все три через
+`haltia-de/ci`.
 
-- Flatpak (`packaging/flatpak/io.github.haltia_de.Video.yml`, GNOME 51)
-  собирает в себя haltia-kit, Pillow, qrcode, yt-dlp, QuickJS и mpv;
-  FFmpeg и кодеки даёт среда GNOME. Сборка:
-  `flatpak-builder --user --install build packaging/flatpak/io.github.haltia_de.Video.yml`.
-- deb (`debian/`, Ubuntu 24.04 и Debian 13) берёт из дистрибутива mpv,
-  Pillow, qrcode и libsecret, а `python3-haltia-kit` — из пакетов Haltia.
-  Свои yt-dlp и QuickJS он везёт в `/usr/lib/haltia-video/vendor`: в
-  дистрибутивах они слишком старые для YouTube.
+**На обычном компьютере** (вне оболочки Haltia) у окна обычные кнопки
+рабочего стола, и «Закрыть» среди них, а видео играет `mpv`;
+`haltia-vplay` — проигрыватель планшета, в deb и Flatpak его нет.
+
+## Где что хранится
 
 Вход в VK и файл cookies YouTube хранятся в связке ключей системы
 (Secret Service; во Flatpak — через портал), а где её нет, как на
@@ -82,10 +115,14 @@ libsecret; для QR-кода входа —
 (не дольше месяца и не больше 150 МБ), последняя лента и Главная: при
 запуске они показываются сразу, а свежие подгружаются за ними.
 
+## До 2.0
+
 До 2.0 программа называлась b8k-video (`io.github.trudenboy.Video`). При
 первом запуске 2.0 подписки, настройки, вход, история и кэш переезжают
 из `~/.config/b8k` и папок `b8k-video` на новые места, а на старых
 остаются ссылки. Команды `b8k-video` и `b8k-vplay` остаются ссылками на
 новые до 3.0.
 
-Лицензия — GPL-2.0.
+## Лицензия
+
+GPL-2.0.
