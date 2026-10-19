@@ -10,5 +10,6 @@ jobs:
   apk:
     uses: haltia-de/ci/.github/workflows/apk.yml@v1
     with:
-      arch: armv7
+      # haltia-vplay is C: a package per architecture.
+      arch: armv7 aarch64 x86_64
     secrets: inherit
