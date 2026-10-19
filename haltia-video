@@ -39,6 +39,8 @@ import gi
 from gi.repository import GLib
 
 APP_ID = "io.github.haltia_de.Video"
+# Inside the Haltia shell (its session sets XDG_CURRENT_DESKTOP=Haltia:GNOME).
+ON_HALTIA = "Haltia" in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")
 # Before GTK starts: the Wayland app id, which the .desktop file matches.
 GLib.set_prgname(APP_ID)
 
@@ -439,6 +441,9 @@ class Video(Gtk.Application):
         self.win = Gtk.ApplicationWindow(application=self, title="Видео")
         self.win.set_default_size(1160, 800)
         header = Gtk.HeaderBar(title="Видео")
+        # The Haltia shell closes windows with its own button; any other desktop
+        # gets the usual window buttons in the header.
+        header.set_show_close_button(not ON_HALTIA)
         self.back_btn = Gtk.Button(label="←")
         self.back_btn.get_style_context().add_class("back")
         self.back_btn.connect("clicked", lambda *_a: self.show_page(self.page))

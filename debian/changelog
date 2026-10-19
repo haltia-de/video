@@ -1,3 +1,10 @@
+haltia-video (2.1.2) unstable; urgency=medium
+
+  * Outside the Haltia shell the window has the desktop's usual buttons,
+    close among them.
+
+ -- Haltia <rensomail@gmail.com>  Mon, 19 Oct 2026 23:20:00 +0300
+
 haltia-video (2.1.1) unstable; urgency=medium
 
   * Packages for Flatpak and Debian; mpv is told to run yt-dlp's

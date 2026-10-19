@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.1.2" date="2026-10-19">
+      <description>
+        <p>Outside the Haltia shell the window has the desktop's usual buttons, close among them.</p>
+        <p xml:lang="ru">Вне оболочки Haltia у окна есть обычные кнопки рабочего стола, и среди них — «Закрыть».</p>
+      </description>
+    </release>
     <release version="2.1.1" date="2026-10-19">
       <description>
         <p>The release also carries packages for Debian, Ubuntu and Flatpak. On a desktop, YouTube videos open in mpv again.</p>
