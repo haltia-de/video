@@ -18,6 +18,11 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.1.0" date="2026-10-19">
+      <description>
+        <p xml:lang="ru">Вход в YouTube одной кнопкой: Видео само берёт вход из Firefox или Chromium, выгружать cookies больше не нужно. Вход в VK и YouTube хранится в связке ключей системы, а не в открытом файле. На обычном компьютере видео открывается в mpv.</p>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-10-19">
       <description>
         <p xml:lang="ru">Новая иконка в стиле Haltia. Видео теперь ставится и на 64-битные устройства с postmarketOS.</p>

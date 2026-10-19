@@ -33,7 +33,11 @@ and, to sign in, an account:
   login_start()             for "code": {"url": ..., "code": ...}
   login_poll()              for "code": None while waiting, the account
                             once confirmed; raises when the code expired
-  login_check()             for "cookies": the account, or None
+  login_check(browser=None) for "cookies": the account, or None; with a
+                            browser (an id from browsers()), from its
+                            cookies instead of the file
+  browsers()                for "cookies": [(id, label)] of the browsers
+                            it can sign in through here, maybe none
   logout()
   subscriptions()           the account's channels, to follow here too
 
@@ -47,7 +51,8 @@ and, when the source knows them (a followed channel may lack them until
   handle (like "@name"), thumb (an avatar URL), subscribers (a count or
   None), description
 
-A source may block (network): Видео calls it from worker threads, more
+What an account keeps secret goes into sources.vault (the keyring, else
+a file). A source may block (network): Видео calls it from worker threads, more
 than one at a time.
 """
 import importlib
@@ -56,9 +61,18 @@ import os
 import pkgutil
 import sys
 
-# Where the sources keep what they must (an account, a token).
-CONFIG_DIR = os.path.expanduser("~/.config/haltia-video")
-CACHE_DIR = os.path.expanduser("~/.cache/haltia-video")
+
+
+def xdg(var, default):
+    """A base directory of the XDG spec ($XDG_CONFIG_HOME, ...): Flatpak
+    gives each program its own."""
+    return os.environ.get(var) or os.path.expanduser(default)
+
+
+# Where Видео keeps what it must: the Library's files, an account, a token.
+CONFIG_DIR = os.path.join(xdg("XDG_CONFIG_HOME", "~/.config"), "haltia-video")
+DATA_DIR = os.path.join(xdg("XDG_DATA_HOME", "~/.local/share"), "haltia-video")
+CACHE_DIR = os.path.join(xdg("XDG_CACHE_HOME", "~/.cache"), "haltia-video")
 
 
 def load_json(path, default=None):

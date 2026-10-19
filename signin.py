@@ -4,6 +4,8 @@
     sign = SignIn(source, run=app.work, later=lambda ms, fn: ...)
     sign.state        {"kind": ..., ...}, see below
     sign.begin()      start signing in; cancel(); logout()
+    sign.begin(how)   a "cookies" source: with a browser's cookies (an id
+                      of its browsers()) instead of the file
     sign.watch(fn)    fn(state) on every change
 
 States:
@@ -55,15 +57,16 @@ class SignIn:
     def busy(self):
         return self.state["kind"] in ("getting", "waiting", "checking")
 
-    def begin(self):
+    def begin(self, how=None):
         self.attempt += 1
         if self.source.login == "code":
             self._new_code(self.attempt, 0)
         else:
             self._set({"kind": "checking"})
             attempt = self.attempt
-            self.run(self.source.login_check,
-                     done=lambda account, error: self._checked(attempt, account, error))
+            self.run(self.source.login_check, *([how] if how else []),
+                     done=lambda account, error: self._checked(attempt, account, error,
+                                                               how))
 
     def cancel(self):
         """Stop waiting (Настройки left); what is settled stays."""
@@ -119,11 +122,13 @@ class SignIn:
             self._set({"kind": "in", "name": account["name"]})
 
     # --- a cookies file ------------------------------------------------------
-    def _checked(self, attempt, account, error):
+    def _checked(self, attempt, account, error, how=None):
         if attempt != self.attempt:
             return
         if error is not None or not account:
-            self._set({"kind": "failed",
-                       "note": "Войти не удалось: файла нет, он устарел или нет связи."})
+            self._set({"kind": "failed", "note": (
+                "Войти не удалось: в браузере нет входа в YouTube, он не дал свои cookies "
+                "или нет связи." if how else
+                "Войти не удалось: файла нет, он устарел или нет связи.")})
         else:
             self._set({"kind": "in", "name": account["name"]})

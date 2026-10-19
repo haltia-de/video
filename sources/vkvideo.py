@@ -4,12 +4,14 @@ anonymous token vkvideo.ru itself gets (no account), or with a person's
 own after a sign-in confirmed on a phone (a link or QR code, as a TV
 does); playback through mpv's yt-dlp hook. A channel is a VK community or
 a person; its id is the owner id as text ("-55155418" for a community)."""
+import json
 import os
 import re
 import threading
 import time
 
 from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json
+from .vault import Vault
 
 API = "https://api.vk.com/method/%s"
 API_VERSION = "5.274"
@@ -18,6 +20,7 @@ CLIENT_ID = "52461373"
 CLIENT_SECRET = "o557NLIkAErNhakXrQ7A"
 TOKEN_URL = "https://login.vk.com/?act=get_anonym_token"
 SITE = "https://vkvideo.ru"
+ACCOUNT = "video-vk.json"  # in the vault: {"token", "id", "name"}
 HEADERS = {"Origin": SITE, "Referer": SITE + "/"}
 CHANNEL_COUNT = 30
 DESCRIPTION_MAX = 300
@@ -130,21 +133,26 @@ class VKVideo:
     label = "VK Видео"
     login = "code"
 
-    def __init__(self, http=net, config_dir=CONFIG_DIR, cache_dir=CACHE_DIR, clock=time.time):
+    def __init__(self, http=net, config_dir=CONFIG_DIR, cache_dir=CACHE_DIR, clock=time.time,
+                 vault=None):
         """http: what fetches (get_json(url, data, headers)); the sources
         package's net, or recorded answers in the tests, which also give a
-        clock (a recorded token's expiry is a date that passes)."""
+        clock (a recorded token's expiry is a date that passes) and a vault
+        of files only."""
         self.http = http
         self.clock = clock
+        self.vault = vault or Vault(config_dir)
         self.anon_path = os.path.join(cache_dir, "vk-anonym.json")
-        self.account_path = os.path.join(config_dir, "video-vk.json")
         self.lock = threading.Lock()
         # The anonymous token outlives a run of the program: kept on disk,
         # it spares a round trip at every start.
         anon = load_json(self.anon_path, {}) or {}
         self.token = anon.get("token")
         self.token_until = anon.get("until", 0)
-        self.user = load_json(self.account_path, None)
+        try:
+            self.user = json.loads(self.vault.get(ACCOUNT) or "null")
+        except ValueError:
+            self.user = None
         self.pending = None  # the sign-in waiting for the phone
 
     def _post(self, url, data):
@@ -220,16 +228,13 @@ class VKVideo:
             if me else ""
         self.user = {"token": token, "id": resp.get("user_id") or (me and me[0]["id"]),
                      "name": name or "VK"}
-        save_json(self.account_path, self.user, private=True)
+        self.vault.put(ACCOUNT, json.dumps(self.user, ensure_ascii=False))
         return self.account()
 
     def logout(self):
         self.user = None
         self.pending = None
-        try:
-            os.remove(self.account_path)
-        except OSError:
-            pass
+        self.vault.drop(ACCOUNT)
 
     def subscriptions(self):
         """The communities the person follows that have videos."""

@@ -37,11 +37,25 @@ CONNECT_SEC = 15  # mpv opens its socket at start, before yt-dlp is asked
 OBSERVED = ("time-pos", "duration", "pause")
 
 
+VPLAY = ("haltia-vplay", "b8k-vplay")  # b8k-vplay: its name before 2.0, until 3.0
+
+
+def find_player(which=shutil.which):
+    """haltia-vplay where it is installed (the tablet's package), else mpv
+    (a desktop's deb and Flatpak bring mpv, not vplay), else None. Looked
+    up on PATH, wherever the package put it."""
+    for name in VPLAY + ("mpv",):
+        path = which(name)
+        if path:
+            return path
+    return None
+
+
 def command(player, video, url, ytdl, ipc, start=None):
     """The command line that plays url in player (haltia-vplay, else mpv),
     from start seconds when given."""
     raw = dict(ytdl or {})
-    if os.path.basename(player) in ("haltia-vplay", "b8k-vplay"):
+    if os.path.basename(player) in VPLAY:
         cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc]
         if start:
             cmd.append("start=%d" % start)
@@ -107,9 +121,7 @@ class Player:
         self.connect = connect
         self.runtime_dir = runtime_dir or os.environ.get("XDG_RUNTIME_DIR")
         self.sock_dir = None  # made at the first open
-        # haltia-vplay where it is installed (PREFIX/bin: /usr/local, or /usr
-        # from the package), else mpv.
-        self.player = player or shutil.which("haltia-vplay") or shutil.which("b8k-vplay") or "mpv"
+        self.player = player or find_player()
         self.focus = focus
         self.state = None
         self.watchers = []
@@ -126,6 +138,8 @@ class Player:
     # --- starting and stopping ------------------------------------------------
     def open(self, video, url, ytdl=None, start=None):
         """Play video (the one playing is closed). OSError: no player."""
+        if not self.player:
+            raise OSError("neither haltia-vplay nor mpv is installed")
         self.stop()
         self.run_no += 1
         if self.sock_dir is None:

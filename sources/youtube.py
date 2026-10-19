@@ -4,8 +4,11 @@ newest videos from its public Atom feed (one small request instead of a
 page of JavaScript), playback through mpv's yt-dlp hook.
 
 YouTube lets no program sign in on its own any more, and it shows no
-trends to a guest: signing in is a cookies file taken from a browser where
-one is signed in. With it, Главная has the account's recommendations,
+trends to a guest: signing in is the cookies of a browser where one is
+signed in. yt-dlp reads them from Firefox's or Chromium's profile itself
+where it can see one (not from Flatpak's sandbox); everywhere, the tablet
+too, a cookies.txt file put in place works. That file then goes into the
+vault (the keyring, where one answers). With it, Главная has the account's recommendations,
 the account's channels can be followed here, and searches and playback go
 as that account."""
 import os
@@ -15,6 +18,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 
 from . import CONFIG_DIR, load_json, net, save_json
+from .vault import Vault
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
 NS = {
@@ -36,6 +40,27 @@ def _thumb(video_id):
     return "https://i.ytimg.com/vi/%s/mqdefault.jpg" % video_id
 
 
+COOKIES = "youtube-cookies.txt"
+# yt-dlp's names, in the order offered; where each keeps its profile.
+BROWSERS = (
+    ("firefox", "Firefox", ("~/.mozilla/firefox", "~/.config/mozilla/firefox",
+                            "~/snap/firefox/common/.mozilla/firefox",
+                            "~/.var/app/org.mozilla.firefox/.mozilla/firefox",
+                            "~/.var/app/org.mozilla.firefox/config/mozilla/firefox")),
+    ("chromium", "Chromium", ("~/.config/chromium", "~/snap/chromium/common/chromium",
+                              "~/.var/app/org.chromium.Chromium/config/chromium")),
+)
+
+
+def browsers(exists=os.path.exists, sandboxed=None):
+    """[(id, label)] of the browsers yt-dlp can take the cookies from here:
+    none in Flatpak (its sandbox hides the profiles)."""
+    if sandboxed if sandboxed is not None else exists("/.flatpak-info"):
+        return []
+    return [(bid, name) for bid, name, dirs in BROWSERS
+            if any(exists(os.path.expanduser(d)) for d in dirs)]
+
+
 def _ydl(extra=None, cookies=None):
     import yt_dlp  # slow to import: only when first needed
 
@@ -44,8 +69,7 @@ def _ydl(extra=None, cookies=None):
             # A list of results carries no dates, only "3 days ago": this
             # turns that into a time (to the day) for the cards.
             "extractor_args": {"youtubetab": {"approximate_date": [""]}}}
-    if cookies:
-        opts["cookiefile"] = cookies
+    opts.update(cookies or {})  # cookiefile or cookiesfrombrowser
     opts.update(extra or {})
     return yt_dlp.YoutubeDL(opts)
 
@@ -108,44 +132,82 @@ class YouTube:
     label = "YouTube"
     login = "cookies"
 
-    def __init__(self, http=net, config_dir=CONFIG_DIR):
+    def __init__(self, http=net, config_dir=CONFIG_DIR, vault=None, sandboxed=None):
         """http: what fetches the channel feeds (request(url, limit=...));
-        the sources package's net, or recorded answers in the tests."""
+        the sources package's net, or recorded answers in the tests (with
+        a vault of files only)."""
         self.http = http
-        self.cookies = os.path.join(config_dir, "youtube-cookies.txt")
+        self.vault = vault or Vault(config_dir)
+        self.sandboxed = sandboxed
+        self.cookies = os.path.join(config_dir, COOKIES)  # where the person puts the file
+        # Not secret (the cookies are): signed in, and how.
         self.account_path = os.path.join(config_dir, "video-youtube.json")
+        put = self.cookies.replace(os.path.expanduser("~"), "~")
         self.login_hint = ("Выгрузите cookies сайта youtube.com из браузера, где вы "
                            "вошли в аккаунт (расширение «Get cookies.txt LOCALLY»), и "
-                           "положите файл сюда: "
-                           + self.cookies.replace(os.path.expanduser("~"), "~"))
+                           "положите файл сюда: " + put)
+        if self.browsers():
+            self.login_hint = ("Войдите в YouTube в браузере и нажмите кнопку с его "
+                               "названием. Или положите файл cookies сюда: " + put)
+
+    def browsers(self):
+        return browsers(sandboxed=self.sandboxed)
+
+    def _cookies(self):
+        """The yt-dlp options that sign in, or None."""
+        account = load_json(self.account_path)
+        if not account:
+            return None
+        if account.get("browser"):
+            return {"cookiesfrombrowser": (account["browser"],)}
+        path = self.vault.as_file(COOKIES)
+        return {"cookiefile": path} if path else None
 
     def _signed_in(self):
-        return os.path.exists(self.cookies) and load_json(self.account_path) is not None
+        return self._cookies() is not None
 
     def _ydl(self, extra=None):
-        return _ydl(extra, self.cookies if self._signed_in() else None)
+        return _ydl(extra, self._cookies())
 
     def account(self):
-        return load_json(self.account_path) if os.path.exists(self.cookies) else None
+        account = load_json(self.account_path)
+        if account and (account.get("browser") or self.vault.get(COOKIES) is not None):
+            return account
+        return None
 
-    def login_check(self):
-        if not os.path.exists(self.cookies):
-            return None
+    def login_check(self, browser=None):
+        """Signs in with the browser's cookies (an id of browsers()), else
+        with the file put in place (or the one kept before)."""
+        if browser:
+            cookies = {"cookiesfrombrowser": (browser,)}
+        elif os.path.exists(self.cookies):
+            cookies = {"cookiefile": self.cookies}
+        else:
+            path = self.vault.as_file(COOKIES)
+            if not path:
+                return None
+            cookies = {"cookiefile": path}
         # The account's own list of channels opens only to the account.
-        with _ydl({"playlistend": 1}, self.cookies) as ydl:
+        with _ydl({"playlistend": 1}, cookies) as ydl:
             info = ydl.extract_info("https://www.youtube.com/feed/channels", download=False)
         if not info or info.get("entries") is None:
             return None
         account = {"name": "аккаунт Google"}
+        if browser:
+            account["browser"] = browser
+            account["name"] = "аккаунт Google (%s)" % dict(
+                (b, n) for b, n, _d in BROWSERS).get(browser, browser)
+        else:
+            self.vault.take(COOKIES)
         save_json(self.account_path, account)
         return account
 
     def logout(self):
-        for path in (self.account_path, self.cookies):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+        try:
+            os.remove(self.account_path)
+        except OSError:
+            pass
+        self.vault.drop(COOKIES)
 
     def subscriptions(self):
         with self._ydl() as ydl:
@@ -166,7 +228,11 @@ class YouTube:
         return {"title": "Рекомендации YouTube", "videos": videos} if videos else None
 
     def ytdl_options(self):
-        return {"cookies": self.cookies} if self._signed_in() else {}
+        """For mpv's ytdl-raw-options (yt-dlp's command-line names)."""
+        cookies = self._cookies() or {}
+        if "cookiesfrombrowser" in cookies:
+            return {"cookies-from-browser": cookies["cookiesfrombrowser"][0]}
+        return {"cookies": cookies["cookiefile"]} if cookies else {}
 
     def warm_up(self):
         import yt_dlp  # noqa: F401  (the import is the slow part)

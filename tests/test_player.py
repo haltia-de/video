@@ -5,7 +5,7 @@ import socket
 import tempfile
 import unittest
 
-from player import Player, command
+from player import Player, command, find_player
 
 VIDEO = {"source": "vk", "id": "1_2", "title": "Кино"}
 
@@ -145,6 +145,22 @@ class PlayerTest(unittest.TestCase):
         p, _mpv = self.started(focus="/bin/true")
         p.show()
         self.assertEqual(self.spawned[-1], ["/bin/true", "activate", "haltia-vplay"])
+
+    def test_vplay_where_installed_else_mpv(self):
+        def which(*on_path):
+            return lambda name: "/bin/" + name if name in on_path else None
+        self.assertEqual(find_player(which("haltia-vplay", "mpv")), "/bin/haltia-vplay")
+        self.assertEqual(find_player(which("b8k-vplay", "mpv")), "/bin/b8k-vplay")
+        self.assertEqual(find_player(which("mpv")), "/bin/mpv")
+        self.assertIsNone(find_player(which()))
+
+    def test_no_player_at_all(self):
+        p = Player(post=lambda fn, *a: None, spawn=self.spawned.append, runtime_dir=self.tmp.name)
+        p.player = None
+        with self.assertRaises(OSError):
+            p.open(VIDEO, "u")
+        self.assertEqual(self.spawned, [])
+        self.assertIsNone(p.state)
 
     def test_the_old_name_is_the_same_player(self):
         cmd = command("/usr/bin/b8k-vplay", VIDEO, "u", {}, "/s")

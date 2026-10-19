@@ -1,0 +1,3 @@
+# yt-dlp, apart from requirements.txt: YouTube changes and yt-dlp with it,
+# so its version is raised on its own (Alpine 3.24 has this one).
+yt-dlp==2026.8.19

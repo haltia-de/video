@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from sources import vkvideo, youtube
+from sources.vault import Vault
 from tests.replay import Replay, exchange, load
 
 TOKEN = load("vk_search")[0]  # the anonymous token exchange, as recorded
@@ -30,7 +31,7 @@ class Dirs(unittest.TestCase):
     def vk(self, *scenarios, exchanges=()):
         self.http = Replay(*scenarios, exchanges=exchanges)
         return vkvideo.VKVideo(http=self.http, config_dir=self.home, cache_dir=self.home,
-                               clock=lambda: NOW)
+                               clock=lambda: NOW, vault=Vault(self.home, keyring=None))
 
     def assertAllAsked(self):
         self.assertTrue(self.http.done(), "left unasked: %s" % self.http.queue[:1])
@@ -193,7 +194,8 @@ class VKSignInTest(Dirs):
         self.assertEqual(self.http.asked[-1][1]["access_token"], "USER")
         # A new start is signed in, and asks as the person.
         again = vkvideo.VKVideo(http=Replay(exchanges=load("vk_find_nobody")[1:]), clock=lambda: NOW,
-                                config_dir=self.home, cache_dir=self.home)
+                                config_dir=self.home, cache_dir=self.home,
+                                vault=Vault(self.home, keyring=None))
         self.assertEqual(again.account(), {"name": "Анна Котова"})
         again.find_channel("nosuchname_zz_qq")
         self.assertEqual(again.http.asked[0][1]["access_token"], "USER")
@@ -223,7 +225,8 @@ class VKSignInTest(Dirs):
 class YouTubeFeedTest(Dirs):
     def yt(self, *scenarios):
         self.http = Replay(*scenarios)
-        return youtube.YouTube(http=self.http, config_dir=self.home)
+        return youtube.YouTube(http=self.http, config_dir=self.home,
+                               vault=Vault(self.home, keyring=None))
 
     def test_channel_videos_from_the_feed(self):
         chan = {"source": "youtube", "id": "UCHnyfMqiRRG1u-2MsSQLbXA", "title": "Veritasium"}

@@ -39,11 +39,13 @@ class CookiesSource:
     def __init__(self, check=None):
         self.check = check
         self.user = None
+        self.asked_with = []
 
     def account(self):
         return self.user
 
-    def login_check(self):
+    def login_check(self, browser=None):
+        self.asked_with.append(browser)
         if isinstance(self.check, Exception):
             raise self.check
         self.user = self.check
@@ -170,6 +172,16 @@ class SignInTest(unittest.TestCase):
             s.begin()
             self.assertEqual(s.state["kind"], "failed")
             self.assertIn("файла нет", s.state["note"])
+
+    def test_cookies_from_a_browser(self):
+        src = CookiesSource(check={"name": "аккаунт Google (Firefox)"})
+        s = self.sign(src)
+        s.begin("firefox")
+        self.assertEqual(src.asked_with, ["firefox"])
+        self.assertEqual(s.state, {"kind": "in", "name": "аккаунт Google (Firefox)"})
+        s = self.sign(CookiesSource(check=None))
+        s.begin("chromium")
+        self.assertIn("в браузере нет входа", s.state["note"])
 
     def test_refresh_sees_a_revoked_token(self):
         src = CodeSource(signed_in={"name": "Анна"})

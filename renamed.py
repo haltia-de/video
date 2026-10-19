@@ -16,15 +16,21 @@ import os
 
 from haltia_kit import paths
 
+from sources import xdg
+
 OLD, NEW = "b8k-video", "haltia-video"
 CONFIG_FILES = ("video.json", "video-vk.json", "video-youtube.json", "youtube-cookies.txt")
 
 
 def move_old(home=None):
-    home = home or os.path.expanduser("~")
-    config = os.path.join(home, ".config")
-    moved = paths.migrate_dirs(OLD, NEW, [config, os.path.join(home, ".local", "share"),
-                                          os.path.join(home, ".cache")])
+    """home: the tests' stand-in for ~; else the XDG base directories."""
+    if home:
+        bases = [os.path.join(home, d) for d in (".config", ".local/share", ".cache")]
+    else:
+        bases = [xdg("XDG_CONFIG_HOME", "~/.config"), xdg("XDG_DATA_HOME", "~/.local/share"),
+                 xdg("XDG_CACHE_HOME", "~/.cache")]
+    config = bases[0]
+    moved = paths.migrate_dirs(OLD, NEW, bases)
     old, new = os.path.join(config, "b8k"), os.path.join(config, NEW)
     for name in CONFIG_FILES:
         src, dst = os.path.join(old, name), os.path.join(new, name)

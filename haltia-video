@@ -1024,7 +1024,10 @@ class Video(Gtk.Application):
             note = {"getting": "Получаю код…", "checking": "Проверяю…"}.get(
                 kind, state.get("note"))
             if kind in ("out", "failed"):
-                button("Войти по QR-коду" if src.login == "code" else "Проверить вход", "add",
+                # Off Flatpak, yt-dlp takes the cookies from the browser itself.
+                for bid, name in (src.browsers() if hasattr(src, "browsers") else []):
+                    button("Войти через %s" % name, "add", lambda bid=bid: sign.begin(bid))
+                button("Войти по QR-коду" if src.login == "code" else "Проверить файл", "add",
                        sign.begin)
         if note:
             card.pack_start(label(note, "csub", wrap=True), False, False, 0)
