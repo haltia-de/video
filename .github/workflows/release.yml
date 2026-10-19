@@ -1,4 +1,4 @@
-# The release (ADR 0002 in trudenboy/lenovo-b8000h-linux): a vX.Y.Z tag
+# The release (ADR 0002 in haltia-de/device-lenovo-b8000h): a vX.Y.Z tag
 # builds the signed Alpine package and puts it into the GitHub release.
 name: release
 on:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 jobs:
   apk:
-    uses: trudenboy/b8k-ci/.github/workflows/apk.yml@v1
+    uses: haltia-de/ci/.github/workflows/apk.yml@v1
     with:
       arch: armv7
     secrets: inherit
