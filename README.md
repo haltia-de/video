@@ -2,7 +2,7 @@
 
 «Видео» (`io.github.trudenboy.Video`): крупные карточки, поиск, подписки на
 каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H) с
-оболочкой [lenovo-b8000h-linux](https://github.com/trudenboy/lenovo-b8000h-linux),
+оболочкой [lenovo-b8000h-linux](https://github.com/haltia-de/device-lenovo-b8000h),
 но это обычная программа GTK 3: работает и в GNOME, и в KDE. Видео
 открывается на весь экран в `b8k-vplay` из этого же репозитория (`vplay/`:
 libmpv, кадры масштабирует видеокарта), а где его нет — в `mpv`.
@@ -48,7 +48,7 @@ libmpv, кадры масштабирует видеокарта), а где е�
 добавляются так же, файлом в `sources/`.
 
 Нужны Python 3 с PyGObject (GTK 3),
-[b8k-compat](https://github.com/trudenboy/b8k-compat), yt-dlp с
+[b8k-compat](https://github.com/haltia-de/kit), yt-dlp с
 JavaScript-движком (QuickJS), Pillow (картинки карточек) и `b8k-vplay`
 или `mpv`; для QR-кода входа —
 модуль `qrcode` (без него показываются ссылка и код).

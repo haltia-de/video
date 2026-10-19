@@ -3,7 +3,7 @@
 # Install b8k-video (Видео): sh install.sh [ROOT] [PREFIX]
 # ROOT empty or / for this system; PREFIX /usr/local unless given (a
 # package passes /usr). It needs Python 3 with PyGObject (GTK 3), b8k-compat
-# (github.com/trudenboy/b8k-compat), yt-dlp with a JavaScript runtime
+# (github.com/haltia-de/kit), yt-dlp with a JavaScript runtime
 # (QuickJS), and b8k-vplay or mpv to play. b8k-vplay is installed when it
 # was built (vplay/build.sh, or the package's build()). The .desktop file
 # shows it in any desktop's launcher; the b8k tablet shell puts it on its
