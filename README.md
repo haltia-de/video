@@ -1,10 +1,10 @@
-# b8k-video
+# haltia-video
 
-«Видео» (`io.github.trudenboy.Video`): крупные карточки, поиск, подписки на
-каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H) с
-оболочкой [lenovo-b8000h-linux](https://github.com/haltia-de/device-lenovo-b8000h),
+«Видео» (`io.github.haltia_de.Video`): видео с YouTube и VK Видео,
+поиск, подписки на каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H) с
+оболочкой Haltia ([device-lenovo-b8000h](https://github.com/haltia-de/device-lenovo-b8000h)),
 но это обычная программа GTK 3: работает и в GNOME, и в KDE. Видео
-открывается на весь экран в `b8k-vplay` из этого же репозитория (`vplay/`:
+открывается на весь экран в `haltia-vplay` из этого же репозитория (`vplay/`:
 libmpv, кадры масштабирует видеокарта), а где его нет — в `mpv`.
 
 - **Главная** (открывается первой) — новое в подписках, затем популярное в
@@ -33,7 +33,7 @@ libmpv, кадры масштабирует видеокарта), а где е�
   телевизоре; новый код появляется сам, пока страница открыта.
 - YouTube сам войти программе не даёт, поэтому вход — файл cookies из
   браузера, где вы вошли в аккаунт (например, расширением «Get cookies.txt
-  LOCALLY»), положенный в `~/.config/b8k/youtube-cookies.txt`; кнопка
+  LOCALLY»), положенный в `~/.config/haltia-video/youtube-cookies.txt`; кнопка
   «Проверить вход» проверяет его. С ним на Главной — рекомендации, а поиск и
   просмотр идут от вашего аккаунта.
 
@@ -48,20 +48,26 @@ libmpv, кадры масштабирует видеокарта), а где е�
 добавляются так же, файлом в `sources/`.
 
 Нужны Python 3 с PyGObject (GTK 3),
-[b8k-compat](https://github.com/haltia-de/kit), yt-dlp с
-JavaScript-движком (QuickJS), Pillow (картинки карточек) и `b8k-vplay`
+[haltia-kit](https://github.com/haltia-de/kit), yt-dlp с
+JavaScript-движком (QuickJS), Pillow (картинки карточек) и `haltia-vplay`
 или `mpv`; для QR-кода входа —
 модуль `qrcode` (без него показываются ссылка и код).
 
 Установка: `sh install.sh [ROOT] [PREFIX]` (PREFIX по умолчанию
 `/usr/local`). Она кладёт `.desktop`-файл, значок и metainfo, а
-`b8k-vplay` — если он собран: `vplay/build.sh` собирает его для планшета,
+`haltia-vplay` — если он собран: `vplay/build.sh` собирает его для планшета,
 пакет Alpine (`packaging/alpine/APKBUILD`) — сам.
 
-Подписки и настройки — `~/.config/b8k/video.json`, вход в VK —
-`~/.config/b8k/video-vk.json`, история —
-`~/.local/share/b8k-video/history.json`. В `~/.cache/b8k-video/` — картинки
+Подписки и настройки — `~/.config/haltia-video/video.json`, вход в VK —
+`~/.config/haltia-video/video-vk.json`, история —
+`~/.local/share/haltia-video/history.json`. В `~/.cache/haltia-video/` — картинки
 (не дольше месяца и не больше 150 МБ), последняя лента и Главная: при
 запуске они показываются сразу, а свежие подгружаются за ними.
+
+До 2.0 программа называлась b8k-video (`io.github.trudenboy.Video`). При
+первом запуске 2.0 подписки, настройки, вход, история и кэш переезжают
+из `~/.config/b8k` и папок `b8k-video` на новые места, а на старых
+остаются ссылки. Команды `b8k-video` и `b8k-vplay` остаются ссылками на
+новые до 3.0.
 
 Лицензия — GPL-2.0.

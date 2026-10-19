@@ -49,7 +49,7 @@ class PlayerTest(unittest.TestCase):
     def player(self, connect=None, focus="/nonexistent"):
         p = Player(post=lambda fn, *a: self.posted.put((fn, a)),
                    spawn=self.spawned.append, connect=connect or self.connect,
-                   runtime_dir=self.tmp.name, player="/usr/local/bin/b8k-vplay", focus=focus)
+                   runtime_dir=self.tmp.name, player="/usr/bin/haltia-vplay", focus=focus)
         p.watch(lambda state: self.states.append(dict(state) if state else None))
         return p
 
@@ -64,8 +64,8 @@ class PlayerTest(unittest.TestCase):
             if until():
                 return
 
-    def started(self):
-        p = self.player()
+    def started(self, **kw):
+        p = self.player(**kw)
         p.open(VIDEO, "https://vkvideo.ru/video1_2", {"cookies": "/c.txt"})
         self.pump(until=lambda: p.sock is not None)
         mpv = self.mpvs[-1]
@@ -76,7 +76,7 @@ class PlayerTest(unittest.TestCase):
     def test_open_starts_the_player_with_its_socket(self):
         p, _mpv = self.started()
         cmd = self.spawned[0]
-        self.assertEqual(cmd[:4], ["/usr/local/bin/b8k-vplay", "--title", "Кино",
+        self.assertEqual(cmd[:4], ["/usr/bin/haltia-vplay", "--title", "Кино",
                                    "https://vkvideo.ru/video1_2"])
         self.assertTrue(cmd[4].startswith("input-ipc-server=" + self.tmp.name))
         self.assertEqual(cmd[5], "ytdl-raw-options=js-runtimes=quickjs,cookies=/c.txt")
@@ -139,25 +139,34 @@ class PlayerTest(unittest.TestCase):
     def test_show_needs_the_shells_focus_tool(self):
         p, _mpv = self.started()
         p.show()
-        self.assertEqual(len(self.spawned), 1, "no b8k-focus: nothing run")
+        self.assertEqual(len(self.spawned), 1, "no haltia-focus: nothing run")
+
+    def test_show_brings_the_player_window(self):
+        p, _mpv = self.started(focus="/bin/true")
+        p.show()
+        self.assertEqual(self.spawned[-1], ["/bin/true", "activate", "haltia-vplay"])
+
+    def test_the_old_name_is_the_same_player(self):
+        cmd = command("/usr/bin/b8k-vplay", VIDEO, "u", {}, "/s")
+        self.assertEqual(cmd[:4], ["/usr/bin/b8k-vplay", "--title", "Кино", "u"])
 
     def test_sockets_live_where_only_this_user_reaches(self):
         import os
         import stat
         from player import private_dir
         mine = private_dir(self.tmp.name)
-        self.assertEqual(mine, os.path.join(self.tmp.name, "b8k-video"))
+        self.assertEqual(mine, os.path.join(self.tmp.name, "haltia-video"))
         self.assertEqual(stat.S_IMODE(os.stat(mine).st_mode), 0o700)
         # Someone's link in its place, or a directory open to others: not used.
         other = os.path.join(self.tmp.name, "other")
         os.makedirs(os.path.join(other, "elsewhere"))
-        os.symlink(os.path.join(other, "elsewhere"), os.path.join(other, "b8k-video"))
-        self.assertNotEqual(private_dir(other), os.path.join(other, "b8k-video"))
+        os.symlink(os.path.join(other, "elsewhere"), os.path.join(other, "haltia-video"))
+        self.assertNotEqual(private_dir(other), os.path.join(other, "haltia-video"))
         opened = os.path.join(self.tmp.name, "opened")
-        os.makedirs(os.path.join(opened, "b8k-video"))
-        os.chmod(os.path.join(opened, "b8k-video"), 0o777)
-        self.assertNotEqual(private_dir(opened), os.path.join(opened, "b8k-video"))
-        # No runtime directory at all: a new private one, not /tmp/b8k-video.
+        os.makedirs(os.path.join(opened, "haltia-video"))
+        os.chmod(os.path.join(opened, "haltia-video"), 0o777)
+        self.assertNotEqual(private_dir(opened), os.path.join(opened, "haltia-video"))
+        # No runtime directory at all: a new private one, not /tmp/haltia-video.
         fresh = private_dir(None)
         self.addCleanup(os.rmdir, fresh)
         self.assertEqual(stat.S_IMODE(os.stat(fresh).st_mode), 0o700)
@@ -174,13 +183,13 @@ class PlayerTest(unittest.TestCase):
                                "--input-ipc-server=/s", "u", "--ytdl-raw-options=cookies=/c"])
 
     def test_from_where_it_was_left(self):
-        self.assertIn("start=754", command("/usr/local/bin/b8k-vplay", VIDEO, "u", {}, "/s",
+        self.assertIn("start=754", command("/usr/bin/haltia-vplay", VIDEO, "u", {}, "/s",
                                            754.6))
         self.assertEqual(command("mpv", VIDEO, "u", {}, "/s", 754)[4], "--start=754")
         self.assertFalse(any("start" in c for c in command("mpv", VIDEO, "u", {}, "/s")[4:]))
 
     def test_no_ytdl_options_no_raw_list(self):
-        cmd = command("/usr/local/bin/b8k-vplay", VIDEO, "u", {}, "/s")
+        cmd = command("/usr/bin/haltia-vplay", VIDEO, "u", {}, "/s")
         self.assertFalse(any(c.startswith("ytdl-raw-options") for c in cmd))
 
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-"""The player: b8k-vplay (mpv elsewhere) as a process of its own, and what
+"""The player: haltia-vplay (mpv elsewhere) as a process of its own, and what
 it is playing, for the bar at the bottom of Видео.
 
     player = Player(post=...)          post(fn, *args) runs fn on the GTK side
@@ -13,7 +13,7 @@ it is playing, for the bar at the bottom of Видео.
     player.play() / toggle() / seek(sec) / stop() / show()
 
 The player is started with mpv's JSON IPC (input-ipc-server, which
-b8k-vplay passes on to libmpv), on a socket with an unguessable name in a
+haltia-vplay passes on to libmpv), on a socket with an unguessable name in a
 directory only this user can reach, and a thread of this module reads it;
 spawn, connect and focus can be replaced (the tests talk through a
 socketpair). When the window is closed or the video ends, the socket
@@ -31,21 +31,22 @@ import tempfile
 import threading
 import time
 
-FOCUS = "/usr/local/bin/b8k-focus"  # the b8k shell's; elsewhere show() does nothing
+# The Haltia shell's (b8k-focus before its 2.0); elsewhere show() does nothing.
+FOCUS = shutil.which("haltia-focus") or shutil.which("b8k-focus") or ""
 CONNECT_SEC = 15  # mpv opens its socket at start, before yt-dlp is asked
 OBSERVED = ("time-pos", "duration", "pause")
 
 
 def command(player, video, url, ytdl, ipc, start=None):
-    """The command line that plays url in player (b8k-vplay, else mpv),
+    """The command line that plays url in player (haltia-vplay, else mpv),
     from start seconds when given."""
     raw = dict(ytdl or {})
-    if os.path.basename(player) == "b8k-vplay":
+    if os.path.basename(player) in ("haltia-vplay", "b8k-vplay"):
         cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc]
         if start:
             cmd.append("start=%d" % start)
         if raw:
-            # Replaces b8k-vplay's own list, so its runtime goes too.
+            # Replaces haltia-vplay's own list, so its runtime goes too.
             raw = dict({"js-runtimes": "quickjs"}, **raw)
             cmd.append("ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
     else:
@@ -70,12 +71,12 @@ def connect_unix(path, give_up):
 
 
 def private_dir(runtime_dir):
-    """A directory for the sockets that only this user can reach: b8k-video
+    """A directory for the sockets that only this user can reach: haltia-video
     in the runtime directory if it is ours and closed to others, else a new
     one (someone else's directory, or a link to it, would let them answer
     in mpv's place)."""
     if runtime_dir:
-        path = os.path.join(runtime_dir, "b8k-video")
+        path = os.path.join(runtime_dir, "haltia-video")
         try:
             os.mkdir(path, 0o700)
         except FileExistsError:
@@ -87,7 +88,7 @@ def private_dir(runtime_dir):
             if (stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid()
                     and not st.st_mode & 0o077):
                 return path
-    return tempfile.mkdtemp(prefix="b8k-video-")
+    return tempfile.mkdtemp(prefix="haltia-video-")
 
 
 def popen(cmd):
@@ -106,9 +107,9 @@ class Player:
         self.connect = connect
         self.runtime_dir = runtime_dir or os.environ.get("XDG_RUNTIME_DIR")
         self.sock_dir = None  # made at the first open
-        # b8k-vplay where it is installed (PREFIX/bin: /usr/local, or /usr
+        # haltia-vplay where it is installed (PREFIX/bin: /usr/local, or /usr
         # from the package), else mpv.
-        self.player = player or shutil.which("b8k-vplay") or "mpv"
+        self.player = player or shutil.which("haltia-vplay") or shutil.which("b8k-vplay") or "mpv"
         self.focus = focus
         self.state = None
         self.watchers = []
@@ -234,9 +235,9 @@ class Player:
         self._send("seek", float(sec), "absolute")
 
     def show(self):
-        """Bring the player's window to the front (the shell's b8k-focus)."""
+        """Bring the player's window to the front (the shell's haltia-focus)."""
         if self.state and os.access(self.focus, os.X_OK):
             try:
-                self.spawn([self.focus, "activate", "b8k-vplay"])
+                self.spawn([self.focus, "activate", "haltia-vplay"])
             except OSError:
                 pass

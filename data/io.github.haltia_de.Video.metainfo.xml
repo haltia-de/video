@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.trudenboy.Video</id>
+  <id>io.github.haltia_de.Video</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-only</project_license>
   <name>Video</name>
   <name xml:lang="ru">Видео</name>
-  <summary>Videos from YouTube and VK Video in large cards</summary>
-  <summary xml:lang="ru">Видео с YouTube и VK Видео крупными карточками</summary>
+  <summary>Videos from YouTube and VK Video</summary>
+  <summary xml:lang="ru">Видео с YouTube и VK Видео</summary>
   <description>
     <p xml:lang="ru">Поиск сразу в YouTube и VK Видео, подписки на каналы, новое и популярное на главной, история и продолжение с места; видео открывается на весь экран.</p>
-    <p>Large, touch-first and simple, made for an older person's tablet; at home on any GTK desktop.</p>
+    <p>Touch-first and simple, made for an older person's tablet; at home on any GTK desktop.</p>
   </description>
-  <launchable type="desktop-id">io.github.trudenboy.Video.desktop</launchable>
-  <url type="homepage">https://github.com/trudenboy/b8k-video</url>
-  <developer id="io.github.trudenboy"><name>Mikhail Nevskiy</name></developer>
+  <launchable type="desktop-id">io.github.haltia_de.Video.desktop</launchable>
+  <url type="homepage">https://github.com/haltia-de/video</url>
+  <developer id="io.github.haltia_de"><name>Mikhail Nevskiy</name></developer>
+  <replaces><id>io.github.trudenboy.Video</id></replaces>
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.0.0" date="2026-10-19"/>
     <release version="1.12.6" date="2026-10-19"/>
     <release version="1.12.5" date="2026-10-18"/>
     <release version="1.12.4" date="2026-10-18"/>

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * b8k-vplay: Видео's video window (io.github.trudenboy.Video); other
+ * haltia-vplay: Видео's video window (io.github.haltia_de.Video); other
  * programs may open it too (Файлы does).
  *
- *   b8k-vplay [--title TITLE] URL|FILE [mpv-option=value ...]
+ *   haltia-vplay [--title TITLE] URL|FILE [mpv-option=value ...]
  *
  * libmpv decodes on the CPU and renders each frame at the video's own size
  * (a colour conversion, no scaling) into a wl_shm buffer on a subsurface;
@@ -22,7 +22,7 @@
  * at the bottom seeks (tap or drag). While the video plays, a logind
  * (systemd-logind or elogind) "idle" inhibitor keeps the screen on. The
  * window draws no close
- * button: a desktop's own closes it (the b8k shell's «✕» in the corner).
+ * button: a desktop's own closes it (the Haltia shell's «✕» in the corner).
  * Another window taking the screen pauses the video: hidden, the window
  * gets no frame callbacks, and the sound went on with no picture and no
  * way to stop it. The window closes at the end of the video. A YouTube or other page URL
@@ -146,7 +146,7 @@ static void logind_hold(int on)
 	res = g_dbus_connection_call_with_unix_fd_list_sync(
 		bus, "org.freedesktop.login1", "/org/freedesktop/login1",
 		"org.freedesktop.login1.Manager", "Inhibit",
-		g_variant_new("(ssss)", "idle", "b8k-vplay", "a video plays", "block"),
+		g_variant_new("(ssss)", "idle", "haltia-vplay", "a video plays", "block"),
 		G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NONE, 3000, NULL, &fds, NULL, &err);
 	if (res) {
 		g_variant_get(res, "(h)", &idx);
@@ -221,7 +221,7 @@ static int buf_make(struct buf *b, int w, int h, uint32_t format)
 	size = stride * (size_t)h;
 	if (size > INT32_MAX)
 		return -1;
-	fd = memfd_create("b8k-vplay", MFD_CLOEXEC);
+	fd = memfd_create("haltia-vplay", MFD_CLOEXEC);
 	if (fd < 0)
 		return -1;
 	if (ftruncate(fd, (off_t)size) < 0) {
@@ -848,7 +848,7 @@ static void poke(void *ctx)
 
 	(void)ctx;
 	if (write(wake[1], &c, 1) < 0 && errno != EAGAIN)
-		perror("b8k-vplay: wake");
+		perror("haltia-vplay: wake");
 }
 
 /* --- mpv events ------------------------------------------------------------ */
@@ -925,13 +925,13 @@ int main(int argc, char **argv)
 
 	dpy = wl_display_connect(NULL);
 	if (!dpy) {
-		fprintf(stderr, "b8k-vplay: no Wayland display\n");
+		fprintf(stderr, "haltia-vplay: no Wayland display\n");
 		return 1;
 	}
 	wl_registry_add_listener(wl_display_get_registry(dpy), &reg_listener, NULL);
 	wl_display_roundtrip(dpy);
 	if (!comp || !subcomp || !shm || !wm || !vporter) {
-		fprintf(stderr, "b8k-vplay: the compositor lacks a needed interface\n");
+		fprintf(stderr, "haltia-vplay: the compositor lacks a needed interface\n");
 		return 1;
 	}
 	xdg_wm_base_add_listener(wm, &wm_listener, NULL);
@@ -963,7 +963,7 @@ int main(int argc, char **argv)
 	xdg_surface_add_listener(xs, &xs_listener, NULL);
 	tl = xdg_surface_get_toplevel(xs);
 	xdg_toplevel_add_listener(tl, &tl_listener, NULL);
-	xdg_toplevel_set_app_id(tl, "b8k-vplay");
+	xdg_toplevel_set_app_id(tl, "haltia-vplay");
 	xdg_toplevel_set_title(tl, title[0] ? title : "Видео");
 	wl_surface_commit(base);
 
@@ -991,7 +991,7 @@ int main(int argc, char **argv)
 			continue;
 		*eq = '\0';
 		if (mpv_set_option_string(mpv, argv[i], eq + 1) < 0)
-			fprintf(stderr, "b8k-vplay: bad option %s\n", argv[i]);
+			fprintf(stderr, "haltia-vplay: bad option %s\n", argv[i]);
 	}
 	if (mpv_initialize(mpv) < 0)
 		return 1;
@@ -1000,7 +1000,7 @@ int main(int argc, char **argv)
 		{ 0 },
 	};
 	if (mpv_render_context_create(&rc, mpv, rp) < 0) {
-		fprintf(stderr, "b8k-vplay: no software render context\n");
+		fprintf(stderr, "haltia-vplay: no software render context\n");
 		return 1;
 	}
 	mpv_observe_property(mpv, 0, "time-pos", MPV_FORMAT_DOUBLE);

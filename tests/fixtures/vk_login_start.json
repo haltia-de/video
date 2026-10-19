@@ -19,7 +19,7 @@
 {
 "url": "auth.getAuthCode",
 "params": {
-"device_name": "b8k-video",
+"device_name": "haltia-video",
 "force_regenerate": "1"
 },
 "answer": {

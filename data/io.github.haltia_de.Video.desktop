@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Video
+Name[ru]=Видео
+Comment=Videos from YouTube and VK Video
+Comment[ru]=Видео с YouTube и VK Видео
+Exec=haltia-video
+Icon=io.github.haltia_de.Video
+Terminal=false
+Categories=GTK;AudioVideo;Video;Player;
+Keywords=video;youtube;vk;видео;ютуб;вк;
+StartupNotify=true
+X-Flatpak-RenamedFrom=io.github.trudenboy.Video.desktop;
+X-Haltia-Home=true
+X-Haltia-Replaces=video
+X-Haltia-Windows=haltia-vplay;b8k-vplay
+# The same for the shell before 2.0, until 3.0.
+X-B8K-Home=true
+X-B8K-Replaces=video
+X-B8K-Windows=haltia-vplay;b8k-vplay

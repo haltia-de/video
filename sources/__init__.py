@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 """The places videos come from. Every module of this package that defines
-SOURCE is one; b8k-video lists them all and needs nothing else to know
+SOURCE is one; Видео lists them all and needs nothing else to know
 about a new one (Vimeo, ...).
 
 SOURCE has:
@@ -43,11 +43,11 @@ A video is a dict:
 A channel is a dict:
   source, id, title
 and, when the source knows them (a followed channel may lack them until
-b8k-video asks find_channel again):
+Видео asks find_channel again):
   handle (like "@name"), thumb (an avatar URL), subscribers (a count or
   None), description
 
-A source may block (network): b8k-video calls it from worker threads, more
+A source may block (network): Видео calls it from worker threads, more
 than one at a time.
 """
 import importlib
@@ -57,8 +57,8 @@ import pkgutil
 import sys
 
 # Where the sources keep what they must (an account, a token).
-CONFIG_DIR = os.path.expanduser("~/.config/b8k")
-CACHE_DIR = os.path.expanduser("~/.cache/b8k-video")
+CONFIG_DIR = os.path.expanduser("~/.config/haltia-video")
+CACHE_DIR = os.path.expanduser("~/.cache/haltia-video")
 
 
 def load_json(path, default=None):
@@ -86,7 +86,7 @@ def load():
         try:
             mod = importlib.import_module("%s.%s" % (__name__, info.name))
         except Exception as exc:  # a source must never take the program down
-            sys.stderr.write("b8k-video: source %s: %s\n" % (info.name, exc))
+            sys.stderr.write("haltia-video: source %s: %s\n" % (info.name, exc))
             continue
         src = getattr(mod, "SOURCE", None)
         if src is not None:

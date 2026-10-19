@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
-"""Видео (io.github.trudenboy.Video): videos in large cards, played full
-screen by b8k-vplay (built from vplay/ in this repository), mpv elsewhere.
-A GTK 3 program of its own: its questions are b8k-compat's in-window
-dialogs; a desktop's theme gives the look (the b8k tablet shell's theme
+"""Видео (io.github.haltia_de.Video): videos in touch-sized cards, played
+full screen by haltia-vplay (built from vplay/ in this repository), mpv elsewhere.
+A GTK 3 program of its own: its questions are haltia-kit's in-window
+dialogs; a desktop's theme gives the look (the Haltia tablet shell's theme
 makes the header and dialogs large, and its touch filter buzzes).
 
 Four pages under the search field: Главная (what is new in the followed
@@ -16,14 +16,15 @@ results in place of the page. A tap on a card plays the video; a long
 press follows or unfollows its channel.
 
 Where the videos come from is a set of sources (the sources package next
-to this file, or /usr/local/lib/b8k-video/sources): YouTube and VK Видео
+to this file, or /usr/lib/haltia-video/sources): YouTube and VK Видео
 now, others the same way. Настройки (the gear) switches them on and off
 and signs in to them. A search goes to every source switched on, YouTube's
 results first; the button left of the field narrows it to one.
 
-Followed channels and settings are kept in ~/.config/b8k/video.json, the
-history in ~/.local/share/b8k-video/history.json; card pictures, the last
-feed and Главная in ~/.cache/b8k-video/, so that a start shows them at
+Followed channels and settings are kept in ~/.config/haltia-video/video.json,
+the history in ~/.local/share/haltia-video/history.json; card pictures, the
+last feed and Главная in ~/.cache/haltia-video/ (moved there from the b8k
+places of 1.x at the first start, renamed.py), so that a start shows them at
 once and fetches what is new behind them.
 """
 import hashlib
@@ -37,19 +38,19 @@ from concurrent.futures import ThreadPoolExecutor
 import gi
 from gi.repository import GLib
 
-APP_ID = "io.github.trudenboy.Video"
+APP_ID = "io.github.haltia_de.Video"
 # Before GTK starts: the Wayland app id, which the .desktop file matches.
 GLib.set_prgname(APP_ID)
 
 gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
-from b8k_compat import dialogs  # noqa: E402
+from haltia_kit import dialogs  # noqa: E402
 from gi.repository import Gdk, GdkPixbuf, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.realpath(__file__))
-# Next to it in the repository, or PREFIX/lib/b8k-video when installed.
-for path in (HERE, os.path.join(os.path.dirname(HERE), "lib", "b8k-video")):
+# Next to it in the repository, or PREFIX/lib/haltia-video when installed.
+for path in (HERE, os.path.join(os.path.dirname(HERE), "lib", "haltia-video")):
     if os.path.isdir(os.path.join(path, "sources")):
         sys.path.insert(0, path)
         break
@@ -57,6 +58,7 @@ import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
 import pictures  # noqa: E402
+import renamed  # noqa: E402
 from player import Player  # noqa: E402
 from search import view as search_view  # noqa: E402
 from signin import SignIn  # noqa: E402
@@ -717,7 +719,7 @@ class Video(Gtk.Application):
             try:
                 return chan, self.sources[chan["source"]].channel_videos(chan)
             except Exception as exc:
-                sys.stderr.write("b8k-video: %s: %s\n" % (chan.get("title"), exc))
+                sys.stderr.write("haltia-video: %s: %s\n" % (chan.get("title"), exc))
                 return chan, None
 
         out = []
@@ -839,7 +841,7 @@ class Video(Gtk.Application):
             try:
                 info = self.sources[chan["source"]].find_channel(chan["id"])
             except Exception as exc:
-                sys.stderr.write("b8k-video: %s: %s\n" % (chan.get("title"), exc))
+                sys.stderr.write("haltia-video: %s: %s\n" % (chan.get("title"), exc))
                 return None
             return info if info and info["id"] == chan["id"] else None
 
@@ -1127,10 +1129,10 @@ class Video(Gtk.Application):
             self.player.open(video, src.watch_url(video), start=self.library.resume_at(video),
                              ytdl=getattr(src, "ytdl_options", dict)())
         except OSError:
-            self.say("Нет проигрывателя (b8k-vplay или mpv).")
+            self.say("Нет проигрывателя (haltia-vplay или mpv).")
 
     def make_bar(self):
-        """What plays, below the cards: b8k-vplay pauses when one leaves it,
+        """What plays, below the cards: haltia-vplay pauses when one leaves it,
         so here it waits to be watched on, from where the slider says."""
         bar = Gtk.Box(spacing=16)
         bar.get_style_context().add_class("bar")
@@ -1177,7 +1179,7 @@ class Video(Gtk.Application):
 
     def note_position(self, state):
         """Write down how far the video was watched: on a pause (leaving
-        b8k-vplay pauses it), when it closes, and every half minute."""
+        haltia-vplay pauses it), when it closes, and every half minute."""
         last = self.play_last
         if state is None:
             if last and last["pos"] is not None:
@@ -1239,7 +1241,7 @@ class Video(Gtk.Application):
             try:
                 res, err = func(*args), None
             except Exception as exc:
-                sys.stderr.write("b8k-video: %s\n" % exc)
+                sys.stderr.write("haltia-video: %s\n" % exc)
                 res, err = None, exc
 
             def back():
@@ -1252,4 +1254,5 @@ class Video(Gtk.Application):
 
 
 if __name__ == "__main__":
+    renamed.move_old()  # before the Library and the sources open their files
     sys.exit(Video().run(sys.argv))

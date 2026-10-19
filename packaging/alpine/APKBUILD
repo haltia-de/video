@@ -1,15 +1,20 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
-pkgname=b8k-video
-pkgver=1.12.6
+pkgname=haltia-video
+pkgver=2.0.0
 pkgrel=0
-pkgdesc="Видео: videos from YouTube and VK Video in large cards (GTK 3)"
+pkgdesc="Видео: videos from YouTube and VK Video (GTK 3)"
 url="https://github.com/haltia-de/video"
-# b8k-vplay, the video window, is C.
+# haltia-vplay, the video window, is C.
 arch="all"
 license="GPL-2.0-only"
-depends="python3 py3-gobject3 gtk+3.0 py3-b8k-compat py3-pillow yt-dlp quickjs py3-qrcode"
+depends="python3 py3-gobject3 gtk+3.0 py3-haltia-kit py3-pillow yt-dlp quickjs py3-qrcode"
 makedepends="pkgconf mpv-dev pango-dev cairo-dev wayland-dev wayland-protocols glib-dev"
+# b8k-video before ADR 0004; the old names are links until 3.0.
+provides="b8k-video=$pkgver-r$pkgrel"
+replaces="b8k-video"
 source="$pkgname-$pkgver.tar.gz::https://github.com/haltia-de/video/archive/v$pkgver.tar.gz"
+# GitHub names the archive's folder after the repository.
+builddir="$srcdir/video-$pkgver"
 
 build() {
 	local p=/usr/share/wayland-protocols n
@@ -18,9 +23,9 @@ build() {
 		wayland-scanner private-code "$p/$n.xml" "vplay/${n##*/}-protocol.c"
 	done
 	# shellcheck disable=SC2046 # pkg-config prints separate flags
-	${CC:-cc} $CFLAGS -Wall -Wextra -Ivplay -o vplay/b8k-vplay \
+	${CC:-cc} $CFLAGS -Wall -Wextra -Ivplay -o vplay/haltia-vplay \
 		$(pkg-config --cflags pangocairo wayland-client gio-unix-2.0 mpv) \
-		vplay/b8k-vplay.c vplay/xdg-shell-protocol.c vplay/viewporter-protocol.c \
+		vplay/haltia-vplay.c vplay/xdg-shell-protocol.c vplay/viewporter-protocol.c \
 		$(pkg-config --libs pangocairo wayland-client gio-unix-2.0 mpv) -lm $LDFLAGS
 }
 

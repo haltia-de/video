@@ -193,7 +193,7 @@ class VKVideo:
         return {"name": self.user["name"]} if self.user else None
 
     def login_start(self):
-        resp = self._api("auth.getAuthCode", anonymous=True, device_name="b8k-video",
+        resp = self._api("auth.getAuthCode", anonymous=True, device_name="haltia-video",
                          client_id=CLIENT_ID, force_regenerate=1)
         self.pending = resp
         return {"url": resp["auth_url"], "code": resp["auth_code"]}

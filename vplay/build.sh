@@ -1,17 +1,17 @@
 #!/bin/sh
-# Cross-build b8k-vplay (armv7 musl) in the b8000h-build:3.24 container, with
+# Cross-build haltia-vplay (armv7 musl) in the b8000h-build:3.24 container, with
 # the sysroot and the protocols of the tablet's keyboard build (in
-# lenovo-b8000h-linux: linux-port/wvkbd/build.sh, run it first); libmpv's
+# device-lenovo-b8000h: linux-port/wvkbd/build.sh, run it first); libmpv's
 # headers are added to that sysroot.
-# Output: vplay/b8k-vplay next to this script (OUT= to put it elsewhere),
+# Output: vplay/haltia-vplay next to this script (OUT= to put it elsewhere),
 # which install.sh installs when it is there. On the machine itself a
-# plain build is: cc -O2 b8k-vplay.c <protocol code> $(pkg-config --cflags
+# plain build is: cc -O2 haltia-vplay.c <protocol code> $(pkg-config --cflags
 # --libs pangocairo wayland-client gio-unix-2.0 mpv) -lm (packaging/alpine).
 set -eu
-OUT=${OUT:-$(cd "$(dirname "$0")" && pwd)/b8k-vplay}
+OUT=${OUT:-$(cd "$(dirname "$0")" && pwd)/haltia-vplay}
 S=/opt/b8000h/sysroot-wvkbd
 PROTO=${PROTO:-/opt/b8000h/src/wvkbd/proto}
-WORK=/tmp/b8k-vplay-build
+WORK=/tmp/haltia-vplay-build
 if [ ! -e "$S/usr/include/pango-1.0/pango/pangocairo.h" ]; then
 	echo "no $S: build the keyboard first (linux-port/wvkbd/build.sh)" >&2
 	exit 1
@@ -36,7 +36,7 @@ mkdir -p "$(dirname "$OUT")"
 clang --target=armv7-alpine-linux-musleabihf --sysroot="$S" -B"$G" -L"$G" \
 	-fuse-ld=lld -O2 -Wall -Wextra -I"$WORK" -o "$OUT" \
 	$(pkg-config --cflags pangocairo wayland-client gio-unix-2.0) \
-	"$(dirname "$0")/b8k-vplay.c" "$WORK/xdg-shell-protocol.c" "$WORK/viewporter-protocol.c" \
+	"$(dirname "$0")/haltia-vplay.c" "$WORK/xdg-shell-protocol.c" "$WORK/viewporter-protocol.c" \
 	$(pkg-config --libs pangocairo wayland-client gio-unix-2.0) -lmpv -lm
 llvm-strip "$OUT"
 ls -l "$OUT"

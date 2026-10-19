@@ -39,8 +39,8 @@ def _done(pos, duration):
 
 class Library:
     def __init__(self, config_dir=None, data_dir=None):
-        config_dir = config_dir or os.path.expanduser("~/.config/b8k")
-        data_dir = data_dir or os.path.expanduser("~/.local/share/b8k-video")
+        config_dir = config_dir or os.path.expanduser("~/.config/haltia-video")
+        data_dir = data_dir or os.path.expanduser("~/.local/share/haltia-video")
         self.config_path = os.path.join(config_dir, "video.json")
         self.history_path = os.path.join(data_dir, "history.json")
         cfg = load_json(self.config_path) or {}

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 """The live services, to learn early that one changed what it answers:
-B8K_LIVE=1 python3 -m unittest tests.test_live. Skipped otherwise. When
+HALTIA_LIVE=1 python3 -m unittest tests.test_live. Skipped otherwise. When
 one fails, re-record (python3 -m tests.record) and see which test of
 test_sources breaks."""
 import os
@@ -9,10 +9,10 @@ import unittest
 
 from sources import vkvideo, youtube
 
-LIVE = os.environ.get("B8K_LIVE") == "1"
+LIVE = os.environ.get("HALTIA_LIVE") == "1"
 
 
-@unittest.skipUnless(LIVE, "B8K_LIVE=1 to ask the live services")
+@unittest.skipUnless(LIVE, "HALTIA_LIVE=1 to ask the live services")
 class LiveTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
