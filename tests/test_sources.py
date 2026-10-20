@@ -38,14 +38,17 @@ class Dirs(unittest.TestCase):
 
 
 class VKVideosTest(Dirs):
-    def test_search_in_catalog_order_without_clips(self):
+    def test_search_in_catalog_order_clips_marked(self):
         videos = self.vk("vk_search").search("veritasium")
         self.assertAllAsked()
         recorded = load("vk_search")[1]["answer"]["response"]
         order = [vid for sec in recorded["catalog"]["sections"] for b in sec["blocks"]
-                 if b.get("data_type") == "catalog_videos" for vid in b["videos_ids"]]
+                 if b.get("data_type") in ("catalog_videos", "videos")
+                 for vid in b["videos_ids"]]
         self.assertEqual([v["id"] for v in videos], list(dict.fromkeys(order)))
-        self.assertTrue(videos)
+        clips = [v for v in videos if v.get("short")]
+        self.assertEqual(len(clips), 10)
+        self.assertTrue(len(videos) > len(clips))
         for v in videos:
             self.assertEqual(v["source"], "vk")
             self.assertEqual(v["channel_id"], v["id"].split("_")[0])
@@ -233,12 +236,19 @@ class YouTubeFeedTest(Dirs):
         videos = self.yt("yt_channel_videos").channel_videos(chan)
         self.assertAllAsked()
         self.assertEqual(len(videos), 3)
+        self.assertEqual([v["id"] for v in videos if v.get("short")],
+                         ["6U6Z6pb6ewI", "j9p3Sn8ROL4"])
         for v in videos:
             self.assertEqual((v["source"], v["channel_id"], v["channel"]),
                              ("youtube", chan["id"], "Veritasium"))
             self.assertIsInstance(v["published"], float)
             self.assertEqual(v["thumb"], "https://i.ytimg.com/vi/%s/mqdefault.jpg" % v["id"])
             self.assertIsNone(v["duration"])
+
+    def test_a_short_found_is_marked(self):
+        entry = {"id": "x", "ie_key": "Youtube", "title": "t"}
+        self.assertNotIn("short", youtube._video(dict(entry, url="https://www.youtube.com/watch?v=x")))
+        self.assertTrue(youtube._video(dict(entry, url="https://www.youtube.com/shorts/x"))["short"])
 
     def test_owns(self):
         yt = self.yt()

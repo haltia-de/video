@@ -1,3 +1,10 @@
+haltia-video (2.3.0) unstable; urgency=medium
+
+  * Shorts (YouTube's Shorts, VK's clips) are hidden unless the new
+    "Shorts и клипы" switch in Настройки shows them.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 20 Oct 2026 12:20:00 +0300
+
 haltia-video (2.2.0) unstable; urgency=medium
 
   * Videos start sooner on the tablet: the stream is found in the program

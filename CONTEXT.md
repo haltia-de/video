@@ -14,6 +14,10 @@ _Avoid_: provider, service, backend
 One playable item of a Source, with its title, Channel, duration and publication time.
 _Avoid_: clip, item, media
 
+**Short**:
+A short vertical Video: YouTube's Shorts, VK's clips. Hidden unless the person turns them on.
+_Avoid_: reel, clip (except VK's own name)
+
 **Channel**:
 Whoever publishes Videos on a Source: a YouTube channel, a VK community or person. The same publisher on two Sources is two Channels.
 _Avoid_: author, owner, uploader, community
@@ -25,7 +29,7 @@ _Avoid_: login, profile, user
 ### What is the person's own
 
 **Library**:
-Everything that belongs to the person in the program, whichever Source it came from: the Followed channels, the History and the settings.
+Everything that belongs to the person in the program, whichever Source it came from: the Followed channels, the History and the settings (Sources switched off, Shorts shown or not).
 _Avoid_: config, state, storage, profile
 
 **Followed channel**:

@@ -99,7 +99,7 @@ def _video(item, names):
     # no picture for it either.
     if (item.get("restriction") or {}).get("can_play") == 0:
         return None
-    return {
+    video = {
         "source": "vk",
         "id": "%d_%d" % (owner, item["id"]),
         "title": item.get("title") or "",
@@ -109,6 +109,9 @@ def _video(item, names):
         "thumb": _thumb(item.get("image")),
         "published": item.get("date"),
     }
+    if item.get("type") == "short_video":
+        video["short"] = True
+    return video
 
 
 def _videos_in_order(resp, ids):
@@ -281,11 +284,11 @@ class VKVideo:
     def search(self, query):
         resp = self._api("catalog.getVideoSearchWeb2", q=query)
         # The catalog's blocks tell the order; clips (vertical, short) are
-        # in blocks of their own and left out.
+        # in a block of their own ("videos"), after the videos found before it.
         ids = []
         for section in (resp.get("catalog") or {}).get("sections") or []:
             for block in section.get("blocks") or []:
-                if block.get("data_type") == "catalog_videos":
+                if block.get("data_type") in ("catalog_videos", "videos"):
                     ids.extend(block.get("videos_ids") or [])
         return _videos_in_order(resp, ids)
 

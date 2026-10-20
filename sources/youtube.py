@@ -108,7 +108,7 @@ def _video(entry):
     vid = entry.get("id")
     if not vid or entry.get("ie_key") not in (None, "Youtube"):
         return None
-    return {
+    video = {
         "source": "youtube",
         "id": vid,
         "title": entry.get("title") or vid,
@@ -118,6 +118,9 @@ def _video(entry):
         "thumb": _thumb(vid),
         "published": entry.get("timestamp"),
     }
+    if "/shorts/" in (entry.get("url") or ""):
+        video["short"] = True
+    return video
 
 
 def _avatar(thumbs):
@@ -292,7 +295,7 @@ class YouTube:
                 when = datetime.fromisoformat(published).timestamp()
             except ValueError:
                 when = None
-            out.append({
+            video = {
                 "source": "youtube",
                 "id": vid,
                 "title": entry.findtext("atom:title", vid, NS),
@@ -301,7 +304,11 @@ class YouTube:
                 "duration": None,
                 "thumb": _thumb(vid),
                 "published": when,
-            })
+            }
+            link = entry.find("atom:link[@rel='alternate']", NS)
+            if link is not None and "/shorts/" in link.get("href", ""):
+                video["short"] = True
+            out.append(video)
         return out
 
     def owns(self, text):

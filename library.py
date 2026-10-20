@@ -198,6 +198,16 @@ class Library:
         return True
 
     @property
+    def shorts(self):
+        """Whether Shorts are shown: not unless the person turns them on."""
+        return self._cfg.get("shorts", False)
+
+    def set_shorts(self, on):
+        if bool(on) != self.shorts:
+            self._cfg["shorts"] = bool(on)
+            self._changed("settings")
+
+    @property
     def scope(self):
         """"all", or the id of the one source searches go to."""
         return self._cfg["scope"]

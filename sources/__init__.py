@@ -47,7 +47,8 @@ and, to sign in, an account:
 
 A video is a dict:
   source, id, title, channel, channel_id, duration (seconds or None),
-  thumb (an image URL), published (a Unix time or None)
+  thumb (an image URL), published (a Unix time or None); short: True for
+  a Short (YouTube's Shorts, VK's clips), shown only when the person asks
 A channel is a dict:
   source, id, title
 and, when the source knows them (a followed channel may lack them until

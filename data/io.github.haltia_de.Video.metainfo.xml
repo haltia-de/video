@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.3.0" date="2026-10-20">
+      <description>
+        <p>Shorts — YouTube's Shorts and VK's clips — are hidden; the "Shorts и клипы" switch in Settings shows them in search, on Home, in Subscriptions and on channels.</p>
+        <p xml:lang="ru">Короткие вертикальные видео — Shorts YouTube и клипы VK — больше не показываются. Переключатель «Shorts и клипы» в настройках возвращает их в поиск, на Главную, в подписки и на каналы.</p>
+      </description>
+    </release>
     <release version="2.2.0" date="2026-10-20">
       <description>
         <p>Videos start much sooner on the tablet: Video finds the stream itself instead of starting a new yt-dlp for each one, and skips the subtitles it does not show. VK videos with subtitles play again.</p>

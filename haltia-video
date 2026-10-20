@@ -404,6 +404,13 @@ class Video(Gtk.Application):
     def is_enabled(self, source_id):
         return source_id in self.sources and not self.library.is_disabled(source_id)
 
+    def wanted(self, videos):
+        """videos without the Shorts, unless they are asked for; left out
+        when drawn, so that the switch needs no new asking."""
+        if self.library.shorts:
+            return videos
+        return [v for v in videos if not v.get("short")]
+
     def scope(self):
         """The sources a search goes to."""
         on = self.enabled()
@@ -690,9 +697,10 @@ class Video(Gtk.Application):
                                  else "Пока ничего нет.", "hint"), False, False, 0)
         for src in self.enabled():
             got = self.home.get(src.id) if hasattr(src, "home") else None
-            if got and got.get("videos"):
+            videos = self.wanted((got or {}).get("videos") or [])
+            if videos:
                 self.section(box, got["title"])
-                box.pack_start(self.grid(got["videos"][:HOME_SOURCE]), False, False, 0)
+                box.pack_start(self.grid(videos[:HOME_SOURCE]), False, False, 0)
             elif getattr(src, "login", None) == "cookies" and not src.account():
                 self.section(box, src.label)
                 box.pack_start(label("Рекомендации %s появятся после входа в аккаунт "
@@ -708,7 +716,8 @@ class Video(Gtk.Application):
         """The feed as kept (fetched again when old). Unfollowed since it
         was fetched, or of a source switched off: left out all the same."""
         got = self.feed.get("feed") if self.feed_channels() else None
-        return [v for v in (got or {}).get("videos", []) if self.is_enabled(v["source"])
+        return [v for v in self.wanted((got or {}).get("videos", []))
+                if self.is_enabled(v["source"])
                 and self.library.is_followed(v["source"], v.get("channel_id"))]
 
     def show_feed(self):
@@ -749,8 +758,11 @@ class Video(Gtk.Application):
                     latest.append([chan["source"], chan["id"], max(times)])
         if chans and failed == len(chans):
             raise OSError("no channel answered")
+        # As many of each: hidden Shorts must not push the videos out.
+        out = ([v for v in out if not v.get("short")][:FEED_MAX]
+               + [v for v in out if v.get("short")][:FEED_MAX])
         out.sort(key=lambda v: v.get("published") or 0, reverse=True)
-        return {"videos": out[:FEED_MAX], "latest": latest}
+        return {"videos": out, "latest": latest}
 
     def _feed_came(self, _key, error):
         if not error:
@@ -873,6 +885,8 @@ class Video(Gtk.Application):
             return
         self.channel_wanted[key] = chan
         videos = self.channel_videos.get(key)
+        if videos is not None:
+            videos = self.wanted(videos)
         if videos is None:
             self.say("Не удалось загрузить: нет связи?" if self.channel_videos.has_failed(key)
                      else "Загружаю…")
@@ -932,7 +946,8 @@ class Video(Gtk.Application):
         keys = {s.id: (sub["kind"], s.id, sub["query"]) for s in sub["sources"]}
         shown = search_view(
             sub["kind"], sub["query"], [(s.id, s.label) for s in sub["sources"]],
-            {sid: self.searches.get(key) for sid, key in keys.items()},
+            {sid: self.wanted_found(sub["kind"], self.searches.get(key))
+             for sid, key in keys.items()},
             {sid for sid, key in keys.items() if self.searches.is_loading(key)},
             {sid for sid, key in keys.items() if self.searches.has_failed(key)},
             self.library.sort)
@@ -954,6 +969,9 @@ class Video(Gtk.Application):
                                    False, False, 0)
         self.say(shown["note"])
         self.set_content(box)
+
+    def wanted_found(self, kind, found):
+        return self.wanted(found) if kind == "search" and found is not None else found
 
     def toggle_sort(self, sub):
         self.library.set_sort("relevance" if self.library.sort == "date" else "date")
@@ -993,10 +1011,27 @@ class Video(Gtk.Application):
         box.pack_start(label("Поиск идёт во всех включённых источниках, первыми — "
                              "результаты YouTube. Кнопка слева от поля поиска "
                              "оставляет один источник.", "hint", wrap=True), False, False, 0)
+        self.section(box, "Видео")
+        box.pack_start(self.shorts_setting(), False, False, 0)
         if again:
             keep_scroll(self.scroll, lambda: self.set_content(box))
         else:
             self.set_content(box)
+
+    def shorts_setting(self):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.get_style_context().add_class("chan")
+        top = Gtk.Box(spacing=12)
+        top.pack_start(label("Shorts и клипы", "cname"), True, True, 0)
+        switch = Gtk.Switch(active=self.library.shorts)
+        switch.set_valign(Gtk.Align.CENTER)
+        switch.connect("notify::active", lambda sw, _p: self.library.set_shorts(sw.get_active()))
+        top.pack_start(switch, False, False, 0)
+        card.pack_start(top, False, False, 0)
+        card.pack_start(label("Короткие вертикальные видео YouTube и VK Видео: в поиске, "
+                              "на Главной, в подписках и на каналах.", "cdesc", wrap=True),
+                        False, False, 0)
+        return card
 
     def source_settings(self, src):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)

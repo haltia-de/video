@@ -188,6 +188,14 @@ class LibraryTest(unittest.TestCase):
         self.assertTrue(again.set_enabled("vk", True))
         self.assertFalse(again.is_disabled("vk"))
 
+    def test_shorts_hidden_unless_asked(self):
+        lib = self.library()
+        self.assertFalse(lib.shorts)
+        lib.set_shorts(True)
+        lib.set_shorts(True)
+        self.assertEqual(self.events, ["settings"])
+        self.assertTrue(Library(self.conf, self.data).shorts)
+
     def test_bad_sort_refused(self):
         with self.assertRaises(ValueError):
             self.library().set_sort("random")
