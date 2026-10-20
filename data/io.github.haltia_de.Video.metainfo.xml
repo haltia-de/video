@@ -32,7 +32,7 @@
     </release>
     <release version="2.3.0" date="2026-10-20">
       <description>
-        <p>Shorts — YouTube's Shorts and VK's clips — are hidden; the "Shorts и клипы" switch in Settings shows them in search, on Home, in Subscriptions and on channels.</p>
+        <p>Short vertical videos — YouTube's Shorts and VK's clips — are hidden now. The "Shorts и клипы" switch in Settings brings them back to search, Home, Subscriptions and channels.</p>
         <p xml:lang="ru">Короткие вертикальные видео — Shorts YouTube и клипы VK — больше не показываются. Переключатель «Shorts и клипы» в настройках возвращает их в поиск, на Главную, в подписки и на каналы.</p>
       </description>
     </release>
