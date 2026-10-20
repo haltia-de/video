@@ -56,8 +56,8 @@ libmpv, кадры масштабирует видеокарта), а где е�
 
 ## Установка
 
-**Ubuntu 24.04, Debian 13** (и elementary OS 8, Linux Mint 22; только
-amd64) — из репозитория apt Haltia:
+**Ubuntu 24.04 и 26.04, Debian 13** (и elementary OS 8, Linux Mint 22;
+только amd64) — из репозитория apt Haltia:
 
 ```
 sudo curl -fsSLo /usr/share/keyrings/haltia-archive-keyring.gpg https://haltia-de.github.io/packages/apt/haltia-archive-keyring.gpg

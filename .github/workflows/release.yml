@@ -17,8 +17,10 @@ jobs:
   deb:
     needs: apk
     uses: haltia-de/ci/.github/workflows/deb.yml@v1
+    secrets: inherit
   flatpak:
     needs: apk
     uses: haltia-de/ci/.github/workflows/flatpak.yml@v1
     with:
       manifest: packaging/flatpak/io.github.haltia_de.Video.yml
+    secrets: inherit
