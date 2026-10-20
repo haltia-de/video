@@ -56,8 +56,14 @@ and, when the source knows them (a followed channel may lack them until
   handle (like "@name"), thumb (an avatar URL), subscribers (a count or
   None), description
 
-What an account keeps secret goes into sources.vault (the keyring, else
-a file). A source may block (network): Видео calls it from worker threads, more
+What an account keeps secret goes into vault_in(config_dir): haltia-kit's
+Vault (the keyring, else a file). When the person refuses to unlock the
+keyring, such a source sets locked = True, answers as signed out (and
+plays as a guest) without dropping anything, and asks again only on
+unlock(), which may block (the desktop's prompt) and leaves locked set
+when refused once more.
+
+A source may block (network): Видео calls it from worker threads, more
 than one at a time.
 """
 import importlib
@@ -72,6 +78,19 @@ def xdg(var, default):
     """A base directory of the XDG spec ($XDG_CONFIG_HOME, ...): Flatpak
     gives each program its own."""
     return os.environ.get(var) or os.path.expanduser(default)
+
+
+APP_ID = "io.github.haltia_de.Video"
+
+
+def vault_in(config_dir, **kwargs):
+    """The Vault of the Accounts' secrets: kept under Видео's app id, with
+    config_dir/<name> as the file where no keyring answers (and where
+    2.0's files are found); kwargs as haltia_kit.vault.Vault's (keyring=
+    None in the tests)."""
+    from haltia_kit.vault import Vault
+
+    return Vault(APP_ID, config_dir, label="Видео", **kwargs)
 
 
 # Where Видео keeps what it must: the Library's files, an account, a token.

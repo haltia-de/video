@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 from sources import net, vkvideo, youtube
-from sources.vault import Vault
+from sources import vault_in
 from tests.replay import FIXTURES, key_params, method_of
 
 DROP = {"files", "trailer", "timeline_thumbs", "ads", "episodes", "stats_pixels",
@@ -88,7 +88,7 @@ class Recorder:
 
 def vk(rec, home):
     return vkvideo.VKVideo(http=rec, config_dir=home, cache_dir=home,
-                           vault=Vault(home, keyring=None))
+                           vault=vault_in(home, keyring=None))
 
 
 SCENARIOS = {
@@ -101,7 +101,7 @@ SCENARIOS = {
     "vk_channel_videos": lambda r, h: vk(r, h).channel_videos(
         {"source": "vk", "id": "-55155418", "title": "VERT DIDER"}),
     "vk_login_start": lambda r, h: (lambda s: (s.login_start(), s.login_poll()))(vk(r, h)),
-    "yt_channel_videos": lambda r, h: youtube.YouTube(http=r, config_dir=h, vault=Vault(h, keyring=None)).channel_videos(
+    "yt_channel_videos": lambda r, h: youtube.YouTube(http=r, config_dir=h, vault=vault_in(h, keyring=None)).channel_videos(
         {"source": "youtube", "id": "UCHnyfMqiRRG1u-2MsSQLbXA", "title": "Veritasium"}),
 }
 

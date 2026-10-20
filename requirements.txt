@@ -1,12 +1,13 @@
 # The Python packages Видео needs beyond PyGObject (GTK 3), at the versions
 # it is tested with (Alpine 3.24), for packaging outside a distribution
 # (Flatpak). yt-dlp is in requirements-yt-dlp.txt: it follows YouTube and
-# is raised on its own. haltia-kit (github.com/haltia-de/kit) is not on PyPI.
+# is raised on its own. haltia-kit 2.2.0 or later (github.com/haltia-de/kit,
+# its vault keeps the accounts) is not on PyPI.
 #
 # Not Python, needed all the same:
 #   QuickJS 2025-09-13  yt-dlp's JavaScript runtime (js-runtimes=quickjs)
 #   mpv 0.41 (libmpv)   the player off the tablet; haltia-vplay links libmpv
 #   libsecret 0.21      with its GObject introspection data (Secret-1),
-#                       for the keyring; without it accounts stay files
+#                       for haltia-kit's vault; without it accounts stay files
 Pillow==12.2.0
 qrcode==8.2

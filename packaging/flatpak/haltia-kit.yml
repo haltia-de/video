@@ -2,12 +2,14 @@
 # libraries shared between programs):
 #
 #   modules:
-#     - https://raw.githubusercontent.com/haltia-de/kit/v2.1.0/packaging/flatpak/haltia-kit.yml
+#     - https://raw.githubusercontent.com/haltia-de/kit/v2.2.0/packaging/flatpak/haltia-kit.yml
 #
 # or a copy of this file next to the manifest. It brings haltia_kit,
 # python-mpv and mutagen; libmpv itself (for haltia_kit.sound) and ffmpeg
 # (video frames in haltia_kit.photos) are the program's own modules or the
-# org.freedesktop.Platform.ffmpeg-full extension, when it needs them.
+# org.freedesktop.Platform.ffmpeg-full extension, when it needs them. The
+# vault needs libsecret, which the GNOME Platform has; it reaches the
+# keyring through the Secret portal, with no --talk-name.
 name: haltia-kit
 buildsystem: simple
 build-commands:
@@ -23,5 +25,5 @@ sources:
     sha256: b5296403e990fb7348df4ca2211937a030f524bf638657bda7e45a00bc2df0cd
   - type: git
     url: https://github.com/haltia-de/kit.git
-    tag: v2.1.0
+    tag: v2.2.0
     dest: kit

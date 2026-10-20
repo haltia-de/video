@@ -1,3 +1,11 @@
+haltia-video (2.4.0) unstable; urgency=medium
+
+  * Accounts are kept by haltia-kit's vault (haltia-kit 2.2.0 or later).
+  * A keyring left locked is said in Настройки, with a button to open it;
+    nothing is dropped meanwhile.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 20 Oct 2026 13:40:00 +0300
+
 haltia-video (2.3.1) unstable; urgency=medium
 
   * Cards of YouTube channels' new videos show their durations.

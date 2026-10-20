@@ -77,6 +77,24 @@ class Driver:
         return ms
 
 
+class LockedSource(CodeSource):
+    """A keyring the person will not unlock: locked until the test opens it."""
+
+    def __init__(self, polls=()):
+        super().__init__(polls)
+        self.locked = True
+        self.opens = False
+        self.kept = {"name": "Анна"}
+
+    def account(self):
+        return None if self.locked else self.user
+
+    def unlock(self):
+        self.locked = not self.opens
+        if self.opens:
+            self.user = self.kept
+
+
 class SignInTest(unittest.TestCase):
     def sign(self, source):
         self.drv = Driver()
@@ -117,6 +135,33 @@ class SignInTest(unittest.TestCase):
         self.assertEqual(s.state, {"kind": "failed", "note": "Код устарел."})
         s.begin()
         self.assertEqual(s.state["code"], "C4", "tried again from the start")
+
+    def test_a_locked_keyring_is_said_and_asked_again(self):
+        src = LockedSource()
+        s = self.sign(src)
+        self.assertEqual(s.state["kind"], "locked")
+        self.assertIn("Связка ключей закрыта", s.state["note"])
+        s.begin()  # refused once more
+        self.assertEqual(self.seen, ["checking", "locked"])
+        src.opens = True
+        s.begin()
+        self.assertEqual(s.state, {"kind": "in", "name": "Анна"})
+        self.assertEqual(src.codes, 0, "no new sign-in for a kept one")
+
+    def test_refused_while_keeping_a_new_sign_in(self):
+        src = LockedSource(polls=[OSError("locked")])
+        src.locked = False
+        s = self.sign(src)
+        s.begin()
+
+        def refused():
+            src.locked = True
+            raise OSError("locked")
+
+        src.login_poll = refused
+        self.drv.tick()
+        self.assertEqual(s.state["kind"], "locked", "not «the code expired»")
+        self.assertEqual(src.codes, 1)
 
     def test_no_code_without_network(self):
         src = CodeSource()

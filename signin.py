@@ -6,6 +6,7 @@
     sign.begin()      start signing in; cancel(); logout()
     sign.begin(how)   a "cookies" source: with a browser's cookies (an id
                       of its browsers()) instead of the file
+                      (locked: asks the keyring again instead)
     sign.watch(fn)    fn(state) on every change
 
 States:
@@ -15,6 +16,8 @@ States:
   checking  asking the source whether the file signs in
   in        {"name"}
   failed    {"note"}; begin() tries again
+  locked    {"note"}: the person refused to unlock the keyring, so the
+            Account is not read (nor dropped); begin() asks it again
 
 It drives the source's own steps (login_start, login_poll, login_check,
 logout; see the sources package): run(func, done=...) runs one on a
@@ -25,6 +28,7 @@ call comes from the caller's (GTK) thread.
 """
 POLL_MS = 3000
 RETRIES = 5
+LOCKED_NOTE = "Связка ключей закрыта: вход в аккаунт хранится в ней."
 
 
 class SignIn:
@@ -43,6 +47,8 @@ class SignIn:
 
     def _settled(self):
         account = self.source.account()
+        if getattr(self.source, "locked", False):
+            return {"kind": "locked", "note": LOCKED_NOTE}
         if account:
             return {"kind": "in", "name": account["name"]}
         if self.source.login == "cookies":
@@ -59,7 +65,11 @@ class SignIn:
 
     def begin(self, how=None):
         self.attempt += 1
-        if self.source.login == "code":
+        if self.state["kind"] == "locked":
+            self._set({"kind": "checking"})
+            attempt = self.attempt
+            self.run(self.source.unlock, done=lambda _r, _e: self._unlocked(attempt))
+        elif self.source.login == "code":
             self._new_code(self.attempt, 0)
         else:
             self._set({"kind": "checking"})
@@ -67,6 +77,10 @@ class SignIn:
             self.run(self.source.login_check, *([how] if how else []),
                      done=lambda account, error: self._checked(attempt, account, error,
                                                                how))
+
+    def _unlocked(self, attempt):
+        if attempt == self.attempt:
+            self._set(self._settled())
 
     def cancel(self):
         """Stop waiting (Настройки left); what is settled stays."""
@@ -110,7 +124,9 @@ class SignIn:
     def _answered(self, attempt, tries, account, error):
         if attempt != self.attempt:
             return
-        if error is not None:
+        if error is not None and getattr(self.source, "locked", False):
+            self._set(self._settled())
+        elif error is not None:
             # The code lives a few minutes: a new one, as a TV shows.
             if tries + 1 < self.retries:
                 self._new_code(attempt, tries + 1)
@@ -125,7 +141,9 @@ class SignIn:
     def _checked(self, attempt, account, error, how=None):
         if attempt != self.attempt:
             return
-        if error is not None or not account:
+        if error is not None and getattr(self.source, "locked", False):
+            self._set(self._settled())
+        elif error is not None or not account:
             self._set({"kind": "failed", "note": (
                 "Войти не удалось: в браузере нет входа в YouTube, он не дал свои cookies "
                 "или нет связи." if how else

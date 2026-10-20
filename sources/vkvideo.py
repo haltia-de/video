@@ -10,8 +10,9 @@ import re
 import threading
 import time
 
-from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json, stream_of
-from .vault import Vault
+from haltia_kit.vault import Locked
+
+from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json, stream_of, vault_in
 
 API = "https://api.vk.com/method/%s"
 API_VERSION = "5.274"
@@ -168,7 +169,7 @@ class VKVideo:
         of files only."""
         self.http = http
         self.clock = clock
-        self.vault = vault or Vault(config_dir)
+        self.vault = vault or vault_in(config_dir)
         self.anon_path = os.path.join(cache_dir, "vk-anonym.json")
         self.lock = threading.Lock()
         # The anonymous token outlives a run of the program: kept on disk,
@@ -176,11 +177,18 @@ class VKVideo:
         anon = load_json(self.anon_path, {}) or {}
         self.token = anon.get("token")
         self.token_until = anon.get("until", 0)
-        try:
-            self.user = json.loads(self.vault.get(ACCOUNT) or "null")
-        except ValueError:
-            self.user = None
+        self.locked = False
+        self.user = self._kept_user()
         self.pending = None  # the sign-in waiting for the phone
+
+    def _kept_user(self):
+        try:
+            return json.loads(self.vault.get(ACCOUNT) or "null")
+        except ValueError:
+            return None
+        except Locked:  # a guest until unlock(); the token stays kept
+            self.locked = True
+            return None
 
     def _post(self, url, data):
         return self.http.get_json(url, data, HEADERS)
@@ -227,6 +235,10 @@ class VKVideo:
     def account(self):
         return {"name": self.user["name"]} if self.user else None
 
+    def unlock(self):
+        self.locked = False
+        self.user = self._kept_user()
+
     def login_start(self):
         resp = self._api("auth.getAuthCode", anonymous=True, device_name="haltia-video",
                          client_id=CLIENT_ID, force_regenerate=1)
@@ -255,7 +267,11 @@ class VKVideo:
             if me else ""
         self.user = {"token": token, "id": resp.get("user_id") or (me and me[0]["id"]),
                      "name": name or "VK"}
-        self.vault.put(ACCOUNT, json.dumps(self.user, ensure_ascii=False))
+        try:
+            self.vault.put(ACCOUNT, json.dumps(self.user, ensure_ascii=False))
+        except Locked:
+            self.user, self.locked = None, True
+            raise
         return self.account()
 
     def logout(self):

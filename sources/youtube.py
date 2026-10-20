@@ -20,8 +20,9 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-from . import CONFIG_DIR, load_json, net, save_json, stream_of
-from .vault import Vault
+from haltia_kit.vault import Locked
+
+from . import CONFIG_DIR, load_json, net, save_json, stream_of, vault_in
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
 # The feed tells no durations: the channel's «Видео» tab does, from YouTube's
@@ -201,7 +202,8 @@ class YouTube:
         the sources package's net, or recorded answers in the tests (with
         a vault of files only)."""
         self.http = http
-        self.vault = vault or Vault(config_dir)
+        self.vault = vault or vault_in(config_dir)
+        self.locked = False
         self.sandboxed = sandboxed
         self.cookies = os.path.join(config_dir, COOKIES)  # where the person puts the file
         # Not secret (the cookies are): signed in, and how.
@@ -224,7 +226,13 @@ class YouTube:
             return None
         if account.get("browser"):
             return {"cookiesfrombrowser": (account["browser"],)}
-        path = self.vault.as_file(COOKIES)
+        if self.locked:
+            return None  # a guest; not asked again at every call
+        try:
+            path = self.vault.as_file(COOKIES)
+        except Locked:
+            self.locked = True
+            return None
         return {"cookiefile": path} if path else None
 
     def _signed_in(self):
@@ -235,9 +243,19 @@ class YouTube:
 
     def account(self):
         account = load_json(self.account_path)
-        if account and (account.get("browser") or self.vault.get(COOKIES) is not None):
+        if not account or account.get("browser"):
             return account
-        return None
+        if self.locked:
+            return None
+        try:
+            return account if self.vault.get(COOKIES) is not None else None
+        except Locked:
+            self.locked = True
+            return None
+
+    def unlock(self):
+        self.locked = False
+        self.account()
 
     def login_check(self, browser=None):
         """Signs in with the browser's cookies (an id of browsers()), else
@@ -247,7 +265,7 @@ class YouTube:
         elif os.path.exists(self.cookies):
             cookies = {"cookiefile": self.cookies}
         else:
-            path = self.vault.as_file(COOKIES)
+            path = self._ring(self.vault.as_file, COOKIES)
             if not path:
                 return None
             cookies = {"cookiefile": path}
@@ -262,9 +280,19 @@ class YouTube:
             account["name"] = "аккаунт Google (%s)" % dict(
                 (b, n) for b, n, _d in BROWSERS).get(browser, browser)
         else:
-            self.vault.take(COOKIES)
+            self._ring(self.vault.take, COOKIES)
         save_json(self.account_path, account)
         return account
+
+    def _ring(self, call, *args):
+        """A vault call of a sign-in: Locked goes on to SignIn, which says so."""
+        try:
+            result = call(*args)
+        except Locked:
+            self.locked = True
+            raise
+        self.locked = False
+        return result
 
     def logout(self):
         try:

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from sources import vkvideo, youtube
-from sources.vault import Vault
+from sources import vault_in
 
 LIVE = os.environ.get("HALTIA_LIVE") == "1"
 
@@ -19,8 +19,8 @@ class LiveTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.vk = vkvideo.VKVideo(config_dir=tmp.name, cache_dir=tmp.name,
-                                  vault=Vault(tmp.name, keyring=None))
-        self.yt = youtube.YouTube(config_dir=tmp.name, vault=Vault(tmp.name, keyring=None))
+                                  vault=vault_in(tmp.name, keyring=None))
+        self.yt = youtube.YouTube(config_dir=tmp.name, vault=vault_in(tmp.name, keyring=None))
 
     def assertVideos(self, videos, least=5):
         self.assertGreaterEqual(len(videos), least)

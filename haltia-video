@@ -1066,6 +1066,9 @@ class Video(Gtk.Application):
         elif kind == "waiting":
             card.pack_start(self.login_code(state), False, False, 0)
             note = None
+        elif kind == "locked":
+            note = state["note"]
+            button("Открыть связку ключей", "add", sign.begin)
         else:
             if src.login == "cookies":
                 card.pack_start(label(src.login_hint, "cdesc", wrap=True), False, False, 0)

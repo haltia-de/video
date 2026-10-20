@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.4.0" date="2026-10-20">
+      <description>
+        <p>When the keyring stays locked, Settings says so and offers to open it; the account is kept, and videos play as a guest meanwhile.</p>
+        <p xml:lang="ru">Если связка ключей закрыта, в настройках об этом сказано и есть кнопка «Открыть связку ключей»; вход в аккаунт не теряется, а видео пока открываются как для гостя.</p>
+      </description>
+    </release>
     <release version="2.3.1" date="2026-10-20">
       <description>
         <p>Cards of YouTube channels' new videos show how long each video is.</p>

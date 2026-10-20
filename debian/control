@@ -11,7 +11,7 @@ Rules-Requires-Root: no
 Package: haltia-video
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}, python3, python3-gi, gir1.2-gtk-3.0,
- gir1.2-secret-1, python3-haltia-kit, python3-pil, python3-qrcode, mpv
+ python3-haltia-kit (>= 2.2.0), python3-pil, python3-qrcode, mpv
 Description: YouTube and VK Video in large cards, simply
  Видео (Video) finds videos on YouTube and VK Video, follows channels and
  shows their new videos together, with the history of what was watched and
