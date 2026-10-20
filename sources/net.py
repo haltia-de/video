@@ -40,12 +40,16 @@ def _conn(scheme, host, fresh=False):
 
 
 def request(url, data=None, headers=None, limit=MAX_BYTES):
-    """The body of url (POSTed data, a dict, when given), unpacked."""
-    body = urllib.parse.urlencode(data).encode() if data is not None else None
+    """The body of url (POSTed data, a dict, when given: as a form, or as
+    JSON when headers say so), unpacked."""
     hdrs = {"User-Agent": UA, "Accept-Encoding": "gzip"}
-    if body is not None:
-        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
     hdrs.update(headers or {})
+    body = None
+    if data is not None and hdrs.get("Content-Type") == "application/json":
+        body = json.dumps(data).encode()
+    elif data is not None:
+        body = urllib.parse.urlencode(data).encode()
+        hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
     for _hop in range(REDIRECTS):
         parts = urllib.parse.urlsplit(url)
         path = parts.path or "/"

@@ -9,7 +9,8 @@ import urllib.parse
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 # Not part of what an exchange is about: they change on every recording.
-NOISE = {"access_token", "v", "lang", "client_id", "client_secret", "auth_hash"}
+NOISE = {"access_token", "v", "lang", "client_id", "client_secret", "auth_hash",
+         "context"}
 
 
 def method_of(url):

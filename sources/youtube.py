@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 """YouTube: search through yt-dlp (no account, no API key), a channel's
 newest videos from its public Atom feed (one small request instead of a
-page of JavaScript), playback through mpv's yt-dlp hook or, for
-haltia-vplay on the tablet, through stream(): this process's yt-dlp is
+page of JavaScript) with their durations from its «Видео» tab, playback
+through mpv's yt-dlp hook or, for haltia-vplay on the tablet, through stream(): this process's yt-dlp is
 already started and warm, a new one for every video took 6 s more there.
 
 YouTube lets no program sign in on its own any more, and it shows no
@@ -15,6 +15,7 @@ the account's channels can be followed here, and searches and playback go
 as that account."""
 import os
 import re
+import sys
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -23,6 +24,18 @@ from . import CONFIG_DIR, load_json, net, save_json, stream_of
 from .vault import Vault
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
+# The feed tells no durations: the channel's «Видео» tab does, from YouTube's
+# own JSON (as its web page asks; ~45 KB packed).
+BROWSE = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false"
+BROWSE_CONTEXT = {"client": {"clientName": "WEB", "clientVersion": "2.20260708.00.00",
+                             "hl": "ru", "gl": "RU"}}
+VIDEOS_TAB = "EgZ2aWRlb3PyBgQKAjoA"
+# A video's length is a badge on its picture, named after the video:
+# looked for in the text, not walked to through the parsed answer (half a
+# megabyte of it, on the tablet's slow CPU).
+BADGE = re.compile(r'"thumbnailBadgeViewModel":\{([^{}]*)')
+BADGE_TEXT = re.compile(r'"text":"(\d+(?::\d\d)+)"')
+BADGE_VIDEO = re.compile(r'"animationActivationTargetId":"([\w-]{11})"')
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "yt": "http://www.youtube.com/xml/schemas/2015",
@@ -102,6 +115,24 @@ def _ydl(extra=None, cookies=None):
     opts.update(cookies or {})  # cookiefile or cookiesfrombrowser
     opts.update(extra or {})
     return yt_dlp.YoutubeDL(opts)
+
+
+def _seconds(text):
+    sec = 0
+    for part in text.split(":"):
+        sec = sec * 60 + int(part)
+    return sec
+
+
+def durations(text):
+    """{video id: seconds} of the badges in a channel tab's answer."""
+    out = {}
+    for badge in BADGE.finditer(text):
+        length = BADGE_TEXT.search(badge.group(1))
+        vid = BADGE_VIDEO.search(badge.group(1))
+        if length and vid:
+            out[vid.group(1)] = _seconds(length.group(1))
+    return out
 
 
 def _video(entry):
@@ -283,8 +314,22 @@ class YouTube:
                 out.append(video)
         return out
 
+    def _durations(self, channel_id):
+        """{video id: seconds} of the channel's newest videos (not its
+        Shorts); {} when YouTube would not say: the cards then go without."""
+        try:
+            answer = self.http.request(
+                BROWSE, {"context": BROWSE_CONTEXT, "browseId": channel_id,
+                         "params": VIDEOS_TAB},
+                {"Content-Type": "application/json"}, limit=4 * 1024 * 1024)
+            return durations(answer.decode("utf-8", "replace"))
+        except (OSError, ValueError) as exc:
+            sys.stderr.write("haltia-video: durations of %s: %s\n" % (channel_id, exc))
+            return {}
+
     def channel_videos(self, channel):
         root = ET.fromstring(self.http.request(FEED % channel["id"], limit=2 * 1024 * 1024))
+        lengths = self._durations(channel["id"])
         out = []
         for entry in root.findall("atom:entry", NS):
             vid = entry.findtext("yt:videoId", "", NS)
@@ -301,7 +346,7 @@ class YouTube:
                 "title": entry.findtext("atom:title", vid, NS),
                 "channel": entry.findtext("atom:author/atom:name", channel["title"], NS),
                 "channel_id": channel["id"],
-                "duration": None,
+                "duration": lengths.get(vid),
                 "thumb": _thumb(vid),
                 "published": when,
             }

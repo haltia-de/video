@@ -1,3 +1,9 @@
+haltia-video (2.3.1) unstable; urgency=medium
+
+  * Cards of YouTube channels' new videos show their durations.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 20 Oct 2026 13:25:00 +0300
+
 haltia-video (2.3.0) unstable; urgency=medium
 
   * Shorts (YouTube's Shorts, VK's clips) are hidden unless the new

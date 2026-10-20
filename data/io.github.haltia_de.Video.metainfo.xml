@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.3.1" date="2026-10-20">
+      <description>
+        <p>Cards of YouTube channels' new videos show how long each video is.</p>
+        <p xml:lang="ru">На карточках новых видео каналов YouTube снова видна длительность.</p>
+      </description>
+    </release>
     <release version="2.3.0" date="2026-10-20">
       <description>
         <p>Shorts — YouTube's Shorts and VK's clips — are hidden; the "Shorts и клипы" switch in Settings shows them in search, on Home, in Subscriptions and on channels.</p>

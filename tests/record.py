@@ -60,6 +60,13 @@ def trim_feed(xml):
     return head + "</entry>".join(entries) + "</entry>\n</feed>\n"
 
 
+def trim_browse(text):
+    """A channel tab's answer with only what durations() reads: the
+    badges on the pictures."""
+    return "\n".join('"thumbnailBadgeViewModel":{%s}' % m.group(1)
+                     for m in youtube.BADGE.finditer(text))
+
+
 class Recorder:
     def __init__(self):
         self.exchanges = []
@@ -72,8 +79,10 @@ class Recorder:
 
     def request(self, url, data=None, headers=None, limit=net.MAX_BYTES):
         answer = net.request(url, data, headers, limit)
+        text = answer.decode("utf-8")
         self.exchanges.append({"url": method_of(url), "params": key_params(data),
-                               "answer": trim_feed(answer.decode("utf-8"))})
+                               "answer": trim_feed(text) if text.startswith("<?xml")
+                               else trim_browse(text)})
         return answer
 
 

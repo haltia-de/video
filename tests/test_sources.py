@@ -243,7 +243,32 @@ class YouTubeFeedTest(Dirs):
                              ("youtube", chan["id"], "Veritasium"))
             self.assertIsInstance(v["published"], float)
             self.assertEqual(v["thumb"], "https://i.ytimg.com/vi/%s/mqdefault.jpg" % v["id"])
-            self.assertIsNone(v["duration"])
+        # From the «Видео» tab; it does not list the Shorts.
+        self.assertEqual([(v["id"], v["duration"]) for v in videos],
+                         [("6U6Z6pb6ewI", None), ("NiCgcUTL9_Q", 34 * 60 + 32),
+                          ("j9p3Sn8ROL4", None)])
+
+    def test_without_durations_the_feed_still_comes(self):
+        chan = {"source": "youtube", "id": "UCHnyfMqiRRG1u-2MsSQLbXA", "title": "Veritasium"}
+        yt = self.yt()
+        yt.http.queue = load("yt_channel_videos")[:1]
+        feed = yt.http.request
+
+        def request(url, *args, **kwargs):
+            if "/feeds/" not in url:
+                raise OSError("refused")
+            return feed(url, *args, **kwargs)
+
+        yt.http.request = request
+        videos = yt.channel_videos(chan)
+        self.assertEqual([v["duration"] for v in videos], [None] * 3)
+
+    def test_durations_of_the_badges(self):
+        text = ('"thumbnailBadgeViewModel":{"text":"1:02:03","badgeStyle":"X",'
+                '"animationActivationTargetId":"abcdefghijk","lottieData":{"url":"u"}},'
+                '"thumbnailBadgeViewModel":{"text":"LIVE",'
+                '"animationActivationTargetId":"lllllllllll"}')
+        self.assertEqual(youtube.durations(text), {"abcdefghijk": 3723})
 
     def test_a_short_found_is_marked(self):
         entry = {"id": "x", "ie_key": "Youtube", "title": "t"}
