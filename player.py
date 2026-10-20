@@ -3,8 +3,12 @@
 it is playing, for the bar at the bottom of Видео.
 
     player = Player(post=...)          post(fn, *args) runs fn on the GTK side
-    player.open(video, url, ytdl, start)  play a Video (one at a time),
-                                       from start seconds if given
+    player.open(video, url, ytdl, start, resolve)
+                                       play a Video (one at a time), from
+                                       start seconds if given; resolve(fmt),
+                                       when given, is asked for the stream
+                                       first (for haltia-vplay: the source's
+                                       stream()), off the GTK thread
     player.state                       None, or {"video", "pos", "duration",
                                        "paused", "start"} (pos and duration
                                        in seconds or None until mpv tells them)
@@ -27,6 +31,7 @@ import shutil
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -38,6 +43,10 @@ OBSERVED = ("time-pos", "duration", "pause")
 
 
 VPLAY = ("haltia-vplay", "b8k-vplay")  # b8k-vplay: its name before 2.0, until 3.0
+# What haltia-vplay plays (its own ytdl-format): H.264 at most 480p (VP9
+# and AV1 cost more) and the AAC audio. Asked of a source's stream(), so
+# that the tablet starts no yt-dlp of its own for every video.
+VPLAY_FORMAT = "bv*[height<=480][vcodec^=avc1]+ba[ext=m4a]/b[height<=480]/b"
 
 
 def find_player(which=shutil.which):
@@ -51,12 +60,27 @@ def find_player(which=shutil.which):
     return None
 
 
-def command(player, video, url, ytdl, ipc, start=None):
+def edl(urls):
+    """One URL for mpv out of a video and an audio stream: mpv's EDL, as its
+    yt-dlp hook builds it."""
+    if len(urls) == 1:
+        return urls[0]
+    return "edl://" + ";!new_stream;".join(
+        "!no_clip;!no_chapters;%%%d%%%s" % (len(u.encode()), u) for u in urls)
+
+
+def command(player, video, url, ytdl, ipc, start=None, stream=None):
     """The command line that plays url in player (haltia-vplay, else mpv),
-    from start seconds when given."""
+    from start seconds when given; a stream (a source's stream()) is
+    played as it is, without yt-dlp."""
     raw = dict(ytdl or {})
+    opts = []
+    if stream:
+        url, raw = edl(stream["urls"]), {}
+        opts = ["ytdl=no"] + (["user-agent=" + stream["user_agent"]]
+                              if stream.get("user_agent") else [])
     if os.path.basename(player) in VPLAY:
-        cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc]
+        cmd = [player, "--title", video["title"], url, "input-ipc-server=" + ipc] + opts
         if start:
             cmd.append("start=%d" % start)
         if raw:
@@ -66,10 +90,12 @@ def command(player, video, url, ytdl, ipc, start=None):
     else:
         cmd = [player, "--fs", "--force-media-title=" + video["title"],
                "--input-ipc-server=" + ipc] + (["--start=%d" % start] if start else []) + [url]
-        # yt-dlp's own default is deno alone; QuickJS is what comes with
-        # Видео (the deb and Flatpak bring it, as Alpine does).
-        raw = dict({"js-runtimes": "quickjs"}, **raw)
-        cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
+        cmd += ["--" + o for o in opts]
+        if not stream:
+            # yt-dlp's own default is deno alone; QuickJS is what comes with
+            # Видео (the deb and Flatpak bring it, as Alpine does).
+            raw = dict({"js-runtimes": "quickjs"}, **raw)
+            cmd.append("--ytdl-raw-options=" + ",".join("%s=%s" % kv for kv in raw.items()))
     return cmd
 
 
@@ -138,25 +164,50 @@ class Player:
             fn(self.state)
 
     # --- starting and stopping ------------------------------------------------
-    def open(self, video, url, ytdl=None, start=None):
+    @property
+    def stream_format(self):
+        """The format a source's stream() is asked for, or None when the
+        player asks yt-dlp itself (mpv: a desktop's CPU does not mind)."""
+        return VPLAY_FORMAT if os.path.basename(self.player or "") in VPLAY else None
+
+    def open(self, video, url, ytdl=None, start=None, resolve=None):
         """Play video (the one playing is closed). OSError: no player."""
         if not self.player:
             raise OSError("neither haltia-vplay nor mpv is installed")
         self.stop()
         self.run_no += 1
+        self.state = {"video": video, "pos": None, "duration": None, "paused": False,
+                      "start": start}
+        self._tell()
+        args = (self.run_no, video, url, ytdl, start)
+        fmt = self.stream_format
+        if not (resolve and fmt):
+            self._start(*args, None)
+            return
+
+        def resolving():
+            try:
+                stream = resolve(fmt)
+            except Exception as exc:  # the player's own yt-dlp will try
+                sys.stderr.write("haltia-video: %s\n" % exc)
+                stream = None
+            self.post(self._start, *args, stream)
+
+        threading.Thread(target=resolving, daemon=True).start()
+
+    def _start(self, run_no, video, url, ytdl, start, stream):
+        if run_no != self.run_no or self.state is None:
+            return  # stopped, or another video opened, while it was resolved
         if self.sock_dir is None:
             self.sock_dir = private_dir(self.runtime_dir)
         ipc = os.path.join(self.sock_dir, "mpv-%d-%d-%s.sock"
-                           % (os.getpid(), self.run_no, secrets.token_hex(4)))
+                           % (os.getpid(), run_no, secrets.token_hex(4)))
         try:
             os.unlink(ipc)
         except OSError:
             pass
-        self.spawn(command(self.player, video, url, ytdl, ipc, start))
-        self.state = {"video": video, "pos": None, "duration": None, "paused": False,
-                      "start": start}
-        self._tell()
-        threading.Thread(target=self._read, args=(self.run_no, ipc), daemon=True).start()
+        self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
+        threading.Thread(target=self._read, args=(run_no, ipc), daemon=True).start()
 
     def stop(self):
         if self.state is not None:

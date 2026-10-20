@@ -5,7 +5,7 @@ import socket
 import tempfile
 import unittest
 
-from player import Player, command, find_player
+from player import VPLAY_FORMAT, Player, command, edl, find_player
 
 VIDEO = {"source": "vk", "id": "1_2", "title": "Кино"}
 
@@ -210,6 +210,54 @@ class PlayerTest(unittest.TestCase):
     def test_no_ytdl_options_no_raw_list(self):
         cmd = command("/usr/bin/haltia-vplay", VIDEO, "u", {}, "/s")
         self.assertFalse(any(c.startswith("ytdl-raw-options") for c in cmd))
+
+    def test_a_resolved_stream_plays_without_yt_dlp(self):
+        p = self.player()
+        asked = []
+        p.open(VIDEO, "https://www.youtube.com/watch?v=x", {"cookies": "/c.txt"},
+               resolve=lambda fmt: asked.append(fmt) or {"urls": ["https://v", "https://a"],
+                                                         "user_agent": "UA 1"})
+        self.assertEqual(self.spawned, [], "not before the stream is known")
+        self.assertEqual(self.states[-1]["pos"], None)  # the bar says it loads
+        self.pump(until=lambda: p.sock is not None)
+        self.assertEqual(asked, [VPLAY_FORMAT])
+        cmd = self.spawned[0]
+        self.assertEqual(cmd[3], "edl://!no_clip;!no_chapters;%9%https://v;!new_stream;"
+                                 "!no_clip;!no_chapters;%9%https://a")
+        self.assertEqual(cmd[5:], ["ytdl=no", "user-agent=UA 1"])
+
+    def test_a_failed_resolve_leaves_it_to_the_player(self):
+        p = self.player()
+
+        def fails(fmt):
+            raise ValueError("no stream")
+
+        p.open(VIDEO, "https://vkvideo.ru/video1_2", {}, resolve=fails)
+        self.pump(until=lambda: p.sock is not None)
+        self.assertEqual(self.spawned[0][3], "https://vkvideo.ru/video1_2")
+        self.assertNotIn("ytdl=no", self.spawned[0])
+
+    def test_a_stream_resolved_too_late_is_dropped(self):
+        p = self.player()
+        p.open(VIDEO, "u", resolve=lambda fmt: {"urls": ["https://old"]})
+        p.stop()
+        self.pump()
+        self.assertEqual(self.spawned, [])
+        self.assertIsNone(p.state)
+
+    def test_mpv_resolves_itself(self):
+        p = self.player()
+        p.player = "/usr/bin/mpv"
+        self.assertIsNone(p.stream_format)
+        p.open(VIDEO, "u", resolve=lambda fmt: self.fail("asked"))
+        self.assertEqual(self.spawned[0][-2:], ["u", "--ytdl-raw-options=js-runtimes=quickjs"])
+
+    def test_edl(self):
+        self.assertEqual(edl(["https://both"]), "https://both")
+        self.assertEqual(command("mpv", VIDEO, "u", {}, "/s", stream={"urls": ["https://b"]})[-2:],
+                         ["https://b", "--ytdl=no"])
+        self.assertTrue(edl(["https://в", "a"]).startswith("edl://!no_clip;!no_chapters;%10%"),
+                        "lengths in bytes")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 """YouTube: search through yt-dlp (no account, no API key), a channel's
 newest videos from its public Atom feed (one small request instead of a
-page of JavaScript), playback through mpv's yt-dlp hook.
+page of JavaScript), playback through mpv's yt-dlp hook or, for
+haltia-vplay on the tablet, through stream(): this process's yt-dlp is
+already started and warm, a new one for every video took 6 s more there.
 
 YouTube lets no program sign in on its own any more, and it shows no
 trends to a guest: signing in is the cookies of a browser where one is
@@ -17,7 +19,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-from . import CONFIG_DIR, load_json, net, save_json
+from . import CONFIG_DIR, load_json, net, save_json, stream_of
 from .vault import Vault
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
@@ -40,6 +42,12 @@ def _thumb(video_id):
     return "https://i.ytimg.com/vi/%s/mqdefault.jpg" % video_id
 
 
+# Видео shows no subtitles. yt-dlp makes every automatic caption into ~157
+# translations, a URL for each of them in each format: seconds of the
+# tablet's CPU for every video. False drops the captions YouTube sends
+# before yt-dlp looks at them.
+SUBTITLES = False
+
 COOKIES = "youtube-cookies.txt"
 # yt-dlp's names, in the order offered; where each keeps its profile.
 BROWSERS = (
@@ -61,9 +69,31 @@ def browsers(exists=os.path.exists, sandboxed=None):
             if any(exists(os.path.expanduser(d)) for d in dirs)]
 
 
+def _skip_captions():
+    """yt-dlp's YouTube extractor, taught (once) to drop the captions of
+    the player answers; nothing when its insides have changed."""
+    from yt_dlp.extractor.youtube import YoutubeIE
+
+    answers = getattr(YoutubeIE, "_extract_player_responses", None)
+    if answers is None or getattr(answers, "without_captions", False):
+        return
+
+    def without_captions(self, *args, **kwargs):
+        prs, player_url = answers(self, *args, **kwargs)
+        for pr in prs:
+            if isinstance(pr, dict):
+                pr.pop("captions", None)
+        return prs, player_url
+
+    without_captions.without_captions = True
+    YoutubeIE._extract_player_responses = without_captions
+
+
 def _ydl(extra=None, cookies=None):
     import yt_dlp  # slow to import: only when first needed
 
+    if not SUBTITLES:
+        _skip_captions()
     opts = {"quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 20,
             # A list of results carries no dates, only "3 days ago": this
@@ -235,7 +265,9 @@ class YouTube:
         return {"cookies": cookies["cookiefile"]} if cookies else {}
 
     def warm_up(self):
-        import yt_dlp  # noqa: F401  (the import is the slow part)
+        # The imports are the slow part: yt-dlp, and its YouTube extractor,
+        # which the first stream() would load.
+        _ydl().close()
 
     def search(self, query):
         with self._ydl() as ydl:
@@ -314,6 +346,17 @@ class YouTube:
 
     def watch_url(self, video):
         return "https://www.youtube.com/watch?v=" + video["id"]
+
+    def stream(self, video, fmt):
+        """What to play of video in format fmt (yt-dlp's format words), for
+        a player that asks no yt-dlp of its own: {"urls": [video, audio] or
+        [both], "user_agent"}. The URLs live some hours."""
+        # The web client's formats are all SABR now, left out, but yt-dlp
+        # takes their URLs apart first: seconds of the tablet's CPU.
+        with self._ydl({"format": fmt, "extract_flat": False,
+                        "js_runtimes": {"quickjs": {}},
+                        "extractor_args": {"youtube": {"player_client": ["default", "-web"]}}}) as ydl:
+            return stream_of(ydl.extract_info(self.watch_url(video), download=False))
 
 
 SOURCE = YouTube()

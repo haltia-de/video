@@ -10,7 +10,7 @@ import re
 import threading
 import time
 
-from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json
+from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json, stream_of
 from .vault import Vault
 
 API = "https://api.vk.com/method/%s"
@@ -36,6 +36,30 @@ class ApiError(Exception):
     def __init__(self, code, text):
         super().__init__("VK %s: %s" % (code, text))
         self.code = code
+
+
+def _skip_subtitles():
+    """yt-dlp's VK extractor, taught (once) to drop the subtitles of the
+    player's answer: Видео shows none, and yt-dlp 2026.08.19 fails on one
+    without a title (yt-dlp pull request 16761), so the video did not play
+    at all. Nothing when its insides have changed."""
+    from yt_dlp.extractor.vk import VKIE
+
+    payload = getattr(VKIE, "_download_payload", None)
+    if payload is None or getattr(payload, "without_subtitles", False):
+        return
+
+    def without_subtitles(self, *args, **kwargs):
+        answer = payload(self, *args, **kwargs)
+        try:
+            for params in answer[-1]["player"]["params"]:
+                params.pop("subs", None)
+        except (LookupError, TypeError, AttributeError):
+            pass
+        return answer
+
+    without_subtitles.without_subtitles = True
+    VKIE._download_payload = without_subtitles
 
 
 def _thumb(images):
@@ -346,6 +370,19 @@ class VKVideo:
 
     def watch_url(self, video):
         return "%s/video%s" % (SITE, video["id"])
+
+    def warm_up(self):
+        _skip_subtitles()  # imports yt-dlp and its VK extractor: the slow part
+
+    def stream(self, video, fmt):
+        """The stream through this process's yt-dlp (see sources): a new
+        one for every video took 17 s on the tablet."""
+        import yt_dlp  # slow to import: only when first needed
+
+        _skip_subtitles()
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True,
+                               "socket_timeout": 20, "format": fmt}) as ydl:
+            return stream_of(ydl.extract_info(self.watch_url(video), download=False))
 
 
 SOURCE = VKVideo()

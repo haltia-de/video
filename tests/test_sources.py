@@ -8,7 +8,7 @@ import stat
 import tempfile
 import unittest
 
-from sources import vkvideo, youtube
+from sources import stream_of, vkvideo, youtube
 from sources.vault import Vault
 from tests.replay import Replay, exchange, load
 
@@ -265,6 +265,21 @@ class YouTubeFeedTest(Dirs):
         yt.logout()
         self.assertFalse(os.path.exists(cookies))
         self.assertIsNone(yt.account())
+
+
+class StreamTest(unittest.TestCase):
+    def test_what_the_player_gets(self):
+        self.assertEqual(
+            stream_of({"requested_formats": [
+                {"url": "https://v", "http_headers": {"User-Agent": "UA"}},
+                {"url": "https://a"}]}),
+            {"urls": ["https://v", "https://a"], "user_agent": "UA"})
+        self.assertEqual(stream_of({"url": "https://both"})["urls"], ["https://both"])
+
+    def test_only_web_streams(self):
+        for url in ("edl://x", "file:///etc/passwd", "av://lavfi:x", None, ""):
+            with self.assertRaises(ValueError):
+                stream_of({"id": "x", "requested_formats": [{"url": "https://v"}, {"url": url}]})
 
 
 if __name__ == "__main__":

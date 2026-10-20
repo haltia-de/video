@@ -23,6 +23,10 @@ and may have:
                             or None when there is nothing to show
   ytdl_options()            {name: value} yt-dlp options the player needs
                             for this source's videos (cookies)
+  stream(video, fmt)        {"urls": [video, audio] or [both], "user_agent"}
+                            for a format: the player then needs no yt-dlp
+                            of its own (haltia-vplay; a new yt-dlp per
+                            video is slow on the tablet)
 
 and, to sign in, an account:
   login                     "code" (a link or QR code confirmed on a
@@ -91,6 +95,21 @@ def save_json(path, data, private=False):
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False)
     os.replace(tmp, path)
+
+
+def stream_of(info):
+    """What a source's stream() answers, from yt-dlp's info of one video
+    asked for in a format."""
+    formats = info.get("requested_formats") or [info]
+    urls = [f.get("url") for f in formats]
+    # Only the web's protocols, as mpv's yt-dlp hook allows: the player is
+    # given these as they are, and edl://, file: or av: would make it open
+    # whatever the answer names (it then tries the page through the hook).
+    if not urls or not all(isinstance(u, str) and u.startswith(("https://", "http://"))
+                           for u in urls):
+        raise ValueError("yt-dlp gave no web stream for %s" % info.get("id"))
+    return {"urls": urls,
+            "user_agent": (formats[0].get("http_headers") or {}).get("User-Agent")}
 
 
 def load():
