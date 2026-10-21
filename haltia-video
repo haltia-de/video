@@ -32,7 +32,6 @@ import os
 import sys
 import threading
 import time
-from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 import gi
@@ -91,7 +90,9 @@ QR_SIZE = 320
 # already on screen (some fifty cards take a second to make here).
 CARDS_AT_ONCE = 9
 CARDS_PER_IDLE = 6
-PIXBUFS_KEPT = 300
+# Decoded pictures kept in memory: some eighty cards (the tablet has 1 GB;
+# the rest are decoded again from the disk cache, off the GTK thread).
+PIXBUFS_BYTES = 16 * 1024 * 1024
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
@@ -267,7 +268,7 @@ class Thumbs:
 
     def __init__(self):
         self.pool = ThreadPoolExecutor(max_workers=NET_WORKERS)
-        self.kept = OrderedDict()  # (url, size): pixbuf, least recent first
+        self.kept = pictures.Recent(PIXBUFS_BYTES)  # (url, size): pixbuf
         self.waiting = {}  # (url, size): [(image, alive)] while it is fetched
         self.lock = threading.Lock()
         os.makedirs(CACHE, exist_ok=True)
@@ -280,13 +281,11 @@ class Thumbs:
         image.connect("destroy", lambda *_a: alive.__setitem__(0, False))
         with self.lock:
             pix = self.kept.get(key)
-            if pix is not None:
-                self.kept.move_to_end(key)
-            elif key in self.waiting:
-                # Already on its way (a page drawn again): one fetch for all.
-                self.waiting[key].append((image, alive))
-                return
-            else:
+            if pix is None:
+                if key in self.waiting:
+                    # Already on its way (a page drawn again): one fetch for all.
+                    self.waiting[key].append((image, alive))
+                    return
                 self.waiting[key] = [(image, alive)]
         if pix is not None:
             image.set_from_pixbuf(pix)
@@ -315,9 +314,7 @@ class Thumbs:
         with self.lock:
             images = self.waiting.pop(key)
             if pix is not None:
-                self.kept[key] = pix
-                while len(self.kept) > PIXBUFS_KEPT:
-                    self.kept.popitem(last=False)
+                self.kept.put(key, pix)
         if pix is not None:
             GLib.idle_add(self._show, [image for image, alive in images if alive[0]], pix)
 
