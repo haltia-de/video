@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import Mock
 
 from player import VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
 
@@ -27,11 +28,25 @@ class FakeMpv:
         return json.loads(line)["command"]
 
     def says(self, name, data):
-        self.end.sendall((json.dumps({"event": "property-change", "name": name,
-                                      "data": data}) + "\n").encode())
+        try:
+            self.end.sendall((json.dumps({"event": "property-change", "name": name,
+                                          "data": data}) + "\n").encode())
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # A player whose socket was closed cannot send a late event.
 
     def closes(self):
         self.end.close()
+
+
+class FakeMpvTest(unittest.TestCase):
+    def test_late_events_tolerate_a_closed_player(self):
+        mpv = FakeMpv.__new__(FakeMpv)
+        for error in (BrokenPipeError, ConnectionResetError):
+            with self.subTest(error=error):
+                mpv.end = Mock()
+                mpv.end.sendall.side_effect = error
+                mpv.says("time-pos", 99.0)
+                mpv.end.sendall.assert_called_once()
 
 
 class FakeProc:

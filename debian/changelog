@@ -1,3 +1,10 @@
+haltia-video (2.4.2) unstable; urgency=medium
+
+  * Let the player test tolerate late events after the old socket closes.
+  * Include the player lifecycle fix from 2.4.1, which was not released.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 21 Oct 2026 20:00:00 +0300
+
 haltia-video (2.4.1) unstable; urgency=medium
 
   * Tapping again before the player has started or closing Video no longer
