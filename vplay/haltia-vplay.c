@@ -28,6 +28,13 @@
  * way to stop it. The window closes at the end of the video. A YouTube or other page URL
  * goes through mpv's yt-dlp hook, at most 480p H.264 by default: more
  * than this CPU can convert in time.
+ *
+ * The main thread renders frames and handles Wayland, so it makes no call
+ * that waits on mpv's core (mpv/render.h forbids it: the core may be
+ * waiting for a frame, and on this CPU start, seek and a format change
+ * stalled the picture): the video's size and state come as observed
+ * properties, commands go async, and the logind call has a thread of its
+ * own.
  */
 #define _GNU_SOURCE
 #include <cairo.h>
@@ -109,6 +116,7 @@ static char title[256];
 static char error_text[128];
 static double t_pos = -1, t_dur = -1;
 static int paused, last_sec = -1, was_active;
+static int64_t dwidth, dheight; /* the video's size, as mpv last told it */
 
 /* A finger on the controls. */
 static int press_x, press_y, pressing, dragging;
@@ -119,7 +127,8 @@ static int ptr_x, ptr_y, ptr_down;
 /* --- helpers -------------------------------------------------------------- */
 /* A logind "idle" inhibitor: the screen stays on while its fd is open.
  * Without logind (or its bus) nothing is held, and the video plays all the
- * same. */
+ * same. Only the hold thread calls this: the bus answers in its own time
+ * (up to 3 s), and frames must not wait for it. */
 static int inhibit_fd = -1;
 
 static void logind_hold(int on)
@@ -159,10 +168,57 @@ static void logind_hold(int on)
 	g_object_unref(bus);
 }
 
+static GMutex hold_lock;
+static GCond hold_cond;
+static GThread *hold_thread;
+static int hold_want, hold_done, hold_end;
+
+/* Applies the last wish of hold_screen(), and lets go at the end. */
+static gpointer hold_run(gpointer data)
+{
+	(void)data;
+	g_mutex_lock(&hold_lock);
+	for (;;) {
+		int on;
+
+		while (!hold_end && hold_want == hold_done)
+			g_cond_wait(&hold_cond, &hold_lock);
+		if (hold_end)
+			break;
+		on = hold_want;
+		g_mutex_unlock(&hold_lock);
+		logind_hold(on);
+		g_mutex_lock(&hold_lock);
+		hold_done = on;
+	}
+	g_mutex_unlock(&hold_lock);
+	logind_hold(0);
+	return NULL;
+}
+
 /* Hold the screen on while the video plays. */
 static void hold_screen(int on)
 {
-	logind_hold(on);
+	g_mutex_lock(&hold_lock);
+	hold_want = on;
+	g_cond_signal(&hold_cond);
+	g_mutex_unlock(&hold_lock);
+}
+
+static void hold_finish(void)
+{
+	g_mutex_lock(&hold_lock);
+	hold_end = 1;
+	g_cond_signal(&hold_cond);
+	g_mutex_unlock(&hold_lock);
+	g_thread_join(hold_thread);
+}
+
+static void pause_video(void)
+{
+	int yes = 1;
+
+	mpv_set_property_async(mpv, 0, "pause", MPV_FORMAT_FLAG, &yes);
 }
 
 static void fmt_time(double t, char *out, size_t n)
@@ -469,20 +525,18 @@ static const struct wl_callback_listener frame_listener = { frame_done };
 
 static void draw_video(void)
 {
-	int64_t w = 0, h = 0;
+	int64_t w = dwidth, h = dheight;
 	struct buf *b;
 	int size[2];
 	size_t stride;
 
-	mpv_get_property(mpv, "dwidth", MPV_FORMAT_INT64, &w);
-	mpv_get_property(mpv, "dheight", MPV_FORMAT_INT64, &h);
 	if (w <= 0 || h <= 0)
 		return;
 	if (w > FRAME_MAX || h > FRAME_MAX) {
 		if (!error_text[0]) {
 			snprintf(error_text, sizeof(error_text),
 				 "Видео слишком большое: %lldx%lld", (long long)w, (long long)h);
-			mpv_set_property_string(mpv, "pause", "yes"); /* no sound without picture */
+			pause_video(); /* no sound without picture */
 			show_ui(1);
 			ui_dirty = 1;
 		}
@@ -611,7 +665,7 @@ static void press_up(void)
 			if (i)
 				seek_rel(i * SEEK_STEP);
 			else
-				mpv_command_string(mpv, "cycle pause");
+				mpv_command_async(mpv, 0, (const char *[]){ "cycle", "pause", NULL });
 			show_ui(1);
 			return;
 		}
@@ -791,7 +845,7 @@ static void tl_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t 
 		if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
 			active = 1;
 	if (was_active && !active && mpv && !paused)
-		mpv_set_property_string(mpv, "pause", "yes"); /* back: tap play */
+		pause_video(); /* back: tap play */
 	was_active = active;
 }
 
@@ -885,6 +939,10 @@ static void mpv_events(void)
 				}
 				if (drag_frac >= 0 && !pressing)
 					drag_frac = -1;
+			} else if (!strcmp(p->name, "dwidth") || !strcmp(p->name, "dheight")) {
+				int64_t v = p->format == MPV_FORMAT_INT64 ? *(int64_t *)p->data : 0;
+
+				*(p->name[1] == 'w' ? &dwidth : &dheight) = v;
 			} else if (!strcmp(p->name, "duration")) {
 				t_dur = p->format == MPV_FORMAT_DOUBLE ? *(double *)p->data : -1;
 				ui_dirty = 1;
@@ -1007,13 +1065,16 @@ int main(int argc, char **argv)
 	mpv_observe_property(mpv, 0, "duration", MPV_FORMAT_DOUBLE);
 	mpv_observe_property(mpv, 0, "pause", MPV_FORMAT_FLAG);
 	mpv_observe_property(mpv, 0, "media-title", MPV_FORMAT_STRING);
+	mpv_observe_property(mpv, 0, "dwidth", MPV_FORMAT_INT64);
+	mpv_observe_property(mpv, 0, "dheight", MPV_FORMAT_INT64);
 	mpv_set_wakeup_callback(mpv, poke, NULL);
 	mpv_render_context_set_update_callback(rc, poke, NULL);
 	{
 		const char *cmd[] = { "loadfile", url, NULL };
 
-		mpv_command(mpv, cmd);
+		mpv_command_async(mpv, 0, cmd);
 	}
+	hold_thread = g_thread_new("hold", hold_run, NULL);
 	hold_screen(1);
 
 	while (!quit) {
@@ -1060,9 +1121,9 @@ int main(int argc, char **argv)
 		if (configured && want_frame && !frame_pending)
 			draw_video();
 	}
-	hold_screen(0);
 	mpv_render_context_free(rc);
 	mpv_terminate_destroy(mpv);
 	wl_display_disconnect(dpy);
+	hold_finish(); /* lets go of the screen, the window gone meanwhile */
 	return 0;
 }

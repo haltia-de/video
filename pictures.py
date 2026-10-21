@@ -13,8 +13,15 @@ gdk-pixbuf decodes them, one at a time. They come from the network: only
 the formats cards come in are opened (not, say, EPS, which Pillow hands
 to Ghostscript), and pictures over max_pixels (told before decoding) are
 refused.
+
+    Recent(max_bytes) -> the decoded ones kept in memory, by bytes
+
+A card's picture decoded is some 200 KB (its JPEG is a tenth of that and
+stays on disk): kept by count, 300 of them took ~60 MB of the tablet's
+1 GB, so they are kept by what they take.
 """
 import threading
+from collections import OrderedDict
 
 import gi
 
@@ -56,6 +63,33 @@ def _with_pillow(path, size, max_pixels):
             im = im.resize((w, h), Image.BILINEAR)
         return GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(im.tobytes()),
                                                GdkPixbuf.Colorspace.RGB, False, 8, w, h, w * 3)
+
+
+class Recent:
+    """Pixbufs by key, the least recently used going first once they take
+    more than max_bytes. Not locked: the caller holds its own lock."""
+
+    def __init__(self, max_bytes):
+        self.max_bytes = max_bytes
+        self.bytes = 0
+        self.kept = OrderedDict()  # key: (pixbuf, its bytes), least recent first
+
+    def get(self, key):
+        got = self.kept.get(key)
+        if got is None:
+            return None
+        self.kept.move_to_end(key)
+        return got[0]
+
+    def put(self, key, pix):
+        old = self.kept.pop(key, None)
+        if old is not None:
+            self.bytes -= old[1]
+        size = pix.get_byte_length()
+        self.kept[key] = (pix, size)
+        self.bytes += size
+        while self.bytes > self.max_bytes and len(self.kept) > 1:
+            self.bytes -= self.kept.popitem(last=False)[1][1]
 
 
 def _with_gdk_pixbuf(path, size, max_pixels):

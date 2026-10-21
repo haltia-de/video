@@ -69,5 +69,54 @@ class DecodeTest(unittest.TestCase):
         self.assertIsNone(pictures.decode(self.picture(3000, 2000, "PNG"), (352, 198)))
 
 
+class Pix:
+    def __init__(self, size):
+        self.size = size
+
+    def get_byte_length(self):
+        return self.size
+
+
+class RecentTest(unittest.TestCase):
+    def test_kept_by_bytes_the_least_recent_going_first(self):
+        r = pictures.Recent(300)
+        a, b, c = Pix(100), Pix(100), Pix(100)
+        r.put("a", a)
+        r.put("b", b)
+        r.put("c", c)
+        self.assertIs(r.get("a"), a)  # now the most recent
+        r.put("d", Pix(100))
+        self.assertIsNone(r.get("b"))
+        self.assertEqual([r.get(k) is not None for k in "acd"], [True] * 3)
+        self.assertEqual(r.bytes, 300)
+        r.put("e", Pix(250))  # makes room for itself
+        self.assertEqual(list(r.kept), ["e"])
+        self.assertEqual(r.bytes, 250)
+
+    def test_put_again_counts_once(self):
+        r = pictures.Recent(300)
+        r.put("a", Pix(100))
+        r.put("a", Pix(120))
+        self.assertEqual(r.bytes, 120)
+
+    def test_one_larger_than_all_is_kept_alone(self):
+        r = pictures.Recent(100)
+        r.put("a", Pix(50))
+        big = Pix(500)
+        r.put("big", big)
+        self.assertIs(r.get("big"), big)
+        self.assertIsNone(r.get("a"))
+
+    @unittest.skipIf(Image is None, "Pillow makes the test pictures")
+    def test_a_card_is_its_pixels(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "card.jpg")
+        Image.new("RGB", (1280, 720)).save(path, "JPEG")
+        r = pictures.Recent(1 << 30)
+        r.put("card", pictures.decode(path, (352, 198)))
+        self.assertEqual(r.bytes, 352 * 198 * 3)
+
+
 if __name__ == "__main__":
     unittest.main()
