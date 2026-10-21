@@ -1,4 +1,4 @@
-# The release (ADR 0002 in haltia-de/device-lenovo-b8000h): a vX.Y.Z tag
+# The release (ADR 0002 in haltia-de/haltia): a vX.Y.Z tag
 # builds the signed Alpine package, the Debian and Ubuntu packages and the
 # Flatpak, and puts them into the GitHub release.
 name: release
