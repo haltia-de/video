@@ -1,3 +1,10 @@
+haltia-video (2.4.1) unstable; urgency=medium
+
+  * Tapping again before the player has started or closing Video no longer
+    leaves a player running unseen.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 21 Oct 2026 18:50:00 +0300
+
 haltia-video (2.4.0) unstable; urgency=medium
 
   * Accounts are kept by haltia-kit's vault (haltia-kit 2.2.0 or later).

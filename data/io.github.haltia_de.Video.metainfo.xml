@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.4.1" date="2026-10-21">
+      <description>
+        <p>Tapping again before the player has started or closing Video no longer leaves a player running unseen.</p>
+        <p xml:lang="ru">Повторное нажатие до запуска проигрывателя или закрытие Видео больше не оставляет проигрыватель работать незаметно.</p>
+      </description>
+    </release>
     <release version="2.4.0" date="2026-10-20">
       <description>
         <p>When the keyring stays locked, Settings says so and offers to open it; the account is kept, and videos play as a guest meanwhile.</p>
