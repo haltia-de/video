@@ -99,9 +99,10 @@ def command(player, video, url, ytdl, ipc, start=None, stream=None):
     return cmd
 
 
-def connect_unix(path, give_up):
-    """mpv's socket once it is there (or None by give_up, a time)."""
-    while time.time() < give_up:
+def connect_unix(path, give_up, alive=lambda: True):
+    """mpv's socket once it is there (or None by give_up, a time, or once
+    alive() says the player has exited)."""
+    while time.time() < give_up and alive():
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             sock.connect(path)
@@ -141,6 +142,15 @@ def popen(cmd):
     return proc
 
 
+def terminate(proc):
+    """End a player that cannot be told to quit (proc: spawn's answer)."""
+    if proc is not None and getattr(proc, "returncode", 0) is None:
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+
+
 class Player:
     def __init__(self, post, spawn=popen, connect=connect_unix, runtime_dir=None,
                  player=None, focus=FOCUS):
@@ -154,6 +164,7 @@ class Player:
         self.state = None
         self.watchers = []
         self.sock = None
+        self.proc = None  # the current run's process (spawn's answer)
         self.run_no = 0  # each open() is a run; older runs' events are dropped
 
     def watch(self, fn):
@@ -206,24 +217,34 @@ class Player:
             os.unlink(ipc)
         except OSError:
             pass
-        self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
-        threading.Thread(target=self._read, args=(run_no, ipc), daemon=True).start()
+        self.proc = self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
+        threading.Thread(target=self._read, args=(run_no, ipc, self.proc), daemon=True).start()
 
     def stop(self):
         if self.state is not None:
-            self._send("quit")
+            # Not connected yet (still starting): no quit reaches it, and a
+            # second libmpv on the tablet's 1 GB must not play on unseen.
+            if not self._send("quit"):
+                terminate(self.proc)
             self._ended(self.run_no)
 
     # --- the reader thread ----------------------------------------------------
-    def _read(self, run_no, ipc):
-        sock = self.connect(ipc, time.time() + CONNECT_SEC)
+    def _read(self, run_no, ipc, proc):
+        # returncode rather than poll(): popen's waiter thread holds the lock
+        # poll() needs, and sets returncode once the player has exited.
+        sock = self.connect(ipc, time.time() + CONNECT_SEC,
+                            lambda: getattr(proc, "returncode", None) is None)
         if sock is None:
+            terminate(proc)  # given up on: no bar, so no player either
             self.post(self._ended, run_no)
             return
         self.post(self._connected, run_no, sock)
-        for n, name in enumerate(OBSERVED, 1):
-            sock.sendall((json.dumps({"command": ["observe_property", n, name]})
-                          + "\n").encode())
+        try:
+            for n, name in enumerate(OBSERVED, 1):
+                sock.sendall((json.dumps({"command": ["observe_property", n, name]})
+                              + "\n").encode())
+        except OSError:
+            pass  # closed already (a run stopped meanwhile): recv ends it
         buf = b""
         while True:
             try:
@@ -250,7 +271,11 @@ class Player:
 
     def _connected(self, run_no, sock):
         if run_no != self.run_no or self.state is None:
-            sock.close()  # stopped meanwhile
+            try:  # stopped meanwhile: it must not play on unseen
+                sock.sendall(b'{"command": ["quit"]}\n')
+            except OSError:
+                pass
+            sock.close()
             return
         self.sock = sock
 
@@ -273,6 +298,7 @@ class Player:
         if run_no != self.run_no or self.state is None:
             return
         self.state = None
+        self.proc = None
         if self.sock:
             try:
                 self.sock.close()

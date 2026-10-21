@@ -3,9 +3,11 @@ import json
 import queue
 import socket
 import tempfile
+import threading
+import time
 import unittest
 
-from player import VPLAY_FORMAT, Player, command, edl, find_player
+from player import VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
 
 VIDEO = {"source": "vk", "id": "1_2", "title": "Кино"}
 
@@ -32,6 +34,18 @@ class FakeMpv:
         self.end.close()
 
 
+class FakeProc:
+    """What spawn gives back: the player's process."""
+
+    def __init__(self, cmd):
+        self.cmd = cmd
+        self.returncode = None
+        self.terminated = False
+
+    def terminate(self):
+        self.terminated = True
+
+
 class PlayerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -41,7 +55,7 @@ class PlayerTest(unittest.TestCase):
         self.mpvs = []
         self.states = []
 
-    def connect(self, path, give_up):
+    def connect(self, path, give_up, alive):
         mpv = FakeMpv()
         self.mpvs.append(mpv)
         return mpv.app_end
@@ -131,10 +145,48 @@ class PlayerTest(unittest.TestCase):
         self.assertEqual((p.state["video"]["id"], p.state["pos"]), ("3_4", 5.0))
 
     def test_a_player_that_never_opens_its_socket(self):
-        p = self.player(connect=lambda path, give_up: None)
+        p = self.player(connect=lambda path, give_up, alive: None)
+        procs = []
+        p.spawn = lambda cmd: procs.append(FakeProc(cmd)) or procs[-1]
         p.open(VIDEO, "u")
         self.pump(until=lambda: p.state is None)
         self.assertIsNone(p.state)
+        self.assertTrue(procs[0].terminated, "no bar, so no player either")
+
+    def test_a_player_still_starting_is_ended_by_the_next(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        p = self.player(connect=lambda path, give_up, alive: gate.wait(2) and None)
+        procs = []
+        p.spawn = lambda cmd: procs.append(FakeProc(cmd)) or procs[-1]
+        p.open(VIDEO, "u")
+        p.open(dict(VIDEO, id="3_4"), "u2")
+        self.assertEqual([pr.terminated for pr in procs], [True, False])
+        p.stop()
+        self.assertTrue(procs[1].terminated)
+
+    def test_a_late_connection_is_told_to_quit(self):
+        gate = threading.Event()
+
+        def connect(path, give_up, alive):
+            gate.wait(2)
+            return self.connect(path, give_up, alive)
+
+        p = self.player(connect=connect)
+        p.open(VIDEO, "u")
+        p.stop()
+        gate.set()
+        self.pump(most=1)  # _connected, for a run already stopped
+        seen = []
+        while ["quit"] not in seen:  # after the reader's observe_property, maybe
+            seen.append(self.mpvs[0].received())
+        self.assertIsNone(p.sock)
+
+    def test_a_player_that_exited_is_not_waited_for(self):
+        start = time.time()
+        self.assertIsNone(connect_unix(self.tmp.name + "/none.sock", start + 30,
+                                       lambda: False))
+        self.assertLess(time.time() - start, 1)
 
     def test_show_needs_the_shells_focus_tool(self):
         p, _mpv = self.started()

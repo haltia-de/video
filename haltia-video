@@ -435,6 +435,12 @@ class Video(Gtk.Application):
         self.scope_btn.set_label(self.scope_label())
         self.scope_btn.set_visible(len(self.enabled()) > 1)
 
+    def do_shutdown(self):
+        # The player is a process of its own: closing Видео closes it too,
+        # and stop() ends the state, which writes down how far it got.
+        self.player.stop()
+        Gtk.Application.do_shutdown(self)
+
     # --- layout -----------------------------------------------------------
     def do_activate(self):
         if self.win:
