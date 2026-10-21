@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.4.2" date="2026-10-21">
+      <description>
+        <p>Tapping again before the player has started or closing Video no longer leaves a player running unseen. Version 2.4.1 was not released.</p>
+        <p xml:lang="ru">Повторное нажатие до запуска проигрывателя или закрытие Видео больше не оставляет проигрыватель работать незаметно. Версия 2.4.1 не вышла.</p>
+      </description>
+    </release>
     <release version="2.4.1" date="2026-10-21">
       <description>
         <p>Tapping again before the player has started or closing Video no longer leaves a player running unseen.</p>

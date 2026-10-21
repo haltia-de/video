@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.4.2 (2026-10-21)
+
+### Русский
+
+Повторное нажатие до запуска проигрывателя или закрытие Видео больше не оставляет проигрыватель работать незаметно. Версия 2.4.1 не вышла.
+
+### English
+
+Tapping again before the player has started or closing Video no longer leaves a player running unseen. Version 2.4.1 was not released.
+
 ## 2.4.1 (2026-10-21)
 
 ### Русский
