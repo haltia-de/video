@@ -48,7 +48,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from haltia_kit import dialogs  # noqa: E402
-from gi.repository import Gdk, GdkPixbuf, Gtk  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Next to it in the repository, or PREFIX/lib/haltia-video when installed.
@@ -392,6 +392,10 @@ class Video(Gtk.Application):
         self.refreshing = False  # followed channels' details being fetched
         self.refresh_tried = set()
         self.win = None
+        self.back_action = Gio.SimpleAction.new("back", None)
+        self.back_action.set_enabled(False)
+        self.back_action.connect("activate", self.go_back)
+        self.add_action(self.back_action)
 
     # --- sources ----------------------------------------------------------
     def ordered(self):
@@ -459,9 +463,13 @@ class Video(Gtk.Application):
         header.set_show_close_button(not ON_HALTIA)
         self.back_btn = Gtk.Button(label="←")
         self.back_btn.get_style_context().add_class("back")
-        self.back_btn.connect("clicked", lambda *_a: self.show_page(self.page))
+        self.back_btn.set_action_name("app.back")
         self.back_btn.set_no_show_all(True)
-        header.pack_start(self.back_btn)
+        # Keep the shell's Home button corner empty when there is no back step.
+        back_slot = Gtk.Box()
+        back_slot.set_size_request(110, -1)
+        back_slot.pack_start(self.back_btn, False, False, 0)
+        header.pack_start(back_slot)
         # The same gear picture as the other programs' headers.
         gear = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.DIALOG)
         gear.get_style_context().add_class("back")
@@ -556,8 +564,16 @@ class Video(Gtk.Application):
         """A page over the tabs; the back button returns to the tab."""
         left, self.sub = self.sub, sub
         self.header.set_title(title)
-        self.back_btn.show()
+        self.update_back()
         self.left(left)
+
+    def go_back(self, *_args):
+        self.show_page(self.page if self.sub is not None else "home")
+
+    def update_back(self):
+        enabled = self.sub is not None or self.page != "home"
+        self.back_action.set_enabled(enabled)
+        self.back_btn.set_visible(enabled)
 
     def left(self, sub):
         """A page over the tabs was left: a code no one sees is not asked about."""
@@ -664,7 +680,7 @@ class Video(Gtk.Application):
         self.page = key
         left, self.sub = self.sub, None
         self.left(left)
-        self.back_btn.hide()
+        self.update_back()
         self.header.set_title("Видео")
         self.mark_tab(key)
         self.say("")
