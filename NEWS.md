@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.4.3 (2026-10-22)
+
+### Русский
+
+Вверху слева на начальном экране теперь кнопка «домой», а на вложенных экранах — «←». Запуск, перемотка и смена формата в проигрывателе стали плавнее; миниатюры занимают меньше памяти.
+
+### English
+
+The top left button now shows home on the start screen and “←” on deeper screens. Starting playback, seeking and changing formats are smoother; thumbnails use less memory.
+
 ## 2.4.2 (2026-10-21)
 
 ### Русский

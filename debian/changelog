@@ -1,3 +1,12 @@
+haltia-video (2.4.3) unstable; urgency=medium
+
+  * The top left button now shows home on the start screen and “←” on
+    deeper screens.
+  * Starting playback, seeking and changing formats are smoother;
+    thumbnails use less memory.
+
+ -- Haltia <rensomail@gmail.com>  Thu, 22 Oct 2026 09:35:00 +0300
+
 haltia-video (2.4.2) unstable; urgency=medium
 
   * Let the player test tolerate late events after the old socket closes.
