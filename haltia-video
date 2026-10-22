@@ -365,10 +365,7 @@ class Video(Gtk.Application):
         self.searches = Kept(self._search, SEARCH_KEEP_SEC, self.work)  # (kind, source, query)
         self.searches.watch(self._search_came)
         self.channel_wanted = {}  # (source, id): the channel, for its fetch
-        self.channel_videos = Kept(
-            lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
-            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
-        self.channel_videos.watch(self._channel_came)
+        self.reset_channel_data()
         self.signins = {}  # source id: its SignIn, for the sources that have one
         for src in self.sources.values():
             if getattr(src, "login", None):
@@ -565,6 +562,9 @@ class Video(Gtk.Application):
         self.left(left)
 
     def go_back(self, *_args):
+        if self.sub and self.sub["kind"] == "playlist":
+            self.show_channel(self.sub["chan"])
+            return
         self.show_page(self.page if self.sub is not None else "home")
 
     def update_back(self):
@@ -911,7 +911,76 @@ class Video(Gtk.Application):
                      else "Загружаю…")
         else:
             self.say("" if videos else "У канала пока нет видео.")
-        self.set_content(self.grid(videos or []))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        src = self.sources[chan["source"]]
+        if hasattr(src, "playlists") and hasattr(src, "playlist_videos"):
+            playlists = self.playlists.get(key)
+            if playlists:
+                self.section(box, "Плейлисты")
+                for playlist in playlists:
+                    btn = Gtk.Button(label=playlist["title"])
+                    btn.get_style_context().add_class("more")
+                    btn.get_child().set_line_wrap(True)
+                    btn.get_child().set_xalign(0)
+                    btn.connect("clicked", lambda _b, p=playlist: self.show_playlist(p, chan))
+                    box.pack_start(btn, False, False, 0)
+            elif playlists is None:
+                box.pack_start(label("Не удалось загрузить плейлисты." if
+                                      self.playlists.has_failed(key) else "Загружаю плейлисты…",
+                                      "cdesc", wrap=True), False, False, 0)
+            self.section(box, "Последние видео")
+        box.pack_start(self.grid(videos or []), False, False, 0)
+        self.set_content(box)
+
+    def reset_channel_data(self):
+        # Replace the collections on an account change: an old request
+        # must never fill the new account's cache with private playlists.
+        self.playlist_wanted = {}
+        self.channel_videos = Kept(
+            lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
+            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
+        self.channel_videos.watch(self._channel_came)
+        self.playlists = Kept(
+            lambda key, chan: self.sources[key[0]].playlists(chan),
+            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
+        self.playlists.watch(self._channel_came)
+        self.playlist_pages = Kept(
+            lambda key, playlist: self.sources[key[0]].playlist_videos(playlist, key[3]),
+            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key[:3]],))
+        self.playlist_pages.watch(self._playlist_came)
+
+    def show_playlist(self, playlist, chan, offset=0, again=False, previous=()):
+        key = (playlist["source"], playlist["owner_id"], playlist["id"], offset)
+        if not again:
+            self.open_sub({"kind": "playlist", "playlist": playlist, "chan": chan,
+                           "key": key, "previous": previous}, playlist["title"])
+        self.playlist_wanted[key[:3]] = playlist
+        page = self.playlist_pages.get(key)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        if page is None:
+            self.say("Не удалось загрузить плейлист: нет связи?" if
+                     self.playlist_pages.has_failed(key) else "Загружаю…")
+        else:
+            videos = self.wanted(page["videos"])
+            self.say("" if videos else "На этой странице нет доступных видео.")
+            box.pack_start(self.grid(videos), False, False, 0)
+        nav = Gtk.Box(spacing=12)
+        for title, pos, trail in (
+                ("← Предыдущие", previous[-1] if previous else None, previous[:-1]),
+                ("Следующие →", page["next"] if page else None, previous + (offset,))):
+            if pos is not None:
+                btn = Gtk.Button(label=title)
+                btn.get_style_context().add_class("more")
+                btn.connect("clicked", lambda _b, p=pos, t=trail:
+                            self.show_playlist(playlist, chan, p, previous=t))
+                nav.pack_start(btn, True, True, 0)
+        box.pack_start(nav, False, False, 0)
+        self.set_content(box)
+
+    def _playlist_came(self, key, _error):
+        if self.on_sub("playlist", key=key):
+            self.show_playlist(self.sub["playlist"], self.sub["chan"], key[3], again=True,
+                               previous=self.sub["previous"])
 
     def _channel_came(self, key, _error):
         if self.on_sub("channel", key=key):
@@ -1150,6 +1219,7 @@ class Video(Gtk.Application):
             # Главная and searches of a signed-in source are the account's own.
             self.home.forget(src.id)
             self.searches.forget()
+            self.reset_channel_data()
             self.account_notes[src.id] = (
                 "Подписаться на каналы аккаунта можно кнопкой ниже." if now else None)
         if self.on_sub("settings"):

@@ -14,6 +14,11 @@ SOURCE has:
   watch_url(video)          what the player opens; it goes through mpv's
                             yt-dlp hook, so a page link is enough
 and may have:
+  playlists(channel)        a list of playlists: source, owner_id (channel
+                            id), id, title; optional count of videos
+  playlist_videos(playlist, offset=0)
+                            {"videos": [...], "next": offset or None};
+                            keeps playlist order and actual video channels
   warm_up()                 called once in the background at start
   owns(text)                true when the text is a link to this source (a
                             channel link pasted to search finds the

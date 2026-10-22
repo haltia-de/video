@@ -92,6 +92,49 @@ class VKVideosTest(Dirs):
 
 
 class VKChannelsTest(Dirs):
+    def test_playlists_load_all_pages_and_keep_the_channel_owner(self):
+        vk = self.vk(exchanges=[TOKEN,
+            exchange("video.getAlbums", {"response": {"count": 3, "items": [
+                {"id": 7, "title": "Series", "count": 45}, {"id": 0, "title": "All"}]}},
+                owner_id=-7, count=100, offset=0, extended=1),
+            exchange("video.getAlbums", {"response": {"count": 3, "items": [
+                {"id": 8, "title": "Other"}]}},
+                owner_id=-7, count=100, offset=2, extended=1)])
+        playlists = vk.playlists({"source": "vk", "id": "-7", "title": "Channel"})
+        self.assertEqual([p["id"] for p in playlists], ["7", "8"])
+        self.assertEqual(playlists[0], {"source": "vk", "owner_id": "-7", "id": "7",
+                                        "title": "Series", "count": 45})
+        self.assertAllAsked()
+
+    def test_playlist_keeps_order_and_other_channels_and_pages_past_hidden_videos(self):
+        vk = self.vk(exchanges=[TOKEN,
+            exchange("video.get", {"response": {"count": 4, "groups": [
+                {"id": 7, "name": "Channel"}, {"id": 8, "name": "Other"}], "items": [
+                {"owner_id": -7, "id": 1, "title": "First", "date": 100},
+                {"owner_id": -8, "id": 2, "title": "Second", "date": 200},
+                {"owner_id": -7, "id": 3, "restriction": {"can_play": 0}}]}},
+                owner_id=-7, album_id=7, count=30, offset=0, extended=1),
+            exchange("video.get", {"response": {"count": 4, "items": [
+                {"owner_id": -7, "id": 4, "title": "Last"}]}},
+                owner_id=-7, album_id=7, count=30, offset=3, extended=1)])
+        playlist = {"source": "vk", "owner_id": "-7", "id": "7", "title": "Series"}
+        page = vk.playlist_videos(playlist)
+        self.assertEqual([v["id"] for v in page["videos"]], ["-7_1", "-8_2"])
+        self.assertEqual(page["videos"][1]["channel_id"], "-8")
+        self.assertEqual(page["videos"][1]["channel"], "Other")
+        self.assertEqual(page["next"], 3)
+        page = vk.playlist_videos(playlist, page["next"])
+        self.assertEqual([v["id"] for v in page["videos"]], ["-7_4"])
+        self.assertIsNone(page["next"])
+        self.assertAllAsked()
+
+    def test_empty_playlist_stops_paging_even_if_the_count_is_stale(self):
+        vk = self.vk(exchanges=[TOKEN, exchange("video.get", {"response": {
+            "count": 40, "items": []}}, owner_id=-7, album_id=7, count=30,
+            offset=30, extended=1)])
+        self.assertEqual(vk.playlist_videos({"source": "vk", "owner_id": "-7", "id": "7"}, 30),
+                         {"videos": [], "next": None})
+
     def test_search_channels(self):
         chans = self.vk("vk_search_channels").search_channels("vert dider")
         self.assertAllAsked()

@@ -367,6 +367,41 @@ class VKVideo:
         out.sort(key=lambda v: v["published"] or 0, reverse=True)
         return out
 
+    def playlists(self, channel):
+        out, seen, offset = [], set(), 0
+        while True:
+            resp = self._api("video.getAlbums", owner_id=channel["id"],
+                             count=100, offset=offset, extended=1)
+            items = resp.get("items") or []
+            for item in items:
+                pid = item.get("id")
+                if pid is None or pid <= 0 or pid in seen:
+                    continue
+                seen.add(pid)
+                out.append({"source": self.id, "owner_id": channel["id"],
+                            "id": str(pid), "title": item.get("title") or "Плейлист",
+                            "count": item.get("count")})
+            offset += len(items)
+            if not items or offset >= resp.get("count", offset):
+                return out
+
+    def playlist_videos(self, playlist, offset=0):
+        resp = self._api("video.get", owner_id=playlist["owner_id"],
+                         album_id=playlist["id"], count=CHANNEL_COUNT, offset=offset,
+                         extended=1)
+        items = resp.get("items") or []
+        names = _owner_names(resp)
+        # Keep the playlist's order and each video's actual channel; a
+        # playlist can contain another community's videos too.
+        videos = []
+        for item in items:
+            video = _video(item, names)
+            if video:
+                videos.append(video)
+        after = offset + len(items)
+        return {"videos": videos,
+                "next": after if items and after < resp.get("count", after) else None}
+
     def _owners(self, ids):
         """Channels for owner ids (negative for communities), in order."""
         groups = [str(-i) for i in ids if i < 0]
