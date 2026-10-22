@@ -1038,6 +1038,10 @@ class Video(Gtk.Application):
         sorting.set_halign(Gtk.Align.START)
         tools = Gtk.Box(spacing=12)
         tools.pack_start(sorting, True, True, 0)
+        reset = Gtk.Button(label="Сбросить прогресс")
+        reset.get_style_context().add_class("more")
+        reset.connect("clicked", lambda _b: self.playlist_resume_action(sub, "reset"))
+        tools.pack_start(reset, False, False, 0)
         tools.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"])),
                          False, False, 0)
         box.pack_start(tools, False, False, 0)
@@ -1142,13 +1146,41 @@ class Video(Gtk.Application):
         if self.sub is not sub:
             return
         saved = self.library.playlist_resume(sub["playlist"])
-        if not saved:
+        if not saved and action != "reset":
             return
         key = sub["key"][:3]
         orders = self.playlist_all.get(key)
         if orders is None:
             self.pending_playlist_resume = {"sub": sub, "key": key, "action": action}
-            self.say("Ищу сохранённое видео в плейлисте…")
+            self.say("Загружаю плейлист для сброса прогресса…" if action == "reset" else
+                     "Ищу сохранённое видео в плейлисте…")
+            return
+        if action == "reset":
+            if not dialogs.ask(self.win,
+                               "Будут сброшены последнее видео и позиции просмотра всех видео "
+                               "плейлиста. Позиции этих видео сбросятся и в других плейлистах, "
+                               "где они встречаются. Закладки, история и сортировка сохранятся.",
+                               "Сбросить прогресс"):
+                return
+            if self.sub is not sub:
+                return
+            videos = list(orders["vk"])
+            if saved:
+                videos.append(saved["video"])
+            ids = {(v["source"], v["id"]) for v in videos}
+            self.pending_playlist_play = None
+            self.pending_playlist_resume = None
+            state = self.player.state
+            if state and ((state["video"]["source"], state["video"]["id"]) in ids or
+                          (state.get("playlist") and bookmark_view.key("playlist", state["playlist"]) ==
+                           bookmark_view.key("playlist", sub["playlist"]))):
+                # Stop first: closing the player saves its last position.
+                # Reset afterwards so a live queue cannot restore it.
+                self.stop_playback()
+            self.library.reset_playlist_progress(sub["playlist"], videos)
+            if self.sub is sub:
+                self.show_playlist(sub["playlist"], sub["chan"])
+                self.say("Прогресс плейлиста сброшен.")
             return
         videos = self.wanted(orders[sub["order"]])
         status = playlist_view.continuation(videos, saved)

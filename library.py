@@ -220,6 +220,21 @@ class Library:
         return {"video": video, "pos": pos.get("pos"), "duration": pos.get("duration"),
                 "complete": self.completed(video)}
 
+    def reset_playlist_progress(self, playlist, videos):
+        """Forget this cursor and the shared positions of its videos.
+        Keep history entries and metadata; clear both copies of progress
+        so migration cannot bring a reset position back on restart.
+        """
+        ident = bookmark_key("playlist", playlist)
+        cursor = self._playback["playlists"].pop(ident, None)
+        videos = list(videos) + ([cursor["video"]] if cursor else [])
+        ids = {bookmark_key("video", v) for v in videos}
+        for entry in list(self._playback["videos"].values()) + self._history:
+            if bookmark_key("video", entry) in ids:
+                entry.pop("pos", None)
+                entry.pop("ended", None)
+        self._changed("position")
+
     def resume_at(self, video):
         """Where to go on from (seconds), or None to start at the beginning."""
         entry = self.position(video)

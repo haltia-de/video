@@ -79,3 +79,35 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(orders["_locations"][("vk", VIDEOS[41]["id"])], (30, (0,)))
         self.assertEqual(orders["_pages"][30]["videos"], VIDEOS[40:42])
         self.assertEqual(calls, [0, 30])
+
+    def test_reset_clears_shared_positions_and_cursor_but_keeps_sort_bookmarks_and_history(self):
+        other = dict(PLAYLIST, id="2")
+        self.watch(VIDEOS[1], PLAYLIST, pos=600, ended=True)
+        self.watch(VIDEOS[1], other, pos=600, ended=True)
+        self.watch(VIDEOS[2], other, pos=200)
+        self.lib.set_playlist_order(PLAYLIST, "lesson")
+        self.lib.bookmarks.add("playlist", PLAYLIST)
+        history = [v["id"] for v in self.lib.history()]
+        self.lib.reset_playlist_progress(PLAYLIST, [VIDEOS[1]])
+        again = Library(self.tmp.name, self.tmp.name)
+        self.assertIsNone(again.playlist_resume(PLAYLIST))
+        self.assertIsNone(again.resume_at(VIDEOS[1]))
+        self.assertFalse(again.completed(VIDEOS[1]))
+        self.assertIsNone(again.progress(VIDEOS[1]))
+        self.assertEqual(again.resume_at(VIDEOS[2]), 200)
+        self.assertEqual(again.playlist_resume(other)["video"]["id"], VIDEOS[2]["id"])
+        self.assertEqual(again.playlist_order(PLAYLIST), "lesson")
+        self.assertIsNotNone(again.bookmarks.find("playlist", PLAYLIST))
+        self.assertEqual([v["id"] for v in again.history()], history)
+
+    def test_reset_includes_old_cursor_video_removed_from_playlist(self):
+        self.watch(VIDEOS[1])
+        self.lib.reset_playlist_progress(PLAYLIST, [])
+        self.assertIsNone(self.lib.playlist_resume(PLAYLIST))
+        self.assertIsNone(self.lib.resume_at(VIDEOS[1]))
+
+    def test_reset_without_cursor_clears_progress_watched_elsewhere(self):
+        self.lib.played(VIDEOS[1])
+        self.lib.note_position(VIDEOS[1], 200, 600)
+        self.lib.reset_playlist_progress(PLAYLIST, [VIDEOS[1]])
+        self.assertIsNone(self.lib.resume_at(VIDEOS[1]))
