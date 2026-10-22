@@ -378,6 +378,8 @@ class Video(Gtk.Application):
         self.player = Player(post=lambda fn, *a: GLib.idle_add(lambda: (fn(*a), False)[1]))
         self.player.watch(self.show_bar)
         self.player.watch(self.note_position)
+        self.player.watch(self.note_played)
+        self.recorded_video = None
         self.play_last = None  # the player's state as last seen
         self.play_saved = 0  # when its position was last written down
         self.seeking = False  # a finger on the bar's slider
@@ -437,7 +439,7 @@ class Video(Gtk.Application):
     def do_shutdown(self):
         # The player is a process of its own: closing Видео closes it too,
         # and stop() ends the state, which writes down how far it got.
-        self.player.stop()
+        self.stop_playback()
         Gtk.Application.do_shutdown(self)
 
     # --- layout -----------------------------------------------------------
@@ -575,6 +577,8 @@ class Video(Gtk.Application):
 
     def left(self, sub):
         """A page over the tabs was left: a code no one sees is not asked about."""
+        if self.pending_playlist_play and self.pending_playlist_play["sub"] is sub:
+            self.pending_playlist_play = None
         if sub and sub["kind"] == "settings":
             for sign in self.signins.values():
                 sign.cancel()
@@ -938,6 +942,7 @@ class Video(Gtk.Application):
         # must never fill the new account's cache with private playlists.
         self.playlist_wanted = {}
         self.playlist_order = {}
+        self.pending_playlist_play = None
         self.channel_videos = Kept(
             lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
@@ -1012,6 +1017,13 @@ class Video(Gtk.Application):
                                previous=self.sub["previous"])
 
     def _playlist_all_came(self, key, _error):
+        pending = self.pending_playlist_play
+        if pending and pending["key"] == key and self.sub is pending["sub"]:
+            if _error:
+                self.pending_playlist_play = None
+                self.say("Не удалось загрузить очередь плейлиста: нет связи?")
+            else:
+                self.play_from_playlist(pending["video"], pending["sub"])
         if (self.sub and self.sub["kind"] == "playlist"
                 and self.sub["key"][:3] == key and self.sub["order"] != "vk"):
             self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
@@ -1315,10 +1327,14 @@ class Video(Gtk.Application):
 
     # --- playing ----------------------------------------------------------
     def play(self, video):
+        self.pending_playlist_play = None
         src = self.sources.get(video["source"])
         if not src:
             return
-        self.library.played(video)
+        if (self.sub and self.sub["kind"] == "playlist" and self.player.stream_format is None
+                and hasattr(src, "stream")):
+            self.play_from_playlist(video, self.sub)
+            return
         try:
             stream = getattr(src, "stream", None)
             self.player.open(video, src.watch_url(video), start=self.library.resume_at(video),
@@ -1327,6 +1343,37 @@ class Video(Gtk.Application):
                              resolve_desktop=getattr(src, "resolve_on_desktop", False))
         except OSError:
             self.say("Нет проигрывателя (haltia-vplay или mpv).")
+
+    def play_from_playlist(self, video, sub):
+        key = sub["key"][:3]
+        orders = self.playlist_all.get(key)
+        if orders is None:
+            self.pending_playlist_play = {"key": key, "sub": sub, "video": video}
+            self.say("Загружаю плейлист для проигрывателя…")
+            return
+        self.pending_playlist_play = None
+        videos = self.wanted(orders[sub["order"]])
+        index = next((i for i, v in enumerate(videos)
+                      if (v["source"], v["id"]) == (video["source"], video["id"])), None)
+        if index is None:
+            self.say("Этого видео больше нет в плейлисте.")
+            return
+        src = self.sources[video["source"]]
+        try:
+            self.player.open_playlist(videos, index, src.stream, self.library.resume_at)
+        except OSError:
+            self.say("Не удалось запустить проигрыватель.")
+
+    def stop_playback(self):
+        self.pending_playlist_play = None
+        self.player.stop()
+
+    def note_played(self, state):
+        video = state["video"] if state else None
+        if video is not self.recorded_video:
+            self.recorded_video = video
+            if video:
+                self.library.played(video)
 
     def make_bar(self):
         """What plays, below the cards: haltia-vplay pauses when one leaves it,
@@ -1368,7 +1415,7 @@ class Video(Gtk.Application):
         close = Gtk.Button(label="✕")
         close.get_style_context().add_class("close")
         close.set_valign(Gtk.Align.CENTER)
-        close.connect("clicked", lambda *_a: self.player.stop())
+        close.connect("clicked", lambda *_a: self.stop_playback())
         bar.pack_start(close, False, False, 0)
         self.bar = bar
         self.bar_video = None

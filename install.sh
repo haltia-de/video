@@ -23,6 +23,7 @@ rm -rf "$lib" "$root$prefix/lib/b8k-video"
 for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py; do
 	install -D -m 644 "$here/$f" "$lib/$f"
 done
+install -D -m 644 "$here/haltia-queue.lua" "$lib/haltia-queue.lua"
 for f in "$here"/sources/*.py; do
 	install -D -m 644 "$f" "$lib/sources/${f##*/}"
 done

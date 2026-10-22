@@ -167,6 +167,9 @@ class Player:
         self.sock = None
         self.proc = None  # the current run's process (spawn's answer)
         self.run_no = 0  # each open() is a run; older runs' events are dropped
+        self.queue = None
+        self.queue_loaded = False
+        self.queue_request = None
 
     def watch(self, fn):
         self.watchers.append(fn)
@@ -222,11 +225,98 @@ class Player:
         self.proc = self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
         threading.Thread(target=self._read, args=(run_no, ipc, self.proc), daemon=True).start()
 
+    def open_playlist(self, videos, index, resolve, start_for=None):
+        """A native desktop mpv playlist; resolve(video, fmt) runs per entry."""
+        if not self.player or os.path.basename(self.player) in VPLAY:
+            raise OSError("a desktop mpv is needed for playlist controls")
+        videos = list(videos)
+        if not 0 <= index < len(videos):
+            raise ValueError("playlist index is out of range")
+        self.stop()
+        self.run_no += 1
+        self.queue = videos
+        self.queue_index = index
+        self.queue_resolve = resolve
+        self.queue_start = start_for
+        self.queue_loaded = False
+        self.queue_request = None
+        video = self.queue[index]
+        self.state = {"video": video, "pos": None, "duration": None, "paused": False,
+                      "start": None}
+        self._tell()
+        if self.sock_dir is None:
+            self.sock_dir = private_dir(self.runtime_dir)
+        ipc = os.path.join(self.sock_dir, "queue-%s.sock" % secrets.token_hex(8))
+        script = os.path.join(os.path.dirname(os.path.realpath(__file__)), "haltia-queue.lua")
+        try:
+            self.proc = self.spawn([self.player, "--fs", "--idle=once", "--force-window=yes",
+                                    "--input-ipc-server=" + ipc, "--script=" + script])
+        except OSError:
+            self._ended(self.run_no)
+            raise
+        threading.Thread(target=self._read, args=(self.run_no, ipc, self.proc), daemon=True).start()
+
+    def _queue_message(self, run_no, args):
+        if run_no != self.run_no or self.state is None or self.queue is None or not args:
+            return
+        if args[0] == "haltia-queue-ready" and not self.queue_loaded:
+            self.queue_loaded = True
+            for i in range(len(self.queue)):
+                self._send("loadfile", "haltia-queue://%d" % i, "append")
+            self._send("set_property", "playlist-pos", self.queue_index)
+        elif args[0] == "haltia-queue-load" and len(args) == 3:
+            try:
+                index = int(args[2])
+            except ValueError:
+                return
+            if not 0 <= index < len(self.queue):
+                return
+            self.queue_request = args[1]
+            self.state = None
+            self._tell()  # save the previous video's position before replacing it
+            video = self.queue[index]
+            start = self.queue_start(video) if self.queue_start else None
+            self.state = {"video": video, "pos": None, "duration": None, "paused": False,
+                          "start": start}
+            self._tell()
+            resolver, request = self.queue_resolve, args[1]
+
+            def resolving():
+                try:
+                    stream = resolver(video, "best")
+                except Exception:
+                    self.post(self._queue_failed, run_no, request)
+                    return
+                self.post(self._queue_resolved, run_no, request, video, start, stream)
+
+            threading.Thread(target=resolving, daemon=True).start()
+
+    def _queue_resolved(self, run_no, request, video, start, stream):
+        if (run_no != self.run_no or self.state is None or self.queue is None
+                or request != self.queue_request):
+            return
+        try:
+            urls = stream["urls"]
+            if not urls or not all(isinstance(u, str) and u.startswith(("https://", "http://"))
+                                   for u in urls):
+                raise ValueError("no web stream")
+            url = edl(urls)
+        except (TypeError, KeyError, ValueError):
+            self._queue_failed(run_no, request)
+            return
+        self._send("script-message", "haltia-queue-resolved", request, url,
+                   stream.get("user_agent") or "", video["title"],
+                   str(start) if start else "none")
+
+    def _queue_failed(self, run_no, request):
+        if run_no == self.run_no and request == self.queue_request:
+            self.stop()  # a failed private video must not skip through the whole queue
+
     def stop(self):
         if self.state is not None:
             # Not connected yet (still starting): no quit reaches it, and a
             # second libmpv on the tablet's 1 GB must not play on unseen.
-            if not self._send("quit"):
+            if not self._send("quit") or self.queue is not None:
                 terminate(self.proc)
             self._ended(self.run_no)
 
@@ -264,6 +354,8 @@ class Player:
                     continue
                 if msg.get("event") == "property-change":
                     self.post(self._changed, run_no, msg.get("name"), msg.get("data"))
+                elif msg.get("event") == "client-message":
+                    self.post(self._queue_message, run_no, msg.get("args") or [])
         sock.close()
         try:
             os.unlink(ipc)
@@ -287,6 +379,8 @@ class Player:
         key = {"time-pos": "pos", "duration": "duration", "pause": "paused"}.get(name)
         if key is None:
             return
+        if self.queue is not None and key in ("pos", "duration") and value is None:
+            return  # file teardown precedes the next entry's on_load hook
         old = self.state[key]
         if key == "paused":
             value = bool(value)
@@ -300,6 +394,7 @@ class Player:
         if run_no != self.run_no or self.state is None:
             return
         self.state = None
+        self.queue = None
         self.proc = None
         if self.sock:
             try:

@@ -2,6 +2,7 @@ haltia-video (2.5.0) unstable; urgency=medium
 
   * Browse VK channel playlists with paginated videos in playlist order.
   * Offer original, reverse and natural lesson-number order across playlist pages.
+  * Keep a native desktop mpv queue with authenticated resolution per video.
   * Resolve signed-in VK streams for the desktop player with the API User-Agent.
   * Complete VK QR sign-in with one-time code entry and retry.
   * Keep communities with videos when importing VK account channels.
