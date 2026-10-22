@@ -7,6 +7,8 @@ import os
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 from sources import stream_of, vkvideo, youtube
 from sources import vault_in
@@ -38,6 +40,39 @@ class Dirs(unittest.TestCase):
 
 
 class VKVideosTest(Dirs):
+    def test_signed_in_stream_uses_the_api_files_with_its_user_agent(self):
+        asked = []
+
+        class Downloader:
+            def __init__(self, options):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def process_ie_result(self, info, download):
+                asked.append(info)
+                assert download is False
+                return info["formats"][0]
+            def extract_info(self, *args, **kwargs):
+                raise AssertionError("must not extract the private page as a guest")
+
+        vk = self.vk(exchanges=[exchange("video.get", {"response": {"items": [{
+            "files": {"mp4_480": "https://cdn/480.mp4", "mp4_720": "https://cdn/720.mp4",
+                      "mp4_240": "file:///private", "hls": "https://cdn/master.m3u8"}}]}},
+            videos="-7_1", extended=0)])
+        self.assertFalse(vk.resolve_on_desktop)
+        vk.user = {"token": "SECRET", "name": "Account"}
+        self.assertTrue(vk.resolve_on_desktop)
+        with patch.dict("sys.modules", {"yt_dlp": SimpleNamespace(YoutubeDL=Downloader)}), \
+                patch.object(vkvideo, "_skip_subtitles"):
+            stream = vk.stream({"id": "-7_1", "title": "Video"}, "best")
+        self.assertEqual(stream, {"urls": ["https://cdn/480.mp4"],
+                                  "user_agent": vkvideo.net.UA})
+        self.assertEqual([f["height"] for f in asked[0]["formats"]], [480, 720])
+        self.assertNotIn("SECRET", json.dumps(asked))
+        self.assertAllAsked()
+
     def test_search_in_catalog_order_clips_marked(self):
         videos = self.vk("vk_search").search("veritasium")
         self.assertAllAsked()

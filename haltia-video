@@ -1288,7 +1288,8 @@ class Video(Gtk.Application):
             stream = getattr(src, "stream", None)
             self.player.open(video, src.watch_url(video), start=self.library.resume_at(video),
                              ytdl=getattr(src, "ytdl_options", dict)(),
-                             resolve=stream and (lambda fmt: stream(video, fmt)))
+                             resolve=stream and (lambda fmt: stream(video, fmt)),
+                             resolve_desktop=getattr(src, "resolve_on_desktop", False))
         except OSError:
             self.say("Нет проигрывателя (haltia-vplay или mpv).")
 

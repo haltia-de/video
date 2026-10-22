@@ -32,6 +32,9 @@ and may have:
                             for a format: the player then needs no yt-dlp
                             of its own (haltia-vplay; a new yt-dlp per
                             video is slow on the tablet)
+  resolve_on_desktop        true when stream() must resolve for mpv too
+                            (a signed-in VK account cannot be passed to
+                            the player's guest yt-dlp); defaults to false
 
 and, to sign in, an account:
   login                     "code" (a link or QR code confirmed on a

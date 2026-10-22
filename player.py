@@ -7,7 +7,8 @@ it is playing, for the bar at the bottom of Видео.
                                        play a Video (one at a time), from
                                        start seconds if given; resolve(fmt),
                                        when given, is asked for the stream
-                                       first (for haltia-vplay: the source's
+                                       first (for haltia-vplay, or an Account
+                                       needed on the desktop: the source's
                                        stream()), off the GTK thread
     player.state                       None, or {"video", "pos", "duration",
                                        "paused", "start"} (pos and duration
@@ -181,8 +182,9 @@ class Player:
         player asks yt-dlp itself (mpv: a desktop's CPU does not mind)."""
         return VPLAY_FORMAT if os.path.basename(self.player or "") in VPLAY else None
 
-    def open(self, video, url, ytdl=None, start=None, resolve=None):
-        """Play video (the one playing is closed). OSError: no player."""
+    def open(self, video, url, ytdl=None, start=None, resolve=None, resolve_desktop=False):
+        """Play video (the one playing is closed). OSError: no player.
+        resolve_desktop: the source needs its Account even with mpv."""
         if not self.player:
             raise OSError("neither haltia-vplay nor mpv is installed")
         self.stop()
@@ -191,7 +193,7 @@ class Player:
                       "start": start}
         self._tell()
         args = (self.run_no, video, url, ytdl, start)
-        fmt = self.stream_format
+        fmt = self.stream_format or ("best" if resolve_desktop else None)
         if not (resolve and fmt):
             self._start(*args, None)
             return

@@ -460,6 +460,12 @@ class VKVideo:
     def warm_up(self):
         _skip_subtitles()  # imports yt-dlp and its VK extractor: the slow part
 
+    @property
+    def resolve_on_desktop(self):
+        # The player's own yt-dlp has no VK API account. Resolve private
+        # videos here even on a desktop, without handing it the token.
+        return bool(self.user)
+
     def stream(self, video, fmt):
         """The stream through this process's yt-dlp (see sources): a new
         one for every video took 17 s on the tablet."""
@@ -468,6 +474,23 @@ class VKVideo:
         _skip_subtitles()
         with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True,
                                "socket_timeout": 20, "format": fmt}) as ydl:
+            if self.user:
+                resp = self._api("video.get", videos=video["id"], extended=0)
+                items = resp.get("items") or []
+                files = (items[0].get("files") or {}) if items else {}
+                formats = []
+                for key, url in files.items():
+                    match = re.fullmatch(r"mp4_(\d+)", key)
+                    if match and isinstance(url, str) and url.startswith(("https://", "http://")):
+                        formats.append({"format_id": key, "url": url, "ext": "mp4",
+                                        "height": int(match.group(1)), "vcodec": "avc1",
+                                        "acodec": "mp4a", "http_headers": {"User-Agent": net.UA}})
+                if formats:
+                    # VK binds CDN links to the API request's User-Agent;
+                    # mpv's default causes HTTP 400 even for a valid URL.
+                    info = {"id": video["id"], "title": video["title"], "formats": formats,
+                            "extractor": "vk", "extractor_key": "VK"}
+                    return stream_of(ydl.process_ie_result(info, download=False))
             return stream_of(ydl.extract_info(self.watch_url(video), download=False))
 
 

@@ -319,6 +319,20 @@ class PlayerTest(unittest.TestCase):
         p.open(VIDEO, "u", resolve=lambda fmt: self.fail("asked"))
         self.assertEqual(self.spawned[0][-2:], ["u", "--ytdl-raw-options=js-runtimes=quickjs"])
 
+    def test_mpv_uses_an_authenticated_stream_when_the_source_requires_it(self):
+        p = self.player()
+        p.player = "/usr/bin/mpv"
+        asked = []
+        p.open(VIDEO, "https://vkvideo.ru/video1_2", resolve_desktop=True,
+               resolve=lambda fmt: asked.append(fmt) or {
+                   "urls": ["https://cdn/private.mp4"], "user_agent": "Bound UA"})
+        self.pump(until=lambda: p.sock is not None)
+        self.assertEqual(asked, ["best"])
+        self.assertIn("https://cdn/private.mp4", self.spawned[0])
+        self.assertIn("--ytdl=no", self.spawned[0])
+        self.assertIn("--user-agent=Bound UA", self.spawned[0])
+        self.assertNotIn("https://vkvideo.ru/video1_2", self.spawned[0])
+
     def test_edl(self):
         self.assertEqual(edl(["https://both"]), "https://both")
         self.assertEqual(command("mpv", VIDEO, "u", {}, "/s", stream={"urls": ["https://b"]})[-2:],

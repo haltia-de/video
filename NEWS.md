@@ -6,6 +6,8 @@
 
 На странице канала VK Видео появились плейлисты. Откройте плейлист, чтобы смотреть его видео в заданном порядке; кнопки «Следующие» и «Предыдущие» позволяют просмотреть весь список.
 
+Вход в VK теперь используется и при запуске видео в проигрывателе на компьютере: видео закрытых сообществ открываются через авторизованный поток.
+
 Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.
 
 Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
@@ -13,6 +15,8 @@
 ### English
 
 VK Video channel pages now list their playlists. Open a playlist to browse its videos in playlist order, with next and previous pages for longer lists.
+
+The desktop player now uses the signed-in VK account to open private community videos through an authenticated stream.
 
 Signing in to VK Video by QR code now accepts the one-time code VK shows on the phone. An incorrect code can be retried without a new QR code; a connection error keeps the code entry available.
 
