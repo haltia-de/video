@@ -28,8 +28,9 @@ DESCRIPTION_MAX = 300
 GROUP_FIELDS = "members_count,description,photo_200,screen_name"
 USER_FIELDS = "followers_count,about,photo_200,screen_name"
 LINK = re.compile(r"(?:https?://)?(?:[\w-]+\.)?(?:vkvideo\.ru|vk\.com|vk\.ru)/(.*)")
-# auth.checkAuthCode: 0 waiting, 1 seen on the phone, 2 confirmed; others
-# (expired, declined) end the sign-in.
+# auth.checkAuthCode: 0 waiting, 1 seen on the phone, 2 confirmed,
+# 3 declined, 4 expired, 5 asks for the one-time code on the phone.
+# NEED_OTP must keep this QR's auth_hash.
 WAITING = (0, 1)
 
 
@@ -257,6 +258,8 @@ class VKVideo:
                               token=resp["super_app_token"],
                               uuid=self.pending["auth_id"])["access_token"]
         if not token:
+            if status == 5:
+                return {"need_code": True}
             if status in WAITING:
                 return None
             self.pending = None
@@ -273,6 +276,26 @@ class VKVideo:
             self.user, self.locked = None, True
             raise
         return self.account()
+
+    def login_submit(self, code):
+        pending = self.pending
+        if not pending:
+            return "expired"
+        # VK ID's QR flow uses validateAuthCode, not the auth_code in the
+        # QR URL. A wrong code can be retried with the same auth_hash.
+        resp = self._api("auth.validateAuthCode", anonymous=True,
+                         auth_hash=pending["auth_hash"], validation_code=code,
+                         client_id=CLIENT_ID)
+        status = resp.get("status")
+        if status == 0:
+            return "accepted"  # checkAuthCode still supplies the token
+        if status == 1:
+            return "incorrect"
+        if status == 2:
+            if self.pending is pending:
+                self.pending = None
+            return "expired"
+        raise ApiError("login", "unexpected code validation status")
 
     def logout(self):
         self.user = None

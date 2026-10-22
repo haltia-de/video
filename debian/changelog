@@ -1,3 +1,9 @@
+haltia-video (2.4.4) unstable; urgency=medium
+
+  * Complete VK QR sign-in with one-time code entry and retry.
+
+ -- Haltia <rensomail@gmail.com>  Thu, 22 Oct 2026 22:06:06 +0300
+
 haltia-video (2.4.3) unstable; urgency=medium
 
   * The top left button now shows home on the start screen and “←” on

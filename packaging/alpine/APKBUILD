@@ -1,6 +1,6 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
 pkgname=haltia-video
-pkgver=2.4.3
+pkgver=2.4.4
 pkgrel=0
 pkgdesc="Видео: videos from YouTube and VK Video (GTK 3)"
 url="https://github.com/haltia-de/video"

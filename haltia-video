@@ -1084,14 +1084,30 @@ class Video(Gtk.Application):
             note = self.account_notes.get(src.id)
         elif kind == "waiting":
             card.pack_start(self.login_code(state), False, False, 0)
+            if hasattr(src, "login_submit"):
+                button("VK показал код", "add", sign.enter_code)
             note = None
+        elif kind == "code":
+            card.pack_start(label("Введите код, который VK показал на телефоне "
+                                  "после перехода по QR-коду.", "cdesc", wrap=True),
+                            False, False, 0)
+            entry = Gtk.Entry()
+            entry.set_placeholder_text("Код от VK")
+            entry.set_input_purpose(Gtk.InputPurpose.NUMBER)
+            entry.set_activates_default(False)
+            card.pack_start(entry, False, False, 0)
+            button("Подтвердить", "add", lambda: sign.submit(entry.get_text()))
+            entry.connect("activate", lambda ent: sign.submit(ent.get_text()))
+            button("Получить новый QR-код", "wide", sign.begin)
+            note = state.get("note")
         elif kind == "locked":
             note = state["note"]
             button("Открыть связку ключей", "add", sign.begin)
         else:
             if src.login == "cookies":
                 card.pack_start(label(src.login_hint, "cdesc", wrap=True), False, False, 0)
-            note = {"getting": "Получаю код…", "checking": "Проверяю…"}.get(
+            note = {"getting": "Получаю код…", "checking": "Проверяю…",
+                    "submitting": "Проверяю код…", "confirming": "Завершаю вход…"}.get(
                 kind, state.get("note"))
             if kind in ("out", "failed"):
                 # Off Flatpak, yt-dlp takes the cookies from the browser itself.
@@ -1116,8 +1132,8 @@ class Video(Gtk.Application):
                                if pix else "Откройте на телефоне"), "cdesc", wrap=True),
                         False, False, 0)
         text.pack_start(label(state["url"].replace("https://", ""), "cname"), False, False, 0)
-        text.pack_start(label("и подтвердите вход. Код:", "cdesc"), False, False, 0)
-        text.pack_start(label(state["code"], "code"), False, False, 0)
+        text.pack_start(label("и подтвердите вход. Если VK покажет код, введите его здесь.",
+                              "cdesc", wrap=True), False, False, 0)
         row.pack_start(text, True, True, 0)
         return row
 

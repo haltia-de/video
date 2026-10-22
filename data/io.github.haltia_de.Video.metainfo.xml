@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.4.4" date="2026-10-22">
+      <description>
+        <p>Signing in to VK Video by QR code now accepts the one-time code VK shows on the phone. An incorrect code can be retried without a new QR code; a connection error keeps the code entry available.</p>
+        <p xml:lang="ru">Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.</p>
+      </description>
+    </release>
     <release version="2.4.3" date="2026-10-22">
       <description>
         <p>The top left button now shows home on the start screen and “←” on deeper screens. Starting playback, seeking and changing formats are smoother; thumbnails use less memory.</p>

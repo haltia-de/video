@@ -175,6 +175,60 @@ class VKSignInTest(Dirs):
         self.assertIsNone(vk.login_poll())
         self.assertIsNone(vk.account())
 
+    def test_phone_requests_a_code_without_expiring_the_qr(self):
+        vk = self.start(self.check({"response": {"status": 5}}))
+        pending = vk.pending
+        self.assertEqual(vk.login_poll(), {"need_code": True})
+        self.assertIs(vk.pending, pending)
+        self.assertIsNone(vk.account())
+
+    def test_validate_code_keeps_the_session_for_a_retry_then_polls(self):
+        vk = self.start(
+            exchange("auth.validateAuthCode", {"response": {"status": 1}},
+                     validation_code="111111"),
+            exchange("auth.validateAuthCode", {"response": {"status": 0}},
+                     validation_code="222222"),
+            self.check({"response": {"status": 2, "access_token": "USER", "user_id": 7}}),
+            exchange("users.get", {"response": [{"id": 7, "first_name": "Анна"}]}))
+        pending = vk.pending
+        self.assertEqual(vk.login_submit("111111"), "incorrect")
+        self.assertIs(vk.pending, pending)
+        self.assertIsNone(vk.account())
+        self.assertEqual(vk.login_submit("222222"), "accepted")
+        self.assertIs(vk.pending, pending)
+        self.assertEqual(vk.login_poll(), {"name": "Анна"})
+        for method, params in self.http.asked:
+            if method in ("auth.validateAuthCode", VK_API):
+                self.assertEqual(params["auth_hash"], pending["auth_hash"])
+        self.assertAllAsked()
+
+    def test_validate_expired_session(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 2}},
+                                 validation_code="123456"))
+        self.assertEqual(vk.login_submit("123456"), "expired")
+        self.assertIsNone(vk.pending)
+
+    def test_validate_unknown_status_does_not_expire_session(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 99}},
+                                 validation_code="123456"))
+        with self.assertRaises(vkvideo.ApiError):
+            vk.login_submit("123456")
+        self.assertIsNotNone(vk.pending)
+
+    def test_late_code_response_does_not_clear_a_new_qr(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 2}},
+                                 validation_code="123456"))
+        new_pending = {"auth_hash": "NEW"}
+        get_json = self.http.get_json
+
+        def replaced(url, data, headers):
+            vk.pending = new_pending  # a new QR while the old request was in flight
+            return get_json(url, data, headers)
+
+        self.http.get_json = replaced
+        self.assertEqual(vk.login_submit("123456"), "expired")
+        self.assertIs(vk.pending, new_pending)
+
     def test_expired_code(self):
         # Recorded by hand on 17.10.2026: status 4 three minutes on.
         vk = self.start(self.check({"response": {"status": 4}}))

@@ -36,7 +36,10 @@ and, to sign in, an account:
                             from what is stored
   login_start()             for "code": {"url": ..., "code": ...}
   login_poll()              for "code": None while waiting, the account
-                            once confirmed; raises when the code expired
+                            once confirmed, {"need_code": True} when the
+                            phone shows a code; raises when the QR expired
+  login_submit(code)        for "code" with need_code: "accepted" (poll
+                            for the account), "incorrect" or "expired"
   login_check(browser=None) for "cookies": the account, or None; with a
                             browser (an id from browsers()), from its
                             cookies instead of the file

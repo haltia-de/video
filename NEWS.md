@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.4.4 (2026-10-22)
+
+### Русский
+
+Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.
+
+### English
+
+Signing in to VK Video by QR code now accepts the one-time code VK shows on the phone. An incorrect code can be retried without a new QR code; a connection error keeps the code entry available.
+
 ## 2.4.3 (2026-10-22)
 
 ### Русский
