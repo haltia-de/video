@@ -146,6 +146,30 @@ class PlayerTest(unittest.TestCase):
         self.assertIsNone(p.state)
         self.assertIsNone(self.states[-1])
 
+    def test_only_eof_marks_complete_and_teardown_keeps_last_position(self):
+        p, mpv = self.started()
+        p._changed(p.run_no, "time-pos", 42)
+        p._changed(p.run_no, "duration", 100)
+        p._changed(p.run_no, "time-pos", None)
+        p._changed(p.run_no, "duration", None)
+        self.assertEqual((p.state["pos"], p.state["duration"]), (42, 100))
+        p._file_ended(p.run_no, "stop")
+        self.assertFalse(p.state.get("ended", False))
+        p._file_ended(p.run_no - 1, "eof")
+        self.assertFalse(p.state.get("ended", False))
+        p._file_ended(p.run_no, "eof")
+        self.assertTrue(p.state["ended"])
+        p.stop()
+
+    def test_playlist_context_survives_native_entry_changes(self):
+        p, mpv, videos = self.queued()
+        context = {"source": "vk", "owner_id": "-7", "id": "1", "title": "Course"}
+        p.queue_playlist = context
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "0"])
+        self.assertIs(p.state["playlist"], context)
+        self.pump(until=lambda: True)
+        p.stop()
+
     def test_stop_quits_and_ends_at_once(self):
         p, mpv = self.started()
         p.stop()

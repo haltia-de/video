@@ -143,12 +143,13 @@ class LibraryTest(unittest.TestCase):
     def test_watched_to_the_end_starts_over_and_shows_whole(self):
         lib = self.library()
         lib.played(video(1))
-        lib.note_position(video(1), 580.0, 600.0)  # 20 s left
+        lib.note_position(video(1), 590.0, 600.0)  # 10 s left
         self.assertIsNone(lib.resume_at(video(1)))
         self.assertEqual(lib.progress(video(1)), 1.0)
         lib.played(video(2))
         lib.note_position(video(2), 3500.0, 3600.0)  # 97%, 100 s left
-        self.assertEqual(lib.progress(video(2)), 1.0)
+        self.assertEqual(lib.resume_at(video(2)), 3500.0)
+        self.assertAlmostEqual(lib.progress(video(2)), 3500 / 3600)
 
     def test_playing_again_keeps_the_position(self):
         lib = self.library()

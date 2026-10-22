@@ -30,19 +30,46 @@ def lesson_key(video):
     return (1, 0, 0, natural)
 
 
-def collect(fetch, playlist):
+def collect(fetch, playlist, locations=False):
     videos, seen, offset = [], set(), 0
+    pages, positions, previous = {}, {}, ()
     while True:
         if offset in seen:
             raise ValueError("playlist pagination repeated an offset")
         seen.add(offset)
         page = fetch(playlist, offset)
+        if locations:
+            pages[offset] = page
+            for video in page["videos"]:
+                positions.setdefault((video["source"], video["id"]), (offset, previous))
+            previous += (offset,)
         videos.extend(page["videos"])
         offset = page["next"]
         if offset is None:
             break
-    return {"vk": videos, "reverse": list(reversed(videos)),
-            "lesson": sorted(videos, key=lesson_key)}
+    orders = {"vk": videos, "reverse": list(reversed(videos)),
+              "lesson": sorted(videos, key=lesson_key)}
+    if locations:
+        orders.update(_pages=pages, _locations=positions)
+    return orders
+
+
+def continuation(videos, saved):
+    """Resolve the saved identity in today's chosen order, never an old
+    page number. A disappeared video offers the first available one.
+    """
+    if not videos:
+        return {"kind": "empty", "video": None, "index": None}
+    last = saved["video"]
+    index = next((i for i, v in enumerate(videos)
+                  if (v["source"], v["id"]) == (last["source"], last["id"])), None)
+    if index is None:
+        return {"kind": "missing", "video": videos[0], "index": 0}
+    if saved["complete"]:
+        if index + 1 == len(videos):
+            return {"kind": "finished", "video": videos[0], "index": 0}
+        return {"kind": "next", "video": videos[index + 1], "index": index + 1}
+    return {"kind": "resume", "video": videos[index], "index": index}
 
 
 def page(videos, offset, count=30):

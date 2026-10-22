@@ -427,6 +427,47 @@ class YouTube:
     def watch_url(self, video):
         return "https://www.youtube.com/watch?v=" + video["id"]
 
+    def resolve_bookmark(self, url):
+        parsed = urllib.parse.urlparse(url if "://" in url else "https://" + url)
+        host = (parsed.hostname or "").lower()
+        if host not in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"):
+            raise ValueError("Нужна ссылка YouTube.")
+        query = urllib.parse.parse_qs(parsed.query)
+        # A watch link remains a video even when it includes a playlist.
+        is_video = (host == "youtu.be" or parsed.path in ("/watch",) or
+                    parsed.path.startswith(("/shorts/", "/live/", "/embed/")))
+        if is_video:
+            with self._ydl({"noplaylist": True, "extract_flat": False}) as ydl:
+                info = ydl.extract_info(url, download=False)
+            obj = _video(info or {})
+            if not obj:
+                raise ValueError("Видео недоступно.")
+            return "video", obj
+        if query.get("list"):
+            pid = query["list"][0]
+            with self._ydl({"playlistend": 1}) as ydl:
+                info = ydl.extract_info("https://www.youtube.com/playlist?list=" + pid, download=False)
+            return "playlist", {"source": self.id, "id": pid,
+                                "owner_id": info.get("channel_id") or "",
+                                "owner_title": info.get("channel") or info.get("uploader") or "",
+                                "title": info.get("title") or "Плейлист",
+                                "count": info.get("playlist_count")}
+        chan = self.find_channel(url)
+        if not chan:
+            raise ValueError("Канал недоступен.")
+        return "channel", chan
+
+    def playlist_videos(self, playlist, offset=0):
+        count = 30
+        # Read one extra to establish whether another page exists even
+        # when YouTube omits the playlist's total count.
+        with self._ydl({"playliststart": offset + 1, "playlistend": offset + count + 1}) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/playlist?list=" + playlist["id"],
+                                    download=False)
+        entries = list(info.get("entries") or [])
+        videos = [v for v in (_video(e or {}) for e in entries[:count]) if v]
+        return {"videos": videos, "next": offset + count if len(entries) > count else None}
+
     def stream(self, video, fmt):
         """What to play of video in format fmt (yt-dlp's format words), for
         a player that asks no yt-dlp of its own: {"urls": [video, audio] or

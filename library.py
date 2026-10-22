@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: GPL-2.0
-"""The library: what is the person's own in Видео. The channels they follow
-(with what is known about each), the history of what they played, and the
-settings (sources switched off, where a search goes, how results are
-sorted). Kept in video.json and history.json, written whole on every
-change, in the same form as before this module existed.
+"""The Library owns followed channels, bookmarks, history and settings in
+video.json and history.json. playback.json keeps video positions and
+playlist cursors independently of history's display limit.
 
 Callers learn about changes through watch(fn): fn(what) with what one of
 "follow" (channels added), "unfollow", "details" (what is known about
 followed channels changed), "history", "position" (how far a video in
-the history was watched) and "settings". Not thread-safe:
+the history was watched), "bookmarks", "playlist_progress",
+"playlist_order" and "settings". Not thread-safe:
 every call comes from the GTK thread (workers hand results back there).
 """
 import os
 import time
+
+from bookmarks import Bookmarks, key as bookmark_key
 
 from sources import CONFIG_DIR, DATA_DIR, load_json, save_json
 
@@ -23,8 +24,7 @@ DETAILS_MAX_AGE = 7 * 86400
 # Where a video goes on from: not the first seconds (start over), and not
 # its end (watched: start over next time, shown as seen whole).
 RESUME_MIN = 10
-DONE_TAIL = 30
-DONE_SHARE = 0.95
+DONE_TAIL = 10
 SCOPES_ALL = "all"
 SORTS = ("date", "relevance")
 
@@ -34,7 +34,7 @@ def _same(a, source, cid):
 
 
 def _done(pos, duration):
-    return bool(duration) and (duration - pos < DONE_TAIL or pos / duration > DONE_SHARE)
+    return bool(duration) and pos > 0 and duration - pos <= DONE_TAIL
 
 
 class Library:
@@ -43,6 +43,7 @@ class Library:
         data_dir = data_dir or DATA_DIR
         self.config_path = os.path.join(config_dir, "video.json")
         self.history_path = os.path.join(data_dir, "history.json")
+        self.playback_path = os.path.join(data_dir, "playback.json")
         cfg = load_json(self.config_path) or {}
         cfg.setdefault("channels", [])
         cfg.setdefault("disabled", [])
@@ -51,8 +52,21 @@ class Library:
         cfg.pop("source", None)  # the single search source of 1.2
         self._cfg = cfg
         self._history = load_json(self.history_path) or []
+        self._playback = load_json(self.playback_path) or {}
+        self._playback.setdefault("videos", {})
+        self._playback.setdefault("playlists", {})
+        self._playback.setdefault("orders", {})
+        # Import existing positions once; future history eviction must
+        # not forget a lesson's position or a playlist's last video.
+        for video in self._history:
+            self._playback["videos"].setdefault(bookmark_key("video", video), dict(video))
         self._seen = None  # (source, id): its history entry, made when asked
         self._watchers = []
+        self.bookmarks = Bookmarks(cfg.get("bookmarks", {}), self._bookmarks_changed)
+
+    def _bookmarks_changed(self):
+        self._cfg["bookmarks"] = self.bookmarks.data
+        self._changed("bookmarks")
 
     def watch(self, fn):
         self._watchers.append(fn)
@@ -62,6 +76,9 @@ class Library:
             self._seen = None  # a new list; a position only changes an entry
         if what in ("history", "position"):
             save_json(self.history_path, self._history)
+            save_json(self.playback_path, self._playback)
+        elif what in ("playlist_progress", "playlist_order"):
+            save_json(self.playback_path, self._playback)
         else:
             save_json(self.config_path, self._cfg)
         for fn in list(self._watchers):
@@ -141,12 +158,14 @@ class Library:
     def played(self, video):
         """Put a video first in the history, once (keeping how far it was
         watched)."""
-        old = self._entry(video)
+        old = self.position(video)
         entry = dict(video)
-        for key in ("pos", "duration"):
+        for key in ("pos", "duration", "ended"):
             if old and key in old:
                 entry[key] = old[key]
-        self._history = [entry] + [v for v in self._history if v is not old]
+        self._playback["videos"][bookmark_key("video", video)] = dict(entry)
+        self._history = [entry] + [v for v in self._history
+                                  if not _same(v, video["source"], video["id"])]
         del self._history[HISTORY_MAX:]
         self._changed("history")
 
@@ -155,32 +174,68 @@ class Library:
             self._seen = {(v["source"], v["id"]): v for v in self._history}
         return self._seen.get((video["source"], video["id"]))
 
-    def note_position(self, video, pos, duration):
-        """How far a video of the history was watched (seconds)."""
-        entry = self._entry(video)
+    def note_position(self, video, pos, duration, ended=False):
+        """How far a played video was watched, even after history eviction."""
+        entry = self.position(video)
         if entry is None or pos is None:
             return
-        if (entry.get("pos"), entry.get("duration")) != (pos, duration):
-            entry["pos"] = pos
-            entry["duration"] = duration
+        if (entry.get("pos"), entry.get("duration"), bool(entry.get("ended"))) != (pos, duration, ended):
+            entry.update(pos=pos, duration=duration, ended=ended)
+            history = self._entry(video)
+            if history:
+                history.update(pos=pos, duration=duration, ended=ended)
             self._changed("position")
+
+    def position(self, video):
+        return self._playback["videos"].get(bookmark_key("video", video))
+
+    def completed(self, video):
+        entry = self.position(video)
+        return bool(entry and (entry.get("ended") or
+                              _done(entry.get("pos") or 0, entry.get("duration"))))
+
+    def playlist_order(self, playlist):
+        return self._playback["orders"].get(bookmark_key("playlist", playlist), "vk")
+
+    def set_playlist_order(self, playlist, order):
+        if order not in ("vk", "reverse", "lesson"):
+            raise ValueError(order)
+        if order != self.playlist_order(playlist):
+            self._playback["orders"][bookmark_key("playlist", playlist)] = order
+            self._changed("playlist_order")
+
+    def note_playlist(self, playlist, video):
+        ident = bookmark_key("playlist", playlist)
+        old = self._playback["playlists"].get(ident)
+        if not old or not _same(old["video"], video["source"], video["id"]):
+            self._playback["playlists"][ident] = {"playlist": dict(playlist), "video": dict(video)}
+            self._changed("playlist_progress")
+
+    def playlist_resume(self, playlist):
+        cursor = self._playback["playlists"].get(bookmark_key("playlist", playlist))
+        if not cursor:
+            return None
+        video = cursor["video"]
+        pos = self.position(video) or {}
+        return {"video": video, "pos": pos.get("pos"), "duration": pos.get("duration"),
+                "complete": self.completed(video)}
 
     def resume_at(self, video):
         """Where to go on from (seconds), or None to start at the beginning."""
-        entry = self._entry(video)
+        entry = self.position(video)
         pos = entry and entry.get("pos")
-        if not pos or pos < RESUME_MIN or _done(pos, entry.get("duration")):
+        if not pos or pos < RESUME_MIN or self.completed(video):
             return None
         return pos
 
     def progress(self, video):
         """How much of it was watched, 0 to 1 (1: to the end), or None."""
-        entry = self._entry(video)
+        entry = self.position(video)
         pos = entry and entry.get("pos")
         duration = entry and entry.get("duration")
         if not pos or not duration:
             return None
-        return 1.0 if _done(pos, duration) else min(pos / duration, 1.0)
+        return 1.0 if self.completed(video) else min(pos / duration, 1.0)
 
     # --- settings ---------------------------------------------------------
     def is_disabled(self, source_id):

@@ -4,6 +4,10 @@
 
 ### Русский
 
+Вкладка «Закладки» сохраняет видео, плейлисты и каналы независимо от подписок. Есть поиск, совместные фильтры по типу, сервису и синхронизации, сортировка и закрепление с ручным порядком. Добавить объект можно с карточки или по ссылке. Закладки доступны без сети; недоступность синхронизации при текущем способе входа VK показывается явно. YouTube пока сохраняется локально.
+
+Плейлист запоминает последнее видео и выбранную сортировку. При открытии сразу виден блок продолжения с позицией просмотра; запуск и переход к странице ролика выполняются отдельными кнопками. Прогресс сохраняется между запусками независимо от ограничения истории. После завершённого ролика предлагается следующий в выбранном порядке; досмотренным считается естественное окончание или последние 10 секунд.
+
 На странице канала VK Видео появились плейлисты. Откройте плейлист, чтобы смотреть его видео в заданном порядке; кнопки «Следующие» и «Предыдущие» позволяют просмотреть весь список.
 
 В плейлисте можно выбрать «Порядок VK», «Обратный порядок» или «По номеру урока» (урок 2 перед уроком 10). Обратный порядок и номера учитывают весь плейлист, а не только открытую страницу.
@@ -17,6 +21,10 @@
 Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
 
 ### English
+
+The Bookmarks tab saves videos, playlists and channels independently of followed channels. It offers search, combined type/source/sync filters, sorting and manually ordered pins. Save from a card or a link. Bookmarks work offline; unavailable VK bookmark sync is explained for the current sign-in method. YouTube bookmarks remain local.
+
+Playlists remember their last played video and chosen order. Opening one immediately shows a resume block with playback position; playback and locating its page require separate buttons. Progress survives restarts and history eviction. Completed videos offer the next video in the selected order; completion means a natural end or at most ten seconds remaining.
 
 VK Video channel pages now list their playlists. Open a playlist to browse its videos in playlist order, with next and previous pages for longer lists.
 

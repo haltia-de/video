@@ -236,6 +236,9 @@ class VKVideo:
     def account(self):
         return {"name": self.user["name"]} if self.user else None
 
+    def bookmark_client(self):
+        return VKBookmarks(self, dict(self.user)) if self.user else None
+
     def unlock(self):
         self.locked = False
         self.user = self._kept_user()
@@ -402,6 +405,33 @@ class VKVideo:
         return {"videos": videos,
                 "next": after if items and after < resp.get("count", after) else None}
 
+    def resolve_bookmark(self, url):
+        match = LINK.fullmatch(url.strip())
+        if not match:
+            raise ValueError("Нужна ссылка VK Видео.")
+        path = match.group(1).split("?")[0].strip("/")
+        video = re.fullmatch(r"video(-?\d+_\d+)", path)
+        album = re.fullmatch(r"(?:playlist|video/playlist)/?(-?\d+)_(\d+)", path)
+        # VK also uses /video/playlist/<owner>_<album>.
+        if video:
+            resp = self._api("video.get", videos=video.group(1), extended=1)
+            items = resp.get("items") or []
+            obj = _video(items[0], _owner_names(resp)) if items else None
+            if obj:
+                return "video", obj
+            raise ValueError("Видео недоступно этому аккаунту.")
+        if album:
+            chan = self.find_channel(album.group(1))
+            obj = next((p for p in self.playlists(chan) if p["id"] == album.group(2)), None)
+            if obj:
+                obj["owner_title"] = chan["title"]
+                return "playlist", obj
+            raise ValueError("Плейлист не найден или недоступен.")
+        chan = self.find_channel(url)
+        if chan:
+            return "channel", chan
+        raise ValueError("Канал не найден или недоступен.")
+
     def _owners(self, ids):
         """Channels for owner ids (negative for communities), in order."""
         groups = [str(-i) for i in ids if i < 0]
@@ -492,6 +522,129 @@ class VKVideo:
                             "extractor": "vk", "extractor_key": "VK"}
                     return stream_of(ydl.process_ie_result(info, download=False))
             return stream_of(ydl.extract_info(self.watch_url(video), download=False))
+
+
+class VKBookmarks:
+    """A captured account: never fall back to a guest or a replacement
+    token during a bookmark write. fave is unavailable to some TV tokens.
+    Capability probes are read-only, per sign-in, before offering sync.
+    """
+    def __init__(self, source, user):
+        self.source = source
+        self.user = user
+        self.id = str(user["id"])
+        self.name = user["name"]
+
+    def api(self, method, **params):
+        if not self.active():
+            raise ApiError("account", "Аккаунт изменился; синхронизация остановлена.")
+        params.update(v=API_VERSION, lang="ru", access_token=self.user["token"])
+        resp = self.source._post(API % method + "?client_id=" + CLIENT_ID, params)
+        if resp.get("error"):
+            error = resp["error"]
+            # Never expose request parameters (which contain the token).
+            raise ApiError(error.get("error_code"), "Не удалось обновить закладки VK.")
+        return resp["response"]
+
+    def active(self):
+        return self.source.user == self.user
+
+    def capabilities(self):
+        kinds = []
+        for kind, calls in (("video", [("fave.get", {"item_type": "video"})]),
+                            ("channel", [("fave.getPages", {"type": "groups"}),
+                                         ("fave.getPages", {"type": "users"})])):
+            try:
+                for method, params in calls:
+                    self.api(method, count=1, **params)
+            except ApiError as exc:
+                if exc.code not in (3, 7, 15, 27, 28):
+                    raise
+            else:
+                kinds.append(kind)
+        # No typed playlist bookmark API: generic links are not equivalent
+        # to VK Video's saved playlists and are deliberately not written.
+        return kinds
+
+    def read(self, kinds):
+        out = []
+        calls = []
+        if "video" in kinds:
+            calls.append(("video", "fave.get", {"item_type": "video", "extended": 1}))
+        if "channel" in kinds:
+            calls.extend(("channel", "fave.getPages", {"type": t}) for t in ("groups", "users"))
+        for kind, method, params in calls:
+            offset = 0
+            expected, seen = None, set()
+            while True:
+                resp = self.api(method, count=100, offset=offset, **params)
+                if not isinstance(resp, dict) or not isinstance(resp.get("items"), list):
+                    raise ValueError("VK вернул неполный список закладок.")
+                items = resp["items"]
+                total = resp.get("count")
+                if not isinstance(total, int) or (expected is not None and total != expected):
+                    raise ValueError("Список закладок VK изменился при загрузке. Повторите обновление.")
+                expected = total
+                for item in items:
+                    if kind == "video":
+                        value = item.get("video") or {}
+                        obj = _video(value, _owner_names(resp))
+                        if not obj and value.get("owner_id") is not None and value.get("id"):
+                            obj = {"source": "vk", "id": "%s_%s" % (value["owner_id"], value["id"]),
+                                   "title": value.get("title") or "Недоступное видео",
+                                   "unavailable": "Видео недоступно этому аккаунту.", "thumb": ""}
+                    elif item.get("group"):
+                        obj = _group(item["group"])
+                    elif item.get("user"):
+                        obj = _user(item["user"])
+                    else:
+                        obj = None
+                    if obj is None:
+                        # An unknown shape is not proof that a bookmark
+                        # was deleted; discard the entire read instead.
+                        raise ValueError("VK вернул неизвестный вид закладки.")
+                    identity = obj["id"]
+                    if identity in seen:
+                        raise ValueError("VK повторил страницу закладок. Повторите обновление.")
+                    seen.add(identity)
+                    obj["bookmarked_at"] = item.get("added_date") or item.get("updated_date") or time.time()
+                    out.append((kind, obj))
+                offset += len(items)
+                if offset > total or (not items and offset < total):
+                    raise ValueError("VK вернул неполный список закладок.")
+                if offset >= resp["count"]:
+                    break
+        return out
+
+    def write(self, kind, obj, add):
+        if kind == "video":
+            owner, vid = obj["id"].split("_")
+            method = "fave.addVideo" if add else "fave.removeVideo"
+            params = {"owner_id": owner, "id": vid}
+        elif kind == "channel":
+            owner = int(obj["id"])
+            method = "fave.addPage" if add else "fave.removePage"
+            params = {"group_id" if owner < 0 else "user_id": abs(owner)}
+        else:
+            raise ValueError("Этот тип закладок сохраняется только на устройстве.")
+        if self.api(method, **params) != 1:
+            raise ValueError("VK не подтвердил изменение закладки.")
+
+    def available(self, kind, obj):
+        """A missing fave may be an inaccessible object, not an unfave.
+        A failed check aborts reconciliation; it never proves deletion.
+        """
+        if kind == "video":
+            items = self.api("video.get", videos=obj["id"], extended=0).get("items") or []
+            return bool(items and _video(items[0], {}) and items[0].get("can_play", 1))
+        owner = int(obj["id"])
+        if owner < 0:
+            groups = self.api("groups.getById", group_ids=str(-owner)).get("groups") or []
+            return bool(groups and not groups[0].get("deactivated") and
+                        (not groups[0].get("is_closed") or groups[0].get("is_member")))
+        users = self.api("users.get", user_ids=str(owner))
+        return bool(users and not users[0].get("deactivated") and
+                    (not users[0].get("is_closed") or users[0].get("can_access_closed")))
 
 
 SOURCE = VKVideo()

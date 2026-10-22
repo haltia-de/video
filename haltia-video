@@ -64,6 +64,8 @@ if os.path.isdir(VENDOR):
     sys.path.insert(0, VENDOR)
     os.environ["PATH"] = os.path.join(VENDOR, "bin") + os.pathsep + os.environ.get("PATH", "")
 import sources  # noqa: E402
+import bookmarks as bookmark_view  # noqa: E402
+from bookmark_sync import Sync as BookmarkSync  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
 import pictures  # noqa: E402
@@ -125,6 +127,7 @@ button.find, button.add { background-color: #3584e4; color: #ffffff; }
 button.tab, button.source, button.more { background-color: #f2f2f0; color: #2e3436; }
 button.tab.current { background-color: #c4dcf7; }
 button.more { min-height: 52px; font-size: 20px; }
+combobox.choice button { min-height: 52px; font-size: 20px; }
 .card {
   background-color: #f2f2f0;
   border-radius: 16px;
@@ -151,6 +154,7 @@ label.hint { font-size: 20px; color: #5e5c64; }
 .chan label.cname { font-size: 26px; color: #2e3436; }
 .chan label.csub { font-size: 19px; color: #5e5c64; }
 .chan label.cdesc { font-size: 18px; color: #5e5c64; }
+.chan label.ttl { font-size: 22px; color: #2e3436; }
 label.code { font-size: 40px; font-weight: bold; color: #2e3436; }
 button.drop {
   background-image: none;
@@ -389,6 +393,13 @@ class Video(Gtk.Application):
         self.refreshing = False  # followed channels' details being fetched
         self.refresh_tried = set()
         self.win = None
+        self.bookmark_query = ""
+        self.bookmark_filters = {"kind": "all", "source": "all", "state": "all",
+                                 "sort": "added", "reverse": True}
+        self.bookmark_sync = BookmarkSync(self.library.bookmarks, self.sources, self.work,
+                                          self.bookmark_sync_changed)
+        self.bookmark_link_busy = False
+        self.bookmark_note = ""
         self.back_action = Gio.SimpleAction.new("back", None)
         self.back_action.set_enabled(False)
         self.back_action.connect("activate", self.go_back)
@@ -434,9 +445,10 @@ class Video(Gtk.Application):
 
     def update_scope(self):
         self.scope_btn.set_label(self.scope_label())
-        self.scope_btn.set_visible(len(self.enabled()) > 1)
+        self.scope_btn.set_visible(len(self.enabled()) > 1 and not self.on_page("bookmarks"))
 
     def do_shutdown(self):
+        self.bookmark_sync.close()
         # The player is a process of its own: closing Видео closes it too,
         # and stop() ends the state, which writes down how far it got.
         self.stop_playback()
@@ -498,7 +510,8 @@ class Video(Gtk.Application):
         tabs = Gtk.Box(spacing=12, homogeneous=True)
         self.tabs = {}
         for key, text in (("home", "Главная"), ("feed", "Подписки"),
-                          ("channels", "Каналы"), ("history", "История")):
+                          ("channels", "Каналы"), ("bookmarks", "Закладки"),
+                          ("history", "История")):
             btn = Gtk.Button(label=text)
             btn.get_style_context().add_class("tab")
             btn.connect("clicked", lambda _b, k=key: self.show_page(k))
@@ -525,6 +538,8 @@ class Video(Gtk.Application):
         # No field in focus at start, or the keyboard comes up unasked.
         self.win.set_focus(None)
         self.show_page("home")
+        self.bookmark_sync.refresh_accounts()
+        GLib.timeout_add_seconds(300, self.bookmark_tick)
         # yt-dlp takes seconds to import on this CPU: do it while one types.
         threading.Thread(target=self.warm_up, daemon=True).start()
         threading.Thread(target=Thumbs.prune, daemon=True).start()
@@ -561,6 +576,8 @@ class Video(Gtk.Application):
         """A page over the tabs; the back button returns to the tab."""
         left, self.sub = self.sub, sub
         self.header.set_title(title)
+        self.entry.set_placeholder_text("Найти видео")
+        self.update_scope()
         self.update_back()
         self.left(left)
 
@@ -579,6 +596,8 @@ class Video(Gtk.Application):
         """A page over the tabs was left: a code no one sees is not asked about."""
         if self.pending_playlist_play and self.pending_playlist_play["sub"] is sub:
             self.pending_playlist_play = None
+        if self.pending_playlist_resume and self.pending_playlist_resume["sub"] is sub:
+            self.pending_playlist_resume = None
         if sub and sub["kind"] == "settings":
             for sign in self.signins.values():
                 sign.cancel()
@@ -667,7 +686,10 @@ class Video(Gtk.Application):
         hold.connect("pressed", lambda *_a: (state.update(held=True),
                                              ev.unset_state_flags(Gtk.StateFlags.ACTIVE),
                                              self.follow_menu(video)))
-        return ev
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        outer.pack_start(ev, True, True, 0)
+        outer.pack_start(self.bookmark_button("video", video), False, False, 0)
+        return outer
 
     def section(self, box, title, action=None):
         row = Gtk.Box(spacing=12)
@@ -686,12 +708,18 @@ class Video(Gtk.Application):
         self.header.set_title("Видео")
         self.mark_tab(key)
         self.say("")
+        self.entry.set_placeholder_text("Поиск в закладках" if key == "bookmarks" else "Найти видео")
+        if key == "bookmarks":
+            self.entry.set_text(self.bookmark_query)
+        self.update_scope()
         if key == "home":
             self.show_home()
         elif key == "feed":
             self.show_feed()
         elif key == "channels":
             self.show_channels()
+        elif key == "bookmarks":
+            self.show_bookmarks()
         else:
             self.show_history()
 
@@ -869,6 +897,7 @@ class Video(Gtk.Application):
         row.pack_start(open_btn, True, True, 0)
         action.set_valign(Gtk.Align.CENTER)
         row.pack_start(action, False, False, 0)
+        row.pack_start(self.bookmark_button("channel", chan), False, False, 0)
         return row
 
     def refresh_channels(self):
@@ -928,7 +957,11 @@ class Video(Gtk.Application):
                     btn.get_child().set_line_wrap(True)
                     btn.get_child().set_xalign(0)
                     btn.connect("clicked", lambda _b, p=playlist: self.show_playlist(p, chan))
-                    box.pack_start(btn, False, False, 0)
+                    row = Gtk.Box(spacing=12)
+                    row.pack_start(btn, True, True, 0)
+                    saved = dict(playlist, owner_title=chan["title"])
+                    row.pack_start(self.bookmark_button("playlist", saved), False, False, 0)
+                    box.pack_start(row, False, False, 0)
             elif playlists is None:
                 box.pack_start(label("Не удалось загрузить плейлисты." if
                                       self.playlists.has_failed(key) else "Загружаю плейлисты…",
@@ -940,36 +973,47 @@ class Video(Gtk.Application):
     def reset_channel_data(self):
         # Replace the collections on an account change: an old request
         # must never fill the new account's cache with private playlists.
+        self.channel_epoch = getattr(self, "channel_epoch", 0) + 1
         self.playlist_wanted = {}
         self.playlist_order = {}
         self.pending_playlist_play = None
+        self.pending_playlist_resume = None
+
+        def watch(name, handler):
+            collection = getattr(self, name)
+            collection.watch(lambda key, error: handler(key, error)
+                             if getattr(self, name) is collection else None)
+
         self.channel_videos = Kept(
             lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
-        self.channel_videos.watch(self._channel_came)
+        watch("channel_videos", self._channel_came)
         self.playlists = Kept(
             lambda key, chan: self.sources[key[0]].playlists(chan),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
-        self.playlists.watch(self._channel_came)
+        watch("playlists", self._channel_came)
         self.playlist_pages = Kept(
             lambda key, playlist: self.sources[key[0]].playlist_videos(playlist, key[3]),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key[:3]],))
-        self.playlist_pages.watch(self._playlist_came)
+        watch("playlist_pages", self._playlist_came)
         self.playlist_all = Kept(
             lambda key, playlist: playlist_view.collect(self.sources[key[0]].playlist_videos,
-                                                        playlist),
+                                                        playlist, locations=True),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key],))
-        self.playlist_all.watch(self._playlist_all_came)
+        watch("playlist_all", self._playlist_all_came)
 
     def show_playlist(self, playlist, chan, offset=0, again=False, previous=()):
         key = (playlist["source"], playlist["owner_id"], playlist["id"], offset)
-        order = self.playlist_order.get(key[:3], "vk")
+        order = self.playlist_order.get(key[:3], self.library.playlist_order(playlist))
         if not again:
             self.open_sub({"kind": "playlist", "playlist": playlist, "chan": chan,
                            "key": key, "previous": previous, "order": order}, playlist["title"])
         self.playlist_wanted[key[:3]] = playlist
         if order == "vk":
-            page = self.playlist_pages.get(key)
+            full = self.playlist_all.peek(key[:3])
+            page = (full or {}).get("_pages", {}).get(offset)
+            if page is None:
+                page = self.playlist_pages.get(key)
             failed = self.playlist_pages.has_failed(key)
         else:
             orders = self.playlist_all.get(key[:3])
@@ -977,8 +1021,9 @@ class Video(Gtk.Application):
             failed = self.playlist_all.has_failed(key[:3])
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         sorting = Gtk.ComboBoxText()
+        sorting.get_style_context().add_class("choice")
         for oid, title in playlist_view.ORDERS:
-            sorting.append(oid, title)
+            sorting.append(oid, "Порядок сервиса" if oid == "vk" and playlist["source"] != "vk" else title)
         sorting.set_active_id(order)
         sub = self.sub
 
@@ -986,11 +1031,19 @@ class Video(Gtk.Application):
             selected = combo.get_active_id()
             if self.sub is sub and selected is not None and selected != order:
                 self.playlist_order[key[:3]] = selected
+                self.library.set_playlist_order(playlist, selected)
                 self.show_playlist(playlist, chan)
 
         sorting.connect("changed", changed)
         sorting.set_halign(Gtk.Align.START)
-        box.pack_start(sorting, False, False, 0)
+        tools = Gtk.Box(spacing=12)
+        tools.pack_start(sorting, True, True, 0)
+        tools.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"])),
+                         False, False, 0)
+        box.pack_start(tools, False, False, 0)
+        resume = self.playlist_resume_block(self.sub)
+        if resume:
+            box.pack_start(resume, False, False, 0)
         if page is None:
             self.say("Не удалось загрузить плейлист: нет связи?" if failed else
                      ("Загружаю весь плейлист…" if order != "vk" else "Загружаю…"))
@@ -1017,13 +1070,20 @@ class Video(Gtk.Application):
                                previous=self.sub["previous"])
 
     def _playlist_all_came(self, key, _error):
+        resume = self.pending_playlist_resume
+        if resume and resume["key"] == key and self.sub is resume["sub"]:
+            self.pending_playlist_resume = None
+            if _error:
+                self.say("Не удалось проверить плейлист. Прогресс сохранён; повторите при подключении.")
+            else:
+                self.playlist_resume_action(resume["sub"], resume["action"])
         pending = self.pending_playlist_play
         if pending and pending["key"] == key and self.sub is pending["sub"]:
             if _error:
                 self.pending_playlist_play = None
                 self.say("Не удалось загрузить очередь плейлиста: нет связи?")
             else:
-                self.play_from_playlist(pending["video"], pending["sub"])
+                self.play_from_playlist(pending["video"], pending["sub"], pending.get("start_over", False))
         if (self.sub and self.sub["kind"] == "playlist"
                 and self.sub["key"][:3] == key and self.sub["order"] != "vk"):
             self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
@@ -1032,6 +1092,369 @@ class Video(Gtk.Application):
     def _channel_came(self, key, _error):
         if self.on_sub("channel", key=key):
             self.show_channel(self.sub["chan"], again=True)
+
+    def playlist_resume_block(self, sub):
+        saved = self.library.playlist_resume(sub["playlist"])
+        if not saved:
+            return None
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.get_style_context().add_class("chan")
+        box.pack_start(label("Продолжить плейлист", "cname"), False, False, 0)
+        video = saved["video"]
+        title = label(video["title"], "ttl", wrap=True)
+        title.set_lines(2)
+        title.set_ellipsize(3)
+        box.pack_start(title, False, False, 0)
+        order_title = dict(playlist_view.ORDERS)[sub["order"]]
+        if sub["order"] == "vk" and sub["playlist"]["source"] != "vk":
+            order_title = "Порядок сервиса"
+        bits = [nice_duration(saved["pos"]), nice_duration(saved["duration"]), order_title]
+        box.pack_start(label(" · ".join(b for b in bits if b), "csub"), False, False, 0)
+        progress = self.library.progress(video)
+        if progress:
+            box.pack_start(Gtk.ProgressBar(fraction=progress), False, False, 0)
+        orders = self.playlist_all.peek(sub["key"][:3])
+        status = playlist_view.continuation(self.wanted(orders[sub["order"]]), saved) if orders else None
+        note = {"missing": "Последнего видео нет среди доступных. Предлагаю первое доступное.",
+                "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео.",
+                "next": "Последнее видео досмотрено. Далее: %s" % (status["video"]["title"]
+                                                                            if status and status["video"] else "")}
+        if status and status["kind"] in note:
+            box.pack_start(label(note[status["kind"]], "csub", wrap=True), False, False, 0)
+        elif saved["complete"]:
+            box.pack_start(label("Последнее видео досмотрено. Продолжим со следующего в этом порядке.",
+                                 "csub", wrap=True), False, False, 0)
+        row = Gtk.Box(spacing=12)
+        caption = ("Начать сначала" if status and status["kind"] == "finished" else
+                   "Первое доступное видео" if status and status["kind"] == "missing" else "Продолжить")
+        start = Gtk.Button(label=caption, sensitive=not status or status["kind"] != "empty")
+        start.get_style_context().add_class("more")
+        start.connect("clicked", lambda _b: self.playlist_resume_action(sub, "play"))
+        row.pack_start(start, True, True, 0)
+        locate = Gtk.Button(label="Показать в списке")
+        locate.get_style_context().add_class("more")
+        locate.connect("clicked", lambda _b: self.playlist_resume_action(sub, "locate"))
+        row.pack_start(locate, True, True, 0)
+        box.pack_start(row, False, False, 0)
+        return box
+
+    def playlist_resume_action(self, sub, action):
+        if self.sub is not sub:
+            return
+        saved = self.library.playlist_resume(sub["playlist"])
+        if not saved:
+            return
+        key = sub["key"][:3]
+        orders = self.playlist_all.get(key)
+        if orders is None:
+            self.pending_playlist_resume = {"sub": sub, "key": key, "action": action}
+            self.say("Ищу сохранённое видео в плейлисте…")
+            return
+        videos = self.wanted(orders[sub["order"]])
+        status = playlist_view.continuation(videos, saved)
+        if status["kind"] == "empty":
+            self.say("В плейлисте нет доступных видео. Прогресс сохранён.")
+            return
+        if action == "play":
+            self.play(status["video"], start_over=status["kind"] == "finished")
+            return
+        target = next((v for v in videos if (v["source"], v["id"]) ==
+                       (saved["video"]["source"], saved["video"]["id"])), None)
+        if target is None:
+            target = videos[0]
+        if sub["order"] == "vk":
+            offset, previous = orders["_locations"][(target["source"], target["id"])]
+        else:
+            index = next(i for i, v in enumerate(videos) if v is target)
+            offset = (index // 30) * 30
+            previous = tuple(range(0, offset, 30))
+        self.show_playlist(sub["playlist"], sub["chan"], offset, previous=previous)
+        if status["kind"] == "missing":
+            self.say("Последнее видео недоступно или удалено. Показано первое доступное.")
+
+    # --- bookmarks -------------------------------------------------------
+    def bookmark_button(self, kind, obj):
+        btn = Gtk.Button()
+        btn.get_style_context().add_class("more")
+        btn.set_valign(Gtk.Align.CENTER)
+
+        def update():
+            saved = self.library.bookmarks.find(kind, obj)
+            btn.set_label("★" if saved else "☆")
+            btn.set_tooltip_text("Действия с закладкой" if saved else "В закладки")
+
+        def clicked(_btn):
+            saved = self.library.bookmarks.find(kind, obj)
+            if saved:
+                self.bookmark_menu(btn, saved)
+            else:
+                self.library.bookmarks.add(kind, obj, self.bookmark_sync.link_for(kind, obj))
+                update()
+                self.bookmark_sync.refresh()
+        update()
+        btn.connect("clicked", clicked)
+        return btn
+
+    def bookmark_menu(self, button, saved):
+        pop = Gtk.Popover.new(button)
+        pop.connect("closed", lambda p: p.destroy())
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        ident = saved["key"]
+
+        def action(title, fn, sensitive=True):
+            btn = Gtk.Button(label=title, sensitive=sensitive)
+            btn.get_style_context().add_class("more")
+            btn.connect("clicked", lambda _b: (pop.popdown(), fn()))
+            box.pack_start(btn, False, False, 0)
+
+        def remove(local_only=False):
+            if saved["links"] and not dialogs.ask(
+                    self.win,
+                    "Закладка будет удалена из связанных аккаунтов сервиса" +
+                    (", но останется на устройстве." if local_only else " и из приложения."),
+                    "Оставить только на устройстве" if local_only else "Удалить закладку"):
+                return
+            self.library.bookmarks.remove(ident, local_only)
+            self.bookmark_sync.refresh()
+            if button.get_parent():
+                button.set_label("★" if local_only else "☆")
+
+        status = self.bookmark_status(saved)[1]
+        box.pack_start(label(status, "hint", wrap=True), False, False, 0)
+        pinned = "pin" in saved
+        action("Открепить" if pinned else "Закрепить",
+               lambda: self.library.bookmarks.pin(ident, not pinned))
+        if pinned:
+            action("Переместить выше", lambda: self.library.bookmarks.move(ident, -1))
+            action("Переместить ниже", lambda: self.library.bookmarks.move(ident, 1))
+        link = self.bookmark_sync.link_for(saved["kind"], saved["object"])
+        if link and link[0] not in saved["links"]:
+            action("Синхронизировать с VK", lambda: (
+                self.library.bookmarks.link(ident, *link), self.bookmark_sync.refresh()))
+        if saved["links"]:
+            action("Оставить только на устройстве", lambda: remove(True))
+        action("Удалить закладку", remove)
+        pop.add(box)
+        pop.show_all()
+        pop.popup()
+        return pop
+
+    def bookmark_status(self, saved):
+        links = saved["links"]
+        if not links:
+            return "", "Только на этом устройстве"
+        notes = []
+        for aid, link in links.items():
+            name = link.get("account") or aid
+            state = link["state"]
+            if state == "error":
+                note = link.get("error") or "Ошибка синхронизации"
+            elif state == "pending":
+                note = "Ожидает отправки"
+            else:
+                note = "Синхронизировано"
+            active = any(s["aid"] == aid and self.library.bookmarks.enabled(aid)
+                         for s in self.bookmark_sync.sessions.values())
+            notes.append("%s · %s%s" % (name, note, "" if active else " · синхронизация выключена"))
+        states = [v["state"] for v in links.values()]
+        return ("☁ !" if "error" in states else "☁ ↻" if "pending" in states else "☁ ✓"), "\n".join(notes)
+
+    def bookmark_row(self, saved):
+        obj, kind = saved["object"], saved["kind"]
+        row = Gtk.Box(spacing=12)
+        row.get_style_context().add_class("chan")
+        thumb = Gtk.Image()
+        thumb.set_size_request(AVATAR, AVATAR)
+        self.thumbs.get(obj.get("thumb"), thumb, (AVATAR, AVATAR))
+        row.pack_start(thumb, False, False, 0)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        title = label(("📌 " if "pin" in saved else "") + obj["title"], "cname", wrap=True)
+        title.set_lines(2)
+        title.set_ellipsize(3)
+        content.pack_start(title, False, False, 0)
+        src = self.sources.get(obj["source"])
+        cloud, status = self.bookmark_status(saved)
+        info = " · ".join(v for v in ({"video": "Видео", "playlist": "Плейлист", "channel": "Канал"}[kind],
+                         src.label if src else obj["source"], obj.get("channel") or
+                         obj.get("owner_title"), cloud) if v)
+        desc = label(info, "csub", wrap=True)
+        desc.set_tooltip_text(status)
+        content.pack_start(desc, False, False, 0)
+        if obj.get("unavailable"):
+            content.pack_start(label(obj["unavailable"], "csub", wrap=True), False, False, 0)
+        if kind == "video":
+            progress = self.library.progress(obj)
+            if progress:
+                content.pack_start(Gtk.ProgressBar(fraction=progress), False, False, 0)
+        open_btn = Gtk.Button()
+        open_btn.get_style_context().add_class("open")
+        open_btn.add(content)
+        open_btn.connect("clicked", lambda _b: self.open_bookmark(saved))
+        row.pack_start(open_btn, True, True, 0)
+        menu = Gtk.Button(label="⋮")
+        menu.get_style_context().add_class("more")
+        menu.set_tooltip_text("Действия с закладкой")
+        menu.set_valign(Gtk.Align.CENTER)
+        menu.connect("clicked", lambda btn: self.bookmark_menu(btn, saved))
+        row.pack_start(menu, False, False, 0)
+        return row
+
+    def open_bookmark(self, saved):
+        obj, kind = saved["object"], saved["kind"]
+        if obj["source"] not in self.sources:
+            self.say("Этот сервис сейчас недоступен. Закладка сохранена.")
+        elif kind == "video":
+            self.play(obj)
+        elif kind == "channel":
+            self.show_channel(obj)
+        else:
+            chan = {"source": obj["source"], "id": obj.get("owner_id", ""),
+                    "title": obj.get("owner_title") or "Канал плейлиста"}
+            self.show_playlist(obj, chan)
+
+    def show_bookmarks(self):
+        self.scope_btn.hide()  # this tab has its own Source filter
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        filters = Gtk.Box(spacing=12, homogeneous=True)
+        options = (
+            ("kind", [("all", "Все типы")] + list(bookmark_view.KINDS)),
+            ("source", [("all", "Все сервисы")] + [(s.id, s.label) for s in self.ordered()]),
+            ("state", [("all", "Все закладки"), ("local", "Локальные"),
+                       ("synced", "Синхронизируемые")]))
+        for field, choices in options:
+            combo = Gtk.ComboBoxText()
+            combo.get_style_context().add_class("choice")
+            for value, title in choices:
+                combo.append(value, title)
+            combo.set_active_id(self.bookmark_filters[field])
+            combo.connect("changed", lambda c, f=field: self.bookmark_filter(f, c.get_active_id()))
+            filters.pack_start(combo, True, True, 0)
+        box.pack_start(filters, False, False, 0)
+        tools = Gtk.Box(spacing=12)
+        sort = Gtk.ComboBoxText()
+        sort.get_style_context().add_class("choice")
+        for value, title in bookmark_view.SORTS:
+            sort.append(value, title)
+        sort.set_active_id(self.bookmark_filters["sort"])
+        sort.connect("changed", lambda c: self.bookmark_filter("sort", c.get_active_id()))
+        tools.pack_start(sort, True, True, 0)
+        direction = Gtk.Button(label="↓" if self.bookmark_filters["reverse"] else "↑")
+        direction.get_style_context().add_class("more")
+        direction.set_tooltip_text("Изменить направление сортировки")
+        direction.connect("clicked", lambda _b: self.bookmark_filter(
+            "reverse", not self.bookmark_filters["reverse"]))
+        tools.pack_start(direction, False, False, 0)
+        add = Gtk.Button(label="Добавить по ссылке")
+        add.get_style_context().add_class("more")
+        add.connect("clicked", lambda _b: self.bookmark_link_page())
+        tools.pack_start(add, False, False, 0)
+        refresh = Gtk.Button(label="Обновить")
+        refresh.get_style_context().add_class("more")
+        refresh.connect("clicked", lambda _b: self.refresh_bookmarks())
+        tools.pack_start(refresh, False, False, 0)
+        box.pack_start(tools, False, False, 0)
+        for sid in self.bookmark_sync.sessions:
+            box.pack_start(self.bookmark_account(sid), False, False, 0)
+        found = self.library.bookmarks.view(self.bookmark_query, **self.bookmark_filters)
+        for saved in found:
+            box.pack_start(self.bookmark_row(saved), False, False, 0)
+        self.say(self.bookmark_note or ("" if found else "Закладок пока нет или они не подходят под фильтры."))
+        self.set_content(box)
+
+    def bookmark_filter(self, field, value):
+        if value is not None:
+            self.bookmark_filters[field] = value
+            self.show_bookmarks()
+
+    def bookmark_account(self, sid):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.get_style_context().add_class("chan")
+        s = self.bookmark_sync.sessions.get(sid)
+        if not s:
+            box.pack_start(label("Для синхронизации закладок войдите в аккаунт.", "csub"), False, False, 0)
+            return box
+        row = Gtk.Box(spacing=12)
+        row.pack_start(label("VK · %s" % s["client"].name, "csub"), True, True, 0)
+        if s["kinds"] or self.library.bookmarks.enabled(s["aid"]):
+            switch = Gtk.Switch(active=self.library.bookmarks.enabled(s["aid"]))
+            switch.set_tooltip_text("Синхронизировать закладки этого аккаунта")
+            switch.connect("notify::active", lambda sw, _p: self.bookmark_sync.enable(sid, sw.get_active()))
+            row.pack_start(switch, False, False, 0)
+        box.pack_start(row, False, False, 0)
+        box.pack_start(label(s["note"], "csub", wrap=True), False, False, 0)
+        return box
+
+    def refresh_bookmarks(self):
+        self.bookmark_sync.refresh_accounts()
+        for sid, s in list(self.bookmark_sync.sessions.items()):
+            if not s["kinds"]:
+                self.bookmark_sync.probe(sid)
+            else:
+                self.bookmark_sync.refresh(sid)
+
+    def bookmark_tick(self):
+        self.bookmark_sync.refresh_accounts()
+        self.bookmark_sync.refresh()
+        return True
+
+    def bookmark_sync_changed(self):
+        if self.win:
+            self.redraw("bookmarks")
+            if self.on_sub("settings"):
+                self.show_settings()
+
+    def bookmark_link_page(self):
+        self.open_sub({"kind": "bookmark_link"}, "Добавить закладку")
+        self.say("")
+        sub = self.sub
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        entry = Gtk.Entry(placeholder_text="Ссылка на видео, плейлист или канал")
+        entry.get_style_context().add_class("search")
+        box.pack_start(entry, False, False, 0)
+        note = label("", "hint", wrap=True)
+        add = Gtk.Button(label="Добавить")
+        add.get_style_context().add_class("add")
+
+        def submit(*_a):
+            if self.bookmark_link_busy or not entry.get_text().strip():
+                return
+            url = entry.get_text().strip()
+            src = next((s for s in self.sources.values() if s.owns(url) and
+                        hasattr(s, "resolve_bookmark")), None)
+            if not src:
+                note.set_text("Нужна ссылка поддерживаемого видеосервиса.")
+                return
+            self.bookmark_link_busy = True
+            epoch = self.channel_epoch
+            add.set_sensitive(False)
+            note.set_text("Проверяю ссылку…")
+
+            def done(answer, error):
+                self.bookmark_link_busy = False
+                if self.sub is not sub:
+                    return
+                add.set_sensitive(True)
+                if epoch != self.channel_epoch:
+                    note.set_text("Аккаунт изменился. Проверьте ссылку ещё раз.")
+                    return
+                if error or not answer:
+                    note.set_text("Не удалось открыть ссылку. Проверьте доступ к объекту и соединение.")
+                    return
+                kind, obj = answer
+                old = self.library.bookmarks.find(kind, obj)
+                if old:
+                    self.open_bookmark(old)
+                else:
+                    self.library.bookmarks.add(kind, obj, self.bookmark_sync.link_for(kind, obj))
+                    self.bookmark_sync.refresh()
+                    self.show_page("bookmarks")
+            self.work(src.resolve_bookmark, url, done=done)
+
+        entry.connect("activate", submit)
+        add.connect("clicked", submit)
+        box.pack_start(add, False, False, 0)
+        box.pack_start(note, False, False, 0)
+        self.set_content(box)
 
     # История ------------------------------------------------------------
     def show_history(self):
@@ -1044,6 +1467,10 @@ class Video(Gtk.Application):
         """Videos from every source in scope at once, YouTube's first,
         each source shown as soon as it answers."""
         query = (query or self.entry.get_text()).strip()
+        if self.on_page("bookmarks"):
+            self.bookmark_query = query
+            self.show_bookmarks()
+            return
         if not query:
             return
         self.entry.select_region(0, 0)
@@ -1198,6 +1625,11 @@ class Video(Gtk.Application):
                    lambda: self.import_subscriptions(src))
             button("Выйти", "drop wide", lambda: self.logout(src))
             note = self.account_notes.get(src.id)
+            if hasattr(src, "bookmark_client"):
+                card.pack_start(self.bookmark_account(src.id), False, False, 0)
+            else:
+                card.pack_start(label("Закладки этого сервиса сохраняются только на устройстве.",
+                                      "csub", wrap=True), False, False, 0)
         elif kind == "waiting":
             card.pack_start(self.login_code(state), False, False, 0)
             if hasattr(src, "login_submit"):
@@ -1269,6 +1701,7 @@ class Video(Gtk.Application):
             self.reset_channel_data()
             self.account_notes[src.id] = (
                 "Подписаться на каналы аккаунта можно кнопкой ниже." if now else None)
+        self.bookmark_sync.refresh_accounts()
         if self.on_sub("settings"):
             self.show_settings()
 
@@ -1295,7 +1728,9 @@ class Video(Gtk.Application):
 
     # --- channels ---------------------------------------------------------
     def library_changed(self, what):
-        if what == "position":
+        if what == "bookmarks":
+            self.redraw("bookmarks")
+        elif what == "position":
             state = self.player.state
             if state is None or state["paused"]:
                 self.redraw(self.page)  # the strips on the cards; not while one watches
@@ -1326,29 +1761,30 @@ class Video(Gtk.Application):
         GLib.idle_add(question)
 
     # --- playing ----------------------------------------------------------
-    def play(self, video):
+    def play(self, video, start_over=False):
         self.pending_playlist_play = None
         src = self.sources.get(video["source"])
         if not src:
             return
         if (self.sub and self.sub["kind"] == "playlist" and self.player.stream_format is None
                 and hasattr(src, "stream")):
-            self.play_from_playlist(video, self.sub)
+            self.play_from_playlist(video, self.sub, start_over)
             return
         try:
             stream = getattr(src, "stream", None)
-            self.player.open(video, src.watch_url(video), start=self.library.resume_at(video),
+            context = self.sub["playlist"] if self.sub and self.sub["kind"] == "playlist" else None
+            self.player.open(video, src.watch_url(video), start=None if start_over else self.library.resume_at(video),
                              ytdl=getattr(src, "ytdl_options", dict)(),
                              resolve=stream and (lambda fmt: stream(video, fmt)),
-                             resolve_desktop=getattr(src, "resolve_on_desktop", False))
+                             resolve_desktop=getattr(src, "resolve_on_desktop", False), playlist=context)
         except OSError:
             self.say("Нет проигрывателя (haltia-vplay или mpv).")
 
-    def play_from_playlist(self, video, sub):
+    def play_from_playlist(self, video, sub, start_over=False):
         key = sub["key"][:3]
         orders = self.playlist_all.get(key)
         if orders is None:
-            self.pending_playlist_play = {"key": key, "sub": sub, "video": video}
+            self.pending_playlist_play = {"key": key, "sub": sub, "video": video, "start_over": start_over}
             self.say("Загружаю плейлист для проигрывателя…")
             return
         self.pending_playlist_play = None
@@ -1360,12 +1796,15 @@ class Video(Gtk.Application):
             return
         src = self.sources[video["source"]]
         try:
-            self.player.open_playlist(videos, index, src.stream, self.library.resume_at)
+            self.player.open_playlist(videos, index, src.stream,
+                                      lambda v: None if start_over and v is videos[index]
+                                      else self.library.resume_at(v), playlist=sub["playlist"])
         except OSError:
             self.say("Не удалось запустить проигрыватель.")
 
     def stop_playback(self):
         self.pending_playlist_play = None
+        self.pending_playlist_resume = None
         self.player.stop()
 
     def note_played(self, state):
@@ -1427,14 +1866,21 @@ class Video(Gtk.Application):
         last = self.play_last
         if state is None:
             if last and last["pos"] is not None:
-                self.library.note_position(last["video"], last["pos"], last["duration"])
+                self.library.note_position(last["video"], last["pos"], last["duration"],
+                                           ended=last.get("ended", False))
             self.play_last = None
             return
         paused_now = state["paused"] and not (last and last["paused"])
+        started_now = last is None or last["pos"] is None
+        duration_known = state["duration"] and not (last and last["duration"])
         now = time.time()
-        if state["pos"] is not None and (paused_now or now - self.play_saved >= POSITION_SAVE_SEC):
+        if state["pos"] is not None and state.get("playlist"):
+            self.library.note_playlist(state["playlist"], state["video"])
+        if state["pos"] is not None and (paused_now or started_now or duration_known or state.get("ended") or
+                                          now - self.play_saved >= POSITION_SAVE_SEC):
             self.play_saved = now
-            self.library.note_position(state["video"], state["pos"], state["duration"])
+            self.library.note_position(state["video"], state["pos"], state["duration"],
+                                       ended=state.get("ended", False))
         self.play_last = dict(state)
 
     def watch_on(self):

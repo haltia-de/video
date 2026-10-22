@@ -14,6 +14,13 @@ SOURCE has:
   watch_url(video)          what the player opens; it goes through mpv's
                             yt-dlp hook, so a page link is enough
 and may have:
+  resolve_bookmark(url)      (kind, object), kind video/playlist/channel;
+                            only accepts this Source's links
+  bookmark_client()         captured Account session or None; id, name,
+                            capabilities() -> supported kinds (read-only
+                            probe), read(kinds) -> complete [(kind, object)],
+                            write(kind, object, add). Must never fall back
+                            to a guest or a replacement Account's token
   playlists(channel)        a list of playlists: source, owner_id (channel
                             id), id, title; optional count of videos
   playlist_videos(playlist, offset=0)

@@ -185,7 +185,8 @@ class Player:
         player asks yt-dlp itself (mpv: a desktop's CPU does not mind)."""
         return VPLAY_FORMAT if os.path.basename(self.player or "") in VPLAY else None
 
-    def open(self, video, url, ytdl=None, start=None, resolve=None, resolve_desktop=False):
+    def open(self, video, url, ytdl=None, start=None, resolve=None, resolve_desktop=False,
+             playlist=None):
         """Play video (the one playing is closed). OSError: no player.
         resolve_desktop: the source needs its Account even with mpv."""
         if not self.player:
@@ -194,6 +195,8 @@ class Player:
         self.run_no += 1
         self.state = {"video": video, "pos": None, "duration": None, "paused": False,
                       "start": start}
+        if playlist is not None:
+            self.state["playlist"] = playlist
         self._tell()
         args = (self.run_no, video, url, ytdl, start)
         fmt = self.stream_format or ("best" if resolve_desktop else None)
@@ -225,7 +228,7 @@ class Player:
         self.proc = self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
         threading.Thread(target=self._read, args=(run_no, ipc, self.proc), daemon=True).start()
 
-    def open_playlist(self, videos, index, resolve, start_for=None):
+    def open_playlist(self, videos, index, resolve, start_for=None, playlist=None):
         """A native desktop mpv playlist; resolve(video, fmt) runs per entry."""
         if not self.player or os.path.basename(self.player) in VPLAY:
             raise OSError("a desktop mpv is needed for playlist controls")
@@ -235,6 +238,7 @@ class Player:
         self.stop()
         self.run_no += 1
         self.queue = videos
+        self.queue_playlist = playlist
         self.queue_index = index
         self.queue_resolve = resolve
         self.queue_start = start_for
@@ -243,6 +247,8 @@ class Player:
         video = self.queue[index]
         self.state = {"video": video, "pos": None, "duration": None, "paused": False,
                       "start": None}
+        if playlist is not None:
+            self.state["playlist"] = playlist
         self._tell()
         if self.sock_dir is None:
             self.sock_dir = private_dir(self.runtime_dir)
@@ -278,6 +284,8 @@ class Player:
             start = self.queue_start(video) if self.queue_start else None
             self.state = {"video": video, "pos": None, "duration": None, "paused": False,
                           "start": start}
+            if self.queue_playlist is not None:
+                self.state["playlist"] = self.queue_playlist
             self._tell()
             resolver, request = self.queue_resolve, args[1]
 
@@ -356,6 +364,8 @@ class Player:
                     self.post(self._changed, run_no, msg.get("name"), msg.get("data"))
                 elif msg.get("event") == "client-message":
                     self.post(self._queue_message, run_no, msg.get("args") or [])
+                elif msg.get("event") == "end-file":
+                    self.post(self._file_ended, run_no, msg.get("reason"))
         sock.close()
         try:
             os.unlink(ipc)
@@ -379,7 +389,7 @@ class Player:
         key = {"time-pos": "pos", "duration": "duration", "pause": "paused"}.get(name)
         if key is None:
             return
-        if self.queue is not None and key in ("pos", "duration") and value is None:
+        if key in ("pos", "duration") and value is None:
             return  # file teardown precedes the next entry's on_load hook
         old = self.state[key]
         if key == "paused":
@@ -388,6 +398,13 @@ class Player:
                 else int(old) == int(value))
         self.state[key] = value
         if not same:
+            self._tell()
+
+    def _file_ended(self, run_no, reason):
+        if run_no == self.run_no and self.state is not None and reason == "eof":
+            self.state["ended"] = True
+            if self.state["pos"] is None:
+                self.state["pos"] = self.state["duration"] or 0
             self._tell()
 
     def _ended(self, run_no):
