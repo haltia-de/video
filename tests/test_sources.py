@@ -159,6 +159,54 @@ class VKTokenTest(Dirs):
 
 
 class VKSignInTest(Dirs):
+    def test_import_communities_asks_for_each_counter_separately(self):
+        groups = [{"id": 7, "name": "Закрытое сообщество", "is_closed": 2},
+                  {"id": 8, "name": "Без видео"}]
+        code = ('return [API.groups.getById({"group_ids":"7","fields":"counters"}),'
+                'API.groups.getById({"group_ids":"8","fields":"counters"})];')
+        vk = self.vk(exchanges=[
+            exchange("groups.get", {"response": {"count": 2, "items": groups}},
+                     extended=1, count=1000, fields=vkvideo.GROUP_FIELDS),
+            exchange("execute", {"response": [
+                {"groups": [{"id": 7, "counters": {"videos": 3}}]},
+                {"groups": [{"id": 8, "counters": {"videos": 0}}]}]}, code=code)])
+        vk.user = {"token": "USER", "name": "Account"}
+        self.assertEqual([c["id"] for c in vk.subscriptions()], ["-7"])
+        self.assertAllAsked()
+
+    def test_import_does_not_silently_accept_a_failed_counter_request(self):
+        code = 'return [API.groups.getById({"group_ids":"7","fields":"counters"})];'
+        vk = self.vk(exchanges=[
+            exchange("groups.get", {"response": {"count": 1, "items": [{"id": 7}]}},
+                     extended=1, count=1000, fields=vkvideo.GROUP_FIELDS),
+            exchange("execute", {"response": [False]}, code=code)])
+        vk.user = {"token": "USER", "name": "Account"}
+        with self.assertRaises(vkvideo.ApiError):
+            vk.subscriptions()
+
+    def test_import_batches_at_most_25_individual_counter_calls(self):
+        import re
+
+        groups = [{"id": i, "name": "Community %d" % i} for i in range(1, 27)]
+        batches = []
+
+        class HTTP:
+            def get_json(inner, url, data, headers):
+                if "/groups.get?" in url:
+                    return {"response": {"count": 26, "items": groups}}
+                self.assertIn("/execute?", url)
+                ids = [int(i) for i in re.findall(r'"group_ids":"(\d+)"', data["code"])]
+                self.assertLessEqual(len(ids), 25)
+                batches.append(ids)
+                return {"response": [{"groups": [{"id": i, "counters": {"videos": 1}}]}
+                                     for i in ids]}
+
+        vk = vkvideo.VKVideo(http=HTTP(), config_dir=self.home, cache_dir=self.home,
+                             vault=vault_in(self.home, keyring=None))
+        vk.user = {"token": "USER", "name": "Account"}
+        self.assertEqual(len(vk.subscriptions()), 26)
+        self.assertEqual(batches, [list(range(1, 26)), [26]])
+
     def start(self, *after):
         rec = load("vk_login_start")
         vk = self.vk(exchanges=rec[:2] + list(after))

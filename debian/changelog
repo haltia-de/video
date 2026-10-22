@@ -1,6 +1,7 @@
 haltia-video (2.4.4) unstable; urgency=medium
 
   * Complete VK QR sign-in with one-time code entry and retry.
+  * Keep communities with videos when importing VK account channels.
 
  -- Haltia <rensomail@gmail.com>  Thu, 22 Oct 2026 22:06:06 +0300
 

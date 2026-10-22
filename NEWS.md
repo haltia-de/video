@@ -6,9 +6,13 @@
 
 Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.
 
+Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
+
 ### English
 
 Signing in to VK Video by QR code now accepts the one-time code VK shows on the phone. An incorrect code can be retried without a new QR code; a connection error keeps the code entry available.
+
+Importing VK account channels no longer skips communities with videos, including private ones, because VK omits their counters in a multi-community response.
 
 ## 2.4.3 (2026-10-22)
 

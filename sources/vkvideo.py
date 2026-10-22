@@ -308,12 +308,21 @@ class VKVideo:
         groups = resp.get("items") or []
         ids = [g["id"] for g in groups]
         with_videos = set()
-        for i in range(0, len(ids), 400):
-            got = self._api("groups.getById", group_ids=",".join(map(str, ids[i:i + 400])),
-                            fields="counters")
-            for g in got.get("groups") or []:
-                if (g.get("counters") or {}).get("videos"):
-                    with_videos.add(g["id"])
+        # VK omits counters when getById names more than one community.
+        # execute keeps these individual lookups in one round trip (25
+        # calls at most), rather than hundreds of trips on the tablet.
+        for i in range(0, len(ids), 25):
+            calls = ['API.groups.getById({"group_ids":"%d","fields":"counters"})' % gid
+                     for gid in ids[i:i + 25]]
+            got = self._api("execute", code="return [%s];" % ",".join(calls))
+            if not isinstance(got, list) or len(got) != len(calls):
+                raise ApiError("subscriptions", "could not check the communities' videos")
+            for answer in got:
+                if not isinstance(answer, dict):  # execute uses false for a failed call
+                    raise ApiError("subscriptions", "could not check a community's videos")
+                for g in answer.get("groups") or []:
+                    if (g.get("counters") or {}).get("videos"):
+                        with_videos.add(g["id"])
         return [_group(g) for g in groups if g["id"] in with_videos]
 
     # --- videos -----------------------------------------------------------

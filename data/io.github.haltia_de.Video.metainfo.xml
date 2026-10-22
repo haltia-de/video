@@ -21,7 +21,9 @@
     <release version="2.4.4" date="2026-10-22">
       <description>
         <p>Signing in to VK Video by QR code now accepts the one-time code VK shows on the phone. An incorrect code can be retried without a new QR code; a connection error keeps the code entry available.</p>
+        <p>Importing VK account channels no longer skips communities with videos, including private ones, because VK omits their counters in a multi-community response.</p>
         <p xml:lang="ru">Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.</p>
+        <p xml:lang="ru">Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.</p>
       </description>
     </release>
     <release version="2.4.3" date="2026-10-22">
