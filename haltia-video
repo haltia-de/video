@@ -67,6 +67,7 @@ import sources  # noqa: E402
 from kept import Kept  # noqa: E402
 from library import Library  # noqa: E402
 import pictures  # noqa: E402
+import playlist as playlist_view  # noqa: E402
 import renamed  # noqa: E402
 from player import Player  # noqa: E402
 from search import view as search_view  # noqa: E402
@@ -936,6 +937,7 @@ class Video(Gtk.Application):
         # Replace the collections on an account change: an old request
         # must never fill the new account's cache with private playlists.
         self.playlist_wanted = {}
+        self.playlist_order = {}
         self.channel_videos = Kept(
             lambda _key, chan: self.sources[chan["source"]].channel_videos(chan),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.channel_wanted[key],))
@@ -948,18 +950,45 @@ class Video(Gtk.Application):
             lambda key, playlist: self.sources[key[0]].playlist_videos(playlist, key[3]),
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key[:3]],))
         self.playlist_pages.watch(self._playlist_came)
+        self.playlist_all = Kept(
+            lambda key, playlist: playlist_view.collect(self.sources[key[0]].playlist_videos,
+                                                        playlist),
+            CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key],))
+        self.playlist_all.watch(self._playlist_all_came)
 
     def show_playlist(self, playlist, chan, offset=0, again=False, previous=()):
         key = (playlist["source"], playlist["owner_id"], playlist["id"], offset)
+        order = self.playlist_order.get(key[:3], "vk")
         if not again:
             self.open_sub({"kind": "playlist", "playlist": playlist, "chan": chan,
-                           "key": key, "previous": previous}, playlist["title"])
+                           "key": key, "previous": previous, "order": order}, playlist["title"])
         self.playlist_wanted[key[:3]] = playlist
-        page = self.playlist_pages.get(key)
+        if order == "vk":
+            page = self.playlist_pages.get(key)
+            failed = self.playlist_pages.has_failed(key)
+        else:
+            orders = self.playlist_all.get(key[:3])
+            page = playlist_view.page(self.wanted(orders[order]), offset) if orders else None
+            failed = self.playlist_all.has_failed(key[:3])
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        sorting = Gtk.ComboBoxText()
+        for oid, title in playlist_view.ORDERS:
+            sorting.append(oid, title)
+        sorting.set_active_id(order)
+        sub = self.sub
+
+        def changed(combo):
+            selected = combo.get_active_id()
+            if self.sub is sub and selected is not None and selected != order:
+                self.playlist_order[key[:3]] = selected
+                self.show_playlist(playlist, chan)
+
+        sorting.connect("changed", changed)
+        sorting.set_halign(Gtk.Align.START)
+        box.pack_start(sorting, False, False, 0)
         if page is None:
-            self.say("Не удалось загрузить плейлист: нет связи?" if
-                     self.playlist_pages.has_failed(key) else "Загружаю…")
+            self.say("Не удалось загрузить плейлист: нет связи?" if failed else
+                     ("Загружаю весь плейлист…" if order != "vk" else "Загружаю…"))
         else:
             videos = self.wanted(page["videos"])
             self.say("" if videos else "На этой странице нет доступных видео.")
@@ -978,9 +1007,15 @@ class Video(Gtk.Application):
         self.set_content(box)
 
     def _playlist_came(self, key, _error):
-        if self.on_sub("playlist", key=key):
+        if self.on_sub("playlist", key=key) and self.sub["order"] == "vk":
             self.show_playlist(self.sub["playlist"], self.sub["chan"], key[3], again=True,
                                previous=self.sub["previous"])
+
+    def _playlist_all_came(self, key, _error):
+        if (self.sub and self.sub["kind"] == "playlist"
+                and self.sub["key"][:3] == key and self.sub["order"] != "vk"):
+            self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
+                               again=True, previous=self.sub["previous"])
 
     def _channel_came(self, key, _error):
         if self.on_sub("channel", key=key):

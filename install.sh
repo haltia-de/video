@@ -20,7 +20,7 @@ old_id=io.github.trudenboy.Video
 install -D -m 755 "$here/haltia-video" "$bin/haltia-video"
 lib=$root$prefix/lib/haltia-video
 rm -rf "$lib" "$root$prefix/lib/b8k-video"
-for f in library.py kept.py search.py signin.py player.py pictures.py renamed.py; do
+for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py; do
 	install -D -m 644 "$here/$f" "$lib/$f"
 done
 for f in "$here"/sources/*.py; do

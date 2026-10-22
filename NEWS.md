@@ -6,6 +6,8 @@
 
 На странице канала VK Видео появились плейлисты. Откройте плейлист, чтобы смотреть его видео в заданном порядке; кнопки «Следующие» и «Предыдущие» позволяют просмотреть весь список.
 
+В плейлисте можно выбрать «Порядок VK», «Обратный порядок» или «По номеру урока» (урок 2 перед уроком 10). Обратный порядок и номера учитывают весь плейлист, а не только открытую страницу.
+
 Вход в VK теперь используется и при запуске видео в проигрывателе на компьютере: видео закрытых сообществ открываются через авторизованный поток.
 
 Вход в VK Видео по QR-коду теперь позволяет ввести одноразовый код, который VK показывает на телефоне. Неверный код можно ввести повторно без нового QR-кода; ошибка связи не сбрасывает попытку ввода.
@@ -15,6 +17,8 @@
 ### English
 
 VK Video channel pages now list their playlists. Open a playlist to browse its videos in playlist order, with next and previous pages for longer lists.
+
+Playlists offer VK order, reverse order and natural lesson-number order (lesson 2 before lesson 10). Reverse and lesson ordering cover the entire playlist, across all pages.
 
 The desktop player now uses the signed-in VK account to open private community videos through an authenticated stream.
 
