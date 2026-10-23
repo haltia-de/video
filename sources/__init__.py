@@ -14,6 +14,18 @@ SOURCE has:
   watch_url(video)          what the player opens; it goes through mpv's
                             yt-dlp hook, so a page link is enough
 and may have:
+  resolve_bookmark(url)      (kind, object), kind video/playlist/channel;
+                            only accepts this Source's links
+  bookmark_client()         captured Account session or None; id, name,
+                            capabilities() -> supported kinds (read-only
+                            probe), read(kinds) -> complete [(kind, object)],
+                            write(kind, object, add). Must never fall back
+                            to a guest or a replacement Account's token
+  playlists(channel)        a list of playlists: source, owner_id (channel
+                            id), id, title; optional count of videos
+  playlist_videos(playlist, offset=0)
+                            {"videos": [...], "next": offset or None};
+                            keeps playlist order and actual video channels
   warm_up()                 called once in the background at start
   owns(text)                true when the text is a link to this source (a
                             channel link pasted to search finds the
@@ -27,6 +39,9 @@ and may have:
                             for a format: the player then needs no yt-dlp
                             of its own (haltia-vplay; a new yt-dlp per
                             video is slow on the tablet)
+  resolve_on_desktop        true when stream() must resolve for mpv too
+                            (a signed-in VK account cannot be passed to
+                            the player's guest yt-dlp); defaults to false
 
 and, to sign in, an account:
   login                     "code" (a link or QR code confirmed on a
@@ -36,7 +51,10 @@ and, to sign in, an account:
                             from what is stored
   login_start()             for "code": {"url": ..., "code": ...}
   login_poll()              for "code": None while waiting, the account
-                            once confirmed; raises when the code expired
+                            once confirmed, {"need_code": True} when the
+                            phone shows a code; raises when the QR expired
+  login_submit(code)        for "code" with need_code: "accepted" (poll
+                            for the account), "incorrect" or "expired"
   login_check(browser=None) for "cookies": the account, or None; with a
                             browser (an id from browsers()), from its
                             cookies instead of the file

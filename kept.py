@@ -58,6 +58,12 @@ class Kept:
             self._start(key)
         return entry["value"] if entry else None
 
+    def peek(self, key):
+        """What is already kept, without starting a fetch (an optional
+        full playlist must not load just to draw its resume block)."""
+        entry = self.entries.get(key)
+        return entry["value"] if entry else None
+
     def is_loading(self, key):
         return key in self.loading
 

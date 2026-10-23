@@ -7,6 +7,8 @@ import os
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 from sources import stream_of, vkvideo, youtube
 from sources import vault_in
@@ -38,6 +40,39 @@ class Dirs(unittest.TestCase):
 
 
 class VKVideosTest(Dirs):
+    def test_signed_in_stream_uses_the_api_files_with_its_user_agent(self):
+        asked = []
+
+        class Downloader:
+            def __init__(self, options):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def process_ie_result(self, info, download):
+                asked.append(info)
+                assert download is False
+                return info["formats"][0]
+            def extract_info(self, *args, **kwargs):
+                raise AssertionError("must not extract the private page as a guest")
+
+        vk = self.vk(exchanges=[exchange("video.get", {"response": {"items": [{
+            "files": {"mp4_480": "https://cdn/480.mp4", "mp4_720": "https://cdn/720.mp4",
+                      "mp4_240": "file:///private", "hls": "https://cdn/master.m3u8"}}]}},
+            videos="-7_1", extended=0)])
+        self.assertFalse(vk.resolve_on_desktop)
+        vk.user = {"token": "SECRET", "name": "Account"}
+        self.assertTrue(vk.resolve_on_desktop)
+        with patch.dict("sys.modules", {"yt_dlp": SimpleNamespace(YoutubeDL=Downloader)}), \
+                patch.object(vkvideo, "_skip_subtitles"):
+            stream = vk.stream({"id": "-7_1", "title": "Video"}, "best")
+        self.assertEqual(stream, {"urls": ["https://cdn/480.mp4"],
+                                  "user_agent": vkvideo.net.UA})
+        self.assertEqual([f["height"] for f in asked[0]["formats"]], [480, 720])
+        self.assertNotIn("SECRET", json.dumps(asked))
+        self.assertAllAsked()
+
     def test_search_in_catalog_order_clips_marked(self):
         videos = self.vk("vk_search").search("veritasium")
         self.assertAllAsked()
@@ -92,6 +127,49 @@ class VKVideosTest(Dirs):
 
 
 class VKChannelsTest(Dirs):
+    def test_playlists_load_all_pages_and_keep_the_channel_owner(self):
+        vk = self.vk(exchanges=[TOKEN,
+            exchange("video.getAlbums", {"response": {"count": 3, "items": [
+                {"id": 7, "title": "Series", "count": 45}, {"id": 0, "title": "All"}]}},
+                owner_id=-7, count=100, offset=0, extended=1),
+            exchange("video.getAlbums", {"response": {"count": 3, "items": [
+                {"id": 8, "title": "Other"}]}},
+                owner_id=-7, count=100, offset=2, extended=1)])
+        playlists = vk.playlists({"source": "vk", "id": "-7", "title": "Channel"})
+        self.assertEqual([p["id"] for p in playlists], ["7", "8"])
+        self.assertEqual(playlists[0], {"source": "vk", "owner_id": "-7", "id": "7",
+                                        "title": "Series", "count": 45})
+        self.assertAllAsked()
+
+    def test_playlist_keeps_order_and_other_channels_and_pages_past_hidden_videos(self):
+        vk = self.vk(exchanges=[TOKEN,
+            exchange("video.get", {"response": {"count": 4, "groups": [
+                {"id": 7, "name": "Channel"}, {"id": 8, "name": "Other"}], "items": [
+                {"owner_id": -7, "id": 1, "title": "First", "date": 100},
+                {"owner_id": -8, "id": 2, "title": "Second", "date": 200},
+                {"owner_id": -7, "id": 3, "restriction": {"can_play": 0}}]}},
+                owner_id=-7, album_id=7, count=30, offset=0, extended=1),
+            exchange("video.get", {"response": {"count": 4, "items": [
+                {"owner_id": -7, "id": 4, "title": "Last"}]}},
+                owner_id=-7, album_id=7, count=30, offset=3, extended=1)])
+        playlist = {"source": "vk", "owner_id": "-7", "id": "7", "title": "Series"}
+        page = vk.playlist_videos(playlist)
+        self.assertEqual([v["id"] for v in page["videos"]], ["-7_1", "-8_2"])
+        self.assertEqual(page["videos"][1]["channel_id"], "-8")
+        self.assertEqual(page["videos"][1]["channel"], "Other")
+        self.assertEqual(page["next"], 3)
+        page = vk.playlist_videos(playlist, page["next"])
+        self.assertEqual([v["id"] for v in page["videos"]], ["-7_4"])
+        self.assertIsNone(page["next"])
+        self.assertAllAsked()
+
+    def test_empty_playlist_stops_paging_even_if_the_count_is_stale(self):
+        vk = self.vk(exchanges=[TOKEN, exchange("video.get", {"response": {
+            "count": 40, "items": []}}, owner_id=-7, album_id=7, count=30,
+            offset=30, extended=1)])
+        self.assertEqual(vk.playlist_videos({"source": "vk", "owner_id": "-7", "id": "7"}, 30),
+                         {"videos": [], "next": None})
+
     def test_search_channels(self):
         chans = self.vk("vk_search_channels").search_channels("vert dider")
         self.assertAllAsked()
@@ -159,6 +237,54 @@ class VKTokenTest(Dirs):
 
 
 class VKSignInTest(Dirs):
+    def test_import_communities_asks_for_each_counter_separately(self):
+        groups = [{"id": 7, "name": "Закрытое сообщество", "is_closed": 2},
+                  {"id": 8, "name": "Без видео"}]
+        code = ('return [API.groups.getById({"group_ids":"7","fields":"counters"}),'
+                'API.groups.getById({"group_ids":"8","fields":"counters"})];')
+        vk = self.vk(exchanges=[
+            exchange("groups.get", {"response": {"count": 2, "items": groups}},
+                     extended=1, count=1000, fields=vkvideo.GROUP_FIELDS),
+            exchange("execute", {"response": [
+                {"groups": [{"id": 7, "counters": {"videos": 3}}]},
+                {"groups": [{"id": 8, "counters": {"videos": 0}}]}]}, code=code)])
+        vk.user = {"token": "USER", "name": "Account"}
+        self.assertEqual([c["id"] for c in vk.subscriptions()], ["-7"])
+        self.assertAllAsked()
+
+    def test_import_does_not_silently_accept_a_failed_counter_request(self):
+        code = 'return [API.groups.getById({"group_ids":"7","fields":"counters"})];'
+        vk = self.vk(exchanges=[
+            exchange("groups.get", {"response": {"count": 1, "items": [{"id": 7}]}},
+                     extended=1, count=1000, fields=vkvideo.GROUP_FIELDS),
+            exchange("execute", {"response": [False]}, code=code)])
+        vk.user = {"token": "USER", "name": "Account"}
+        with self.assertRaises(vkvideo.ApiError):
+            vk.subscriptions()
+
+    def test_import_batches_at_most_25_individual_counter_calls(self):
+        import re
+
+        groups = [{"id": i, "name": "Community %d" % i} for i in range(1, 27)]
+        batches = []
+
+        class HTTP:
+            def get_json(inner, url, data, headers):
+                if "/groups.get?" in url:
+                    return {"response": {"count": 26, "items": groups}}
+                self.assertIn("/execute?", url)
+                ids = [int(i) for i in re.findall(r'"group_ids":"(\d+)"', data["code"])]
+                self.assertLessEqual(len(ids), 25)
+                batches.append(ids)
+                return {"response": [{"groups": [{"id": i, "counters": {"videos": 1}}]}
+                                     for i in ids]}
+
+        vk = vkvideo.VKVideo(http=HTTP(), config_dir=self.home, cache_dir=self.home,
+                             vault=vault_in(self.home, keyring=None))
+        vk.user = {"token": "USER", "name": "Account"}
+        self.assertEqual(len(vk.subscriptions()), 26)
+        self.assertEqual(batches, [list(range(1, 26)), [26]])
+
     def start(self, *after):
         rec = load("vk_login_start")
         vk = self.vk(exchanges=rec[:2] + list(after))
@@ -174,6 +300,60 @@ class VKSignInTest(Dirs):
         vk = self.start(load("vk_login_start")[2])
         self.assertIsNone(vk.login_poll())
         self.assertIsNone(vk.account())
+
+    def test_phone_requests_a_code_without_expiring_the_qr(self):
+        vk = self.start(self.check({"response": {"status": 5}}))
+        pending = vk.pending
+        self.assertEqual(vk.login_poll(), {"need_code": True})
+        self.assertIs(vk.pending, pending)
+        self.assertIsNone(vk.account())
+
+    def test_validate_code_keeps_the_session_for_a_retry_then_polls(self):
+        vk = self.start(
+            exchange("auth.validateAuthCode", {"response": {"status": 1}},
+                     validation_code="111111"),
+            exchange("auth.validateAuthCode", {"response": {"status": 0}},
+                     validation_code="222222"),
+            self.check({"response": {"status": 2, "access_token": "USER", "user_id": 7}}),
+            exchange("users.get", {"response": [{"id": 7, "first_name": "Анна"}]}))
+        pending = vk.pending
+        self.assertEqual(vk.login_submit("111111"), "incorrect")
+        self.assertIs(vk.pending, pending)
+        self.assertIsNone(vk.account())
+        self.assertEqual(vk.login_submit("222222"), "accepted")
+        self.assertIs(vk.pending, pending)
+        self.assertEqual(vk.login_poll(), {"name": "Анна"})
+        for method, params in self.http.asked:
+            if method in ("auth.validateAuthCode", VK_API):
+                self.assertEqual(params["auth_hash"], pending["auth_hash"])
+        self.assertAllAsked()
+
+    def test_validate_expired_session(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 2}},
+                                 validation_code="123456"))
+        self.assertEqual(vk.login_submit("123456"), "expired")
+        self.assertIsNone(vk.pending)
+
+    def test_validate_unknown_status_does_not_expire_session(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 99}},
+                                 validation_code="123456"))
+        with self.assertRaises(vkvideo.ApiError):
+            vk.login_submit("123456")
+        self.assertIsNotNone(vk.pending)
+
+    def test_late_code_response_does_not_clear_a_new_qr(self):
+        vk = self.start(exchange("auth.validateAuthCode", {"response": {"status": 2}},
+                                 validation_code="123456"))
+        new_pending = {"auth_hash": "NEW"}
+        get_json = self.http.get_json
+
+        def replaced(url, data, headers):
+            vk.pending = new_pending  # a new QR while the old request was in flight
+            return get_json(url, data, headers)
+
+        self.http.get_json = replaced
+        self.assertEqual(vk.login_submit("123456"), "expired")
+        self.assertIs(vk.pending, new_pending)
 
     def test_expired_code(self):
         # Recorded by hand on 17.10.2026: status 4 three minutes on.

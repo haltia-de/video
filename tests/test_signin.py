@@ -55,6 +55,26 @@ class CookiesSource:
         self.user = None
 
 
+class OTPSource(CodeSource):
+    def __init__(self, polls=(), submissions=()):
+        super().__init__(polls)
+        self.submissions = list(submissions)
+        self.submitted = []
+
+    def login_poll(self):
+        answer = super().login_poll()
+        if answer and answer.get("need_code"):
+            self.user = None
+        return answer
+
+    def login_submit(self, code):
+        self.submitted.append(code)
+        answer = self.submissions.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
 class Driver:
     """run() and later() that the test steps by hand."""
 
@@ -135,6 +155,73 @@ class SignInTest(unittest.TestCase):
         self.assertEqual(s.state, {"kind": "failed", "note": "Код устарел."})
         s.begin()
         self.assertEqual(s.state["code"], "C4", "tried again from the start")
+
+    def test_code_from_phone_is_submitted_and_the_same_qr_finishes(self):
+        src = OTPSource(polls=[{"need_code": True}, None, {"name": "Анна"}],
+                        submissions=["accepted"])
+        s = self.sign(src)
+        s.begin()
+        self.drv.tick()
+        self.assertEqual(s.state["kind"], "code")
+        self.assertEqual(self.drv.timers, [], "no redraw while the person types")
+        s.submit(" 123 456 ")
+        self.assertEqual(src.submitted, ["123456"])
+        self.assertEqual(s.state["kind"], "confirming")
+        self.drv.tick()
+        self.assertEqual(s.state, {"kind": "in", "name": "Анна"})
+        self.assertEqual(src.codes, 1)
+
+    def test_bad_code_or_network_error_can_be_retried_without_a_new_qr(self):
+        src = OTPSource(polls=[{"need_code": True}, {"name": "Анна"}],
+                        submissions=["incorrect", OSError("down"), "accepted"])
+        s = self.sign(src)
+        s.begin()
+        self.drv.tick()
+        s.submit(" ")
+        self.assertEqual(src.submitted, [])
+        s.submit("111111")
+        self.assertEqual(s.state["kind"], "code")
+        self.assertIn("Неверный", s.state["note"])
+        s.submit("222222")
+        self.assertEqual(s.state["kind"], "code")
+        self.assertIn("связь", s.state["note"])
+        s.submit("333333")
+        self.assertEqual(s.state["kind"], "in")
+        self.assertEqual(src.codes, 1)
+
+    def test_expired_code_submission_offers_a_new_qr(self):
+        src = OTPSource(polls=[{"need_code": True}], submissions=["expired"])
+        s = self.sign(src)
+        s.begin()
+        self.drv.tick()
+        s.submit("123456")
+        self.assertEqual(s.state["kind"], "waiting")
+        self.assertEqual(src.codes, 2)
+
+    def test_manual_code_entry_cancels_the_old_poll_timer(self):
+        src = OTPSource(polls=[{"name": "Анна"}], submissions=["accepted"])
+        s = self.sign(src)
+        s.begin()
+        s.enter_code()
+        self.drv.tick()
+        self.assertEqual(s.state["kind"], "code")
+        self.assertEqual(len(src.polls), 1)
+        s.submit("123456")
+        self.assertEqual(s.state["kind"], "in")
+
+    def test_cancel_drops_a_late_submission_callback(self):
+        src = OTPSource(polls=[{"need_code": True}])
+        s = self.sign(src)
+        s.begin()
+        self.drv.tick()
+        pending = []
+        s.run = lambda func, *args, done: pending.append(done)
+        s.submit("123456")
+        self.assertEqual(s.state["kind"], "submitting")
+        s.cancel()
+        pending[0]("accepted", None)
+        self.assertEqual(s.state["kind"], "out")
+        self.assertEqual(self.drv.timers, [])
 
     def test_a_locked_keyring_is_said_and_asked_again(self):
         src = LockedSource()

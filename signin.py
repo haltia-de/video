@@ -13,6 +13,8 @@ States:
   out       {"hint"} (a "cookies" source: where to put the file)
   getting   asking the source for a code
   waiting   {"url", "code"}: shown until confirmed on a phone
+  code      {"note"}: enter the one-time code shown on the phone
+  submitting sending that code; confirming waits for the account afterwards
   checking  asking the source whether the file signs in
   in        {"name"}
   failed    {"note"}; begin() tries again
@@ -40,6 +42,7 @@ class SignIn:
         self.retries = retries
         self.watchers = []
         self.attempt = 0  # a new begin() or cancel() makes older callbacks moot
+        self.tries = 0
         self.state = self._settled()
 
     def watch(self, fn):
@@ -61,7 +64,8 @@ class SignIn:
             fn(state)
 
     def busy(self):
-        return self.state["kind"] in ("getting", "waiting", "checking")
+        return self.state["kind"] in ("getting", "waiting", "checking", "code",
+                                      "submitting", "confirming")
 
     def begin(self, how=None):
         self.attempt += 1
@@ -101,7 +105,39 @@ class SignIn:
                 self._set(settled)
 
     # --- a code confirmed on a phone ---------------------------------------
+    def enter_code(self):
+        if self.state["kind"] != "waiting":
+            return
+        # The old poll's timer (or callback) must not redraw a typed code.
+        self.attempt += 1
+        self._set({"kind": "code"})
+
+    def submit(self, code):
+        code = "".join(code.split())
+        if self.state["kind"] != "code" or not code:
+            return
+        self.attempt += 1
+        attempt = self.attempt
+        self._set({"kind": "submitting"})
+        self.run(self.source.login_submit, code,
+                 done=lambda result, error: self._submitted(attempt, result, error))
+
+    def _submitted(self, attempt, result, error):
+        if attempt != self.attempt:
+            return
+        if error is not None or result not in ("accepted", "incorrect", "expired"):
+            self._set({"kind": "code", "note": "Не удалось проверить код. Проверьте связь "
+                       "и попробуйте ещё раз."})
+        elif result == "incorrect":
+            self._set({"kind": "code", "note": "Неверный код. Попробуйте ещё раз."})
+        elif result == "expired":
+            self._answered(attempt, self.tries, None, OSError("expired"))
+        else:
+            self._set({"kind": "confirming"})
+            self._ask(attempt, self.tries)
+
     def _new_code(self, attempt, tries):
+        self.tries = tries
         self._set({"kind": "getting"})
         self.run(self.source.login_start,
                  done=lambda got, error: self._got_code(attempt, tries, got, error))
@@ -132,6 +168,8 @@ class SignIn:
                 self._new_code(attempt, tries + 1)
             else:
                 self._set({"kind": "failed", "note": "Код устарел."})
+        elif account and account.get("need_code"):
+            self._set({"kind": "code"})
         elif account is None:
             self.later(self.poll_ms, lambda: self._ask(attempt, tries))
         else:
