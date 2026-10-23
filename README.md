@@ -4,6 +4,9 @@
 [архитектура, этапы и проверки производительности](docs/architecture/embedded-web.md).
 Веб-режим предназначен для ПК; проверка на реальном Lenovo P11 ещё требуется.
 
+Согласовано на будущее, ещё не реализовано:
+[ручной порядок плейлистов и отметки выполнения](docs/architecture/playlist-order-and-completion.md).
+
 «Видео» (`io.github.haltia_de.Video`): видео с YouTube и VK Видео,
 поиск, подписки на каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H,
 [device-lenovo-b8000h](https://github.com/haltia-de/device-lenovo-b8000h))
