@@ -41,6 +41,23 @@ class PlaylistTest(unittest.TestCase):
         a, b = {"title": "Урок 2", "id": "a"}, {"title": "урок 2", "id": "b"}
         self.assertEqual(sorted([a, b], key=lesson_key), [a, b])
 
+    def test_training_day_precedes_reverse_source_order_and_course_version(self):
+        titles = ["Fire HIIT - 1.0 День 10 Утренняя тренировка",
+                  "Fire HIIT - 1.0 День 2 Основная тренировка",
+                  "Fire HIIT - 1.0 День 10 Основная тренировка",
+                  "Fire HIIT - 1.0 День 2 Вечерняя тренировка",
+                  "Fire HIIT - 1.0 День 2 Утренняя тренировка"]
+        videos = [{"title": t} for t in titles]
+        orders = collect(lambda playlist, offset: {"videos": videos, "next": None}, {})
+        self.assertEqual([v["title"] for v in orders["lesson"]],
+                         [titles[4], titles[3], titles[1], titles[2], titles[0]])
+
+    def test_equal_lesson_numbers_reverse_source_order_across_pages(self):
+        videos = [{"title": "Урок 2. Яблоки"}, {"title": "Урок 2. Абрикосы"}]
+        orders = collect(lambda playlist, offset: {"videos": videos[offset:offset + 1],
+                         "next": 1 if offset == 0 else None}, {})
+        self.assertEqual(orders["lesson"], list(reversed(videos)))
+
     def test_empty_playlist_and_filtered_source_page(self):
         calls = []
 

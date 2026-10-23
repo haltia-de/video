@@ -10,7 +10,7 @@ import re
 ORDERS = (("vk", "Порядок VK"), ("reverse", "Обратный порядок"),
           ("lesson", "По номеру урока"))
 NUMBER = r"[\s._:#№-]*(\d+)"
-LESSON = re.compile(r"\b(?:урок|занятие|лекция|выпуск|серия|часть|lesson|episode|lecture|part)" + NUMBER)
+LESSON = re.compile(r"\b(?:урок|день|занятие|лекция|выпуск|серия|часть|lesson|day|episode|lecture|part)" + NUMBER)
 SEASON = re.compile(r"\b(?:сезон|season)" + NUMBER)
 EPISODE = re.compile(r"\bs(\d+)[\s._-]*e(\d+)\b")
 LEADING = re.compile(r"^\s*(?:№\s*)?(\d+)\b")
@@ -22,11 +22,11 @@ def lesson_key(video):
                     for p in re.split(r"(\d+)", title))
     episode = EPISODE.search(title)
     if episode:
-        return (0, int(episode[1]), int(episode[2]), natural)
+        return (0, int(episode[1]), int(episode[2]), ())
     lesson = LESSON.search(title) or LEADING.search(title)
     if lesson:
         season = SEASON.search(title)
-        return (0, int(season[1]) if season else 0, int(lesson[1]), natural)
+        return (0, int(season[1]) if season else 0, int(lesson[1]), ())
     return (1, 0, 0, natural)
 
 
@@ -47,8 +47,12 @@ def collect(fetch, playlist, locations=False):
         offset = page["next"]
         if offset is None:
             break
-    orders = {"vk": videos, "reverse": list(reversed(videos)),
-              "lesson": sorted(videos, key=lesson_key)}
+    # Stable sorting supplies both criteria: lesson/day first, reverse
+    # Source order within a number. Alphabetical title ties used to put
+    # a main workout before a morning workout from the same day.
+    reverse = list(reversed(videos))
+    orders = {"vk": videos, "reverse": reverse,
+              "lesson": sorted(reverse, key=lesson_key)}
     if locations:
         orders.update(_pages=pages, _locations=positions)
     return orders

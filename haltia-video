@@ -134,6 +134,7 @@ combobox.choice button { min-height: 52px; font-size: 20px; }
   padding: 0 0 12px 0;
 }
 .card:active { background-color: #c4dcf7; }
+.located { outline: 3px solid #3584e4; outline-offset: -3px; border-radius: 16px; }
 .card label.ttl { font-size: 20px; color: #2e3436; }
 .card label.sub { font-size: 17px; color: #5e5c64; }
 .card progressbar trough { min-height: 6px; border-radius: 0; background-color: #c0bfbc; }
@@ -609,13 +610,23 @@ class Video(Gtk.Application):
                 and all(self.sub.get(k) is v or self.sub.get(k) == v for k, v in match.items()))
 
     # --- cards ------------------------------------------------------------
-    def grid(self, videos):
+    def grid(self, videos, focus_video=None):
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                            max_children_per_line=3, min_children_per_line=3,
                            row_spacing=16, column_spacing=16)
         flow.set_valign(Gtk.Align.START)
+        sub = self.sub
+
+        def add(video):
+            card = self.card(video)
+            flow.add(card)
+            if focus_video and (video["source"], video["id"]) == (focus_video["source"], focus_video["id"]):
+                card.get_style_context().add_class("located")
+                self.reveal_video(card, sub)
+            return card
+
         for video in videos[:CARDS_AT_ONCE]:
-            flow.add(self.card(video))
+            add(video)
         rest = list(videos[CARDS_AT_ONCE:])
         if rest:
             state = {"alive": True}
@@ -625,14 +636,58 @@ class Video(Gtk.Application):
                 if not state["alive"]:
                     return False
                 for video in rest[:CARDS_PER_IDLE]:
-                    card = self.card(video)
-                    flow.add(card)
-                    card.show_all()
+                    add(video).show_all()
                 del rest[:CARDS_PER_IDLE]
                 return bool(rest)
 
             GLib.idle_add(more, priority=GLib.PRIORITY_LOW)
         return flow
+
+    def reveal_video(self, card, sub):
+        """Locate only after the lazy card and viewport have allocations.
+        Switching pages or replacing this grid cancels the request.
+        """
+        card.set_can_focus(True)
+        adjustment = self.scroll.get_vadjustment()
+        state = {"done": False, "queued": False, "handler": None}
+
+        def finish(*_args):
+            state["done"] = True
+            if state["handler"] is not None:
+                adjustment.disconnect(state["handler"])
+                state["handler"] = None
+
+        def reveal():
+            state["queued"] = False
+            if state["done"]:
+                return False
+            if self.sub is not sub:
+                finish()
+                return False
+            if not card.get_mapped() or card.get_allocated_height() <= 1:
+                return False
+            coords = card.translate_coordinates(self.body, 0, 0)
+            if coords is None or adjustment.get_page_size() <= 1:
+                return False
+            _x, top = coords
+            if adjustment.get_upper() < top + card.get_allocated_height() - 1:
+                return False
+            card.grab_focus()
+            adjustment.set_value(max(adjustment.get_lower(), min(
+                top, adjustment.get_upper() - adjustment.get_page_size())))
+            finish()
+            return False
+
+        def queue(*_args):
+            if not state["done"] and not state["queued"]:
+                state["queued"] = True
+                GLib.idle_add(reveal, priority=GLib.PRIORITY_LOW)
+
+        card.connect("map", queue)
+        card.connect("size-allocate", queue)
+        card.connect("destroy", finish)
+        state["handler"] = adjustment.connect("changed", queue)
+        queue()
 
     def card(self, video):
         ev = Gtk.EventBox()
@@ -687,6 +742,7 @@ class Video(Gtk.Application):
                                              ev.unset_state_flags(Gtk.StateFlags.ACTIVE),
                                              self.follow_menu(video)))
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        outer._video_key = (video["source"], video["id"])
         outer.pack_start(ev, True, True, 0)
         outer.pack_start(self.bookmark_button("video", video), False, False, 0)
         return outer
@@ -1002,12 +1058,13 @@ class Video(Gtk.Application):
             CHANNEL_KEEP_SEC, self.work, prepare=lambda key: (self.playlist_wanted[key],))
         watch("playlist_all", self._playlist_all_came)
 
-    def show_playlist(self, playlist, chan, offset=0, again=False, previous=()):
+    def show_playlist(self, playlist, chan, offset=0, again=False, previous=(), focus_video=None):
         key = (playlist["source"], playlist["owner_id"], playlist["id"], offset)
         order = self.playlist_order.get(key[:3], self.library.playlist_order(playlist))
         if not again:
             self.open_sub({"kind": "playlist", "playlist": playlist, "chan": chan,
-                           "key": key, "previous": previous, "order": order}, playlist["title"])
+                           "key": key, "previous": previous, "order": order,
+                           "focus_video": focus_video}, playlist["title"])
         self.playlist_wanted[key[:3]] = playlist
         if order == "vk":
             full = self.playlist_all.peek(key[:3])
@@ -1022,6 +1079,8 @@ class Video(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         sorting = Gtk.ComboBoxText()
         sorting.get_style_context().add_class("choice")
+        sorting.set_tooltip_text("По номеру урока: номер по возрастанию, внутри одного номера — "
+                                 "обратный порядок сервиса.")
         for oid, title in playlist_view.ORDERS:
             sorting.append(oid, "Порядок сервиса" if oid == "vk" and playlist["source"] != "vk" else title)
         sorting.set_active_id(order)
@@ -1038,10 +1097,6 @@ class Video(Gtk.Application):
         sorting.set_halign(Gtk.Align.START)
         tools = Gtk.Box(spacing=12)
         tools.pack_start(sorting, True, True, 0)
-        reset = Gtk.Button(label="Сбросить прогресс")
-        reset.get_style_context().add_class("more")
-        reset.connect("clicked", lambda _b: self.playlist_resume_action(sub, "reset"))
-        tools.pack_start(reset, False, False, 0)
         tools.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"])),
                          False, False, 0)
         box.pack_start(tools, False, False, 0)
@@ -1054,7 +1109,7 @@ class Video(Gtk.Application):
         else:
             videos = self.wanted(page["videos"])
             self.say("" if videos else "На этой странице нет доступных видео.")
-            box.pack_start(self.grid(videos), False, False, 0)
+            box.pack_start(self.grid(videos, focus_video=self.sub.get("focus_video")), False, False, 0)
         nav = Gtk.Box(spacing=12)
         for title, pos, trail in (
                 ("← Предыдущие", previous[-1] if previous else None, previous[:-1]),
@@ -1139,6 +1194,10 @@ class Video(Gtk.Application):
         locate.get_style_context().add_class("more")
         locate.connect("clicked", lambda _b: self.playlist_resume_action(sub, "locate"))
         row.pack_start(locate, True, True, 0)
+        reset = Gtk.Button(label="Сбросить прогресс")
+        reset.get_style_context().add_class("more")
+        reset.connect("clicked", lambda _b: self.playlist_resume_action(sub, "reset"))
+        row.pack_start(reset, True, True, 0)
         box.pack_start(row, False, False, 0)
         return box
 
@@ -1200,7 +1259,7 @@ class Video(Gtk.Application):
             index = next(i for i, v in enumerate(videos) if v is target)
             offset = (index // 30) * 30
             previous = tuple(range(0, offset, 30))
-        self.show_playlist(sub["playlist"], sub["chan"], offset, previous=previous)
+        self.show_playlist(sub["playlist"], sub["chan"], offset, previous=previous, focus_video=target)
         if status["kind"] == "missing":
             self.say("Последнее видео недоступно или удалено. Показано первое доступное.")
 
