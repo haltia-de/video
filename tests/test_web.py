@@ -9,6 +9,7 @@ import unittest
 from library import Library
 from haltia_video.core.application import Application
 from haltia_video.adapters.web.pairing import Pairing
+from haltia_video.adapters.web.access import AccessPolicy, proxy_settings
 
 VIDEO = {"source": "vk", "id": "-7_1", "title": "Video", "duration": 600}
 
@@ -99,6 +100,67 @@ class WebTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 403)
         self.assertFalse(self.core.library.shorts)
         response = await self.client.get("/", headers={"Host": "attacker.example"})
+        self.assertEqual(response.status, 403)
+
+    async def test_https_proxy_pairing_commands_events_and_media(self):
+        self.http.access = AccessPolicy(proxy_settings(True, "https://video.example", "127.0.0.1"))
+        self.client.session.headers.update({"Host": "video.example", "Origin": "https://video.example"})
+        response = await self.client.get("/")
+        self.assertEqual(response.status, 200)
+        await response.read()
+        response = await self.client.post("/api/query", json={"view": "state"})
+        self.assertEqual(response.status, 401)
+        response = await self.client.post("/pair", json={"code": self.pairing.issue()["code"], "name": "Proxy"})
+        self.assertEqual(response.status, 200)
+        cookie = response.cookies["haltia_device"]
+        self.assertTrue(cookie["secure"])
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], "Strict")
+        # The test connection is plain HTTP behind TLS termination. A browser
+        # would send this Secure cookie to nginx over the public HTTPS URL.
+        self.client.session.headers["Cookie"] = "haltia_device=" + cookie.value
+        response = await self.client.post("/api/query", json={"view": "state"})
+        self.assertEqual(response.status, 200)
+        response = await self.client.post("/api/command", json={"name": "shorts", "params": {"on": True}})
+        self.assertEqual(response.status, 200)
+        self.assertTrue(self.core.library.shorts)
+        stream = await self.client.get("/events")
+        self.assertEqual(stream.status, 200)
+        self.assertIn(b"resync", await stream.content.readline())
+        stream.close()
+        session = await self.start_playback()
+        response = await self.client.get(session["url"], headers={"Range": "bytes=4-7"})
+        self.assertEqual(response.status, 206)
+        self.assertEqual(await response.read(), b"4567")
+        self.assertNotIn("Cookie", self.requests[-1])
+        response = await self.client.post("/api/progress", json={"id": session["id"], "generation": 0,
+                                                               "pos": 120, "duration": 600, "paused": True})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.core.library.resume_at(VIDEO), 120)
+        response = await self.client.get("/track/any/0?key=INTERNAL")
+        self.assertEqual(response.status, 403)
+
+    async def test_proxy_rejects_untrusted_peer_host_and_origin_even_with_forwarded_headers(self):
+        settings = proxy_settings(True, "https://video.example", "127.0.0.1")
+        self.http.access = AccessPolicy(settings)
+        headers = {"Host": "video.example", "Origin": "https://attacker.example",
+                   "X-Forwarded-Host": "video.example", "X-Forwarded-Proto": "https",
+                   "X-Forwarded-For": "127.0.0.1"}
+        response = await self.client.post("/pair", json={}, headers=headers)
+        self.assertEqual(response.status, 403)
+        headers["Origin"] = "https://video.example"
+        headers["Host"] = "attacker.example"
+        response = await self.client.get("/", headers=headers)
+        self.assertEqual(response.status, 403)
+        headers["Host"] = "127.0.0.1"
+        response = await self.client.post("/pair", json={}, headers=headers)
+        self.assertEqual(response.status, 403)
+        self.http.access = AccessPolicy(dict(settings, peers=["192.168.1.2"]))
+        headers["Host"] = "video.example"
+        response = await self.client.get("/", headers=headers)
+        self.assertEqual(response.status, 403)
+        self.http.access = AccessPolicy(dict(settings, enabled=False))
+        response = await self.client.get("/", headers=headers)
         self.assertEqual(response.status, 403)
 
     async def test_proxy_preserves_range_and_upstream_agent_without_exposing_url(self):

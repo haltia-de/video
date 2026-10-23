@@ -11,6 +11,7 @@ import time
 from aiohttp import web
 
 from .media import Media
+from .access import AccessPolicy
 
 COOKIE = "haltia_device"
 ASSETS = Path(__file__).with_name("static")
@@ -20,6 +21,7 @@ class WebApplication:
     def __init__(self, controller, core):
         self.controller = controller
         self.core = core
+        self.access = AccessPolicy(controller.pairing.data.get("proxy"))
         self.stopped = asyncio.Event()
         self.subscribers = {}
         self.media = Media(self)
@@ -70,22 +72,18 @@ class WebApplication:
     @web.middleware
     async def guard(self, request, handler):
         try:
-            remote = ipaddress.ip_address(request.remote or "127.0.0.1")
-            if not (remote.is_private or remote.is_loopback):
+            try:
+                allowed_origin = self.access.request_origin(request.remote or "", request.scheme, request.host)
+                remote = ipaddress.ip_address(request.remote)
+            except (PermissionError, ValueError):
                 raise web.HTTPForbidden()
-            host = request.host.rsplit(":", 1)[0].strip("[]")
-            if host != "localhost":
-                try:
-                    address = ipaddress.ip_address(host)
-                except ValueError:
-                    raise web.HTTPForbidden()
-                if not (address.is_private or address.is_loopback):
-                    raise web.HTTPForbidden()
+            request["browser_origin"] = allowed_origin
             internal = (request.path.startswith("/track/") and remote.is_loopback and
+                        allowed_origin != self.access.external and
                         secrets.compare_digest(request.query.get("key", ""), self.controller.internal_key))
             if request.method not in ("GET", "HEAD"):
                 origin = request.headers.get("Origin")
-                if origin != "%s://%s" % (request.scheme, request.host):
+                if origin != allowed_origin:
                     raise web.HTTPForbidden(text="Запрос должен исходить из интерфейса приложения.")
             public = request.path in ("/", "/app.js", "/app.css", "/pair")
             if not public and not internal:
@@ -150,7 +148,8 @@ class WebApplication:
                                          str(p.get("code", ""))[:100], p.get("name", "Браузер"))
         await self.owner(self.controller.changed)
         response = web.json_response({"ok": True, "device": device})
-        response.set_cookie(COOKIE, token, httponly=True, samesite="Strict", max_age=10 * 365 * 86400)
+        response.set_cookie(COOKIE, token, httponly=True, samesite="Strict",
+                            secure=request["browser_origin"].startswith("https://"), max_age=10 * 365 * 86400)
         return response
 
     async def query(self, request):

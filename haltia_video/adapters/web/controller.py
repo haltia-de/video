@@ -5,6 +5,7 @@ import secrets
 import threading
 
 from .pairing import Pairing, addresses
+from .access import proxy_settings
 
 
 class Server:
@@ -27,8 +28,21 @@ class Server:
 
     def snapshot(self):
         urls = ["http://%s:%d/" % (ip, self.port) for ip in self.ips]
+        proxy = dict(self.pairing.data["proxy"])
+        proxy["peers"] = list(proxy["peers"])
+        if proxy["enabled"]:
+            urls.insert(0, proxy["url"] + "/")
         return {"state": self.state, "note": self.note, "enabled": self.pairing.data["enabled"],
-                "port": self.port, "urls": urls, "devices": self.pairing.devices()}
+                "port": self.port, "urls": urls, "proxy": proxy, "devices": self.pairing.devices()}
+
+    def configure_proxy(self, enabled, url, peers):
+        if self.state not in ("off", "failed"):
+            raise ValueError("Перед изменением публикации выключите веб-доступ.")
+        settings = proxy_settings(enabled, url, peers)
+        self.pairing.data["proxy"] = settings
+        self.pairing.pending = None
+        self.pairing.save()
+        self.changed()
 
     def issue(self):
         if self.state != "on":

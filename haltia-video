@@ -1641,6 +1641,7 @@ class Video(Gtk.Application):
             save.connect("clicked", lambda _b: self.web.enable(False, port.get_value_as_int()))
             row.pack_start(save, False, False, 0)
             card.pack_start(row, False, False, 0)
+        card.pack_start(self.proxy_settings(state), False, False, 0)
         for device in state["devices"]:
             row = Gtk.Box(spacing=12)
             row.pack_start(label(device["name"], "csub"), True, True, 0)
@@ -1654,6 +1655,42 @@ class Video(Gtk.Application):
             row.pack_start(revoke, False, False, 0)
             card.pack_start(row, False, False, 0)
         return card
+
+    def proxy_settings(self, state):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        proxy = state["proxy"]
+        editable = state["state"] in ("off", "failed")
+        enabled = Gtk.CheckButton(label="Публикация через прокси (nginx)")
+        enabled.set_active(proxy["enabled"])
+        enabled.set_sensitive(editable)
+        box.pack_start(enabled, False, False, 0)
+        box.pack_start(label("Внешний адрес", "csub"), False, False, 0)
+        url = Gtk.Entry(placeholder_text="https://video.example.org", text=proxy["url"])
+        url.set_sensitive(editable)
+        box.pack_start(url, False, False, 0)
+        box.pack_start(label("IP-адреса прокси через запятую", "csub"), False, False, 0)
+        peers = Gtk.Entry(text=", ".join(proxy["peers"]))
+        peers.set_sensitive(editable)
+        box.pack_start(peers, False, False, 0)
+        box.pack_start(label("На этом же ПК: 127.0.0.1, ::1. На другом — IP прокси, "
+                              "с которого он соединяется с Видео. Настройте в nginx передачу "
+                              "исходного Host. Для изменения выключите веб-доступ.", "csub", wrap=True),
+                       False, False, 0)
+        status = label("", "csub", wrap=True)
+        save = Gtk.Button(label="Сохранить публикацию")
+        save.get_style_context().add_class("more")
+        save.set_sensitive(editable)
+
+        def apply(_button):
+            try:
+                self.web.configure_proxy(enabled.get_active(), url.get_text(), peers.get_text())
+            except ValueError as exc:
+                status.set_text(str(exc))
+
+        save.connect("clicked", apply)
+        box.pack_start(save, False, False, 0)
+        box.pack_start(status, False, False, 0)
+        return box
 
     def source_settings(self, src):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)

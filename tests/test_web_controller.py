@@ -93,3 +93,16 @@ class ControllerTest(unittest.IsolatedAsyncioTestCase):
         self.server.stop()
         self.server._ended(0)
         self.server.start.assert_not_called()
+
+    async def test_proxy_configuration_persists_and_precedes_lan_pairing_links(self):
+        self.server.configure_proxy(True, "https://video.example/", "127.0.0.1, ::1")
+        again = Server(self.core, self.tmp.name, lambda: None)
+        self.assertTrue(again.snapshot()["proxy"]["enabled"])
+        self.assertEqual(again.snapshot()["urls"][0], "https://video.example/")
+        before = self.server.snapshot()["proxy"]
+        with self.assertRaises(ValueError):
+            self.server.configure_proxy(True, "https://video.example/path", "*")
+        self.assertEqual(self.server.snapshot()["proxy"], before)
+        self.server.state = "on"
+        with self.assertRaises(ValueError):
+            self.server.configure_proxy(False, "", "")

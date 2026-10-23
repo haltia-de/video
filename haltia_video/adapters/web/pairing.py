@@ -7,6 +7,7 @@ import socket
 import time
 
 from sources import load_json, save_json
+from .access import proxy_settings
 
 
 def addresses():
@@ -33,6 +34,7 @@ class Pairing:
         self.data.setdefault("enabled", False)
         self.data.setdefault("port", 8765)
         self.data.setdefault("devices", {})
+        self.data.setdefault("proxy", proxy_settings())
         self.pending = None
 
     def save(self):

@@ -4,6 +4,8 @@
 
 ### Русский
 
+Добавлена необязательная публикация веб-интерфейса через nginx: в настройках ПК можно указать внешний адрес и IP доверенного прокси. Ссылка и QR-код используют этот адрес, подключение браузеров по коду сохраняется; внешний HTTPS поддерживается с завершением TLS в прокси. По умолчанию публикация выключена.
+
 На ПК появился встроенный веб-интерфейс для планшета в локальной сети. Включите доступ в настройках, подключите браузер одноразовым кодом или QR-кодом; подключённые устройства можно отозвать там же. Поиск, каналы, плейлисты, закладки и прогресс используют общую библиотеку с GTK. Веб-плеер передаёт видео через ПК, поддерживает перемотку и полноэкранный режим; раздельные дорожки объединяются FFmpeg без перекодирования. Доступ выключен по умолчанию и работает, пока открыто приложение на ПК. Проверка на реальном Lenovo P11 ещё требуется.
 
 Вкладка «Закладки» сохраняет видео, плейлисты и каналы независимо от подписок. Есть поиск, совместные фильтры по типу, сервису и синхронизации, сортировка и закрепление с ручным порядком. Добавить объект можно с карточки или по ссылке. Закладки доступны без сети; недоступность синхронизации при текущем способе входа VK показывается явно. YouTube пока сохраняется локально.
@@ -23,6 +25,8 @@
 Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
 
 ### English
+
+Optional nginx publication now accepts an external URL and trusted proxy IPs in PC settings. Pairing links and QR codes use that URL, browser code pairing remains required, and external HTTPS works with TLS termination at the proxy. Publication is off by default.
 
 PC installations now offer an embedded web interface for tablets on the local network. Enable access in Settings and pair a browser with a one-time code or QR code; paired devices can be revoked there. Search, channels, playlists, bookmarks and progress share one library with GTK. The web player streams through the PC, supports seeking and fullscreen, and combines separate tracks using FFmpeg streamcopy. Access is off by default and lasts while the PC application is open. Real Lenovo P11 validation is still required.
 
