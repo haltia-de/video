@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from kept import Kept
+from haltia_video.core.kept import footprint
 
 
 class Clock:
@@ -162,6 +163,33 @@ class KeptTest(unittest.TestCase):
             k = self.kept(path=path)
             self.assertIsNone(k.get("feed"))
             self.assertEqual(len(self.run.jobs), 1)
+
+    def test_byte_budget_evicts_old_results_and_retains_last_good_on_oversize(self):
+        values = {"a": "a" * 400, "b": "b" * 400}
+        k = Kept(values.__getitem__, ttl=60, run=self.run, clock=self.clock,
+                 max_bytes=footprint(values["a"]) + 10)
+        k.get("a")
+        self.run.finish()
+        self.clock.now += 1
+        k.get("b")
+        self.run.finish()
+        self.assertEqual(set(k.entries), {"b"})
+        values["b"] = "b" * 2000
+        k.invalidate("b")
+        k.get("b")
+        self.run.finish()
+        self.assertEqual(k.peek("b"), "b" * 400)
+        self.assertTrue(k.has_failed("b"))
+
+    def test_persisted_cache_cannot_bypass_budget_and_failures_are_bounded(self):
+        k = self.kept(path="unused", load=lambda _: {"format": 1, "entries": {
+            "a": {"value": "a" * 2000, "time": 1000, "bytes": 0}}},
+            save=lambda *args: None, max_bytes=100, max_entries=2)
+        self.assertEqual(k.entries, {})
+        for key in "abcd":
+            k.get(key)
+            self.run.finish(fail=OSError())
+        self.assertEqual(len(k.failed), 2)
 
 
 if __name__ == "__main__":

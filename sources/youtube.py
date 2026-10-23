@@ -468,7 +468,7 @@ class YouTube:
         videos = [v for v in (_video(e or {}) for e in entries[:count]) if v]
         return {"videos": videos, "next": offset + count if len(entries) > count else None}
 
-    def stream(self, video, fmt):
+    def stream(self, video, fmt, _browser=False):
         """What to play of video in format fmt (yt-dlp's format words), for
         a player that asks no yt-dlp of its own: {"urls": [video, audio] or
         [both], "user_agent"}. The URLs live some hours."""
@@ -477,7 +477,15 @@ class YouTube:
         with self._ydl({"format": fmt, "extract_flat": False,
                         "js_runtimes": {"quickjs": {}},
                         "extractor_args": {"youtube": {"player_client": ["default", "-web"]}}}) as ydl:
-            return stream_of(ydl.extract_info(self.watch_url(video), download=False))
+            info = ydl.extract_info(self.watch_url(video), download=False)
+            if _browser:
+                from . import browser_stream_of
+                return browser_stream_of(info)
+            return stream_of(info)
+
+    def browser_stream(self, video, fmt):
+        return self.stream(video, fmt, _browser=True)
 
 
-SOURCE = YouTube()
+def create_source():
+    return YouTube()

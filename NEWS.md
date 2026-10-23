@@ -4,6 +4,8 @@
 
 ### Русский
 
+На ПК появился встроенный веб-интерфейс для планшета в локальной сети. Включите доступ в настройках, подключите браузер одноразовым кодом или QR-кодом; подключённые устройства можно отозвать там же. Поиск, каналы, плейлисты, закладки и прогресс используют общую библиотеку с GTK. Веб-плеер передаёт видео через ПК, поддерживает перемотку и полноэкранный режим; раздельные дорожки объединяются FFmpeg без перекодирования. Доступ выключен по умолчанию и работает, пока открыто приложение на ПК. Проверка на реальном Lenovo P11 ещё требуется.
+
 Вкладка «Закладки» сохраняет видео, плейлисты и каналы независимо от подписок. Есть поиск, совместные фильтры по типу, сервису и синхронизации, сортировка и закрепление с ручным порядком. Добавить объект можно с карточки или по ссылке. Закладки доступны без сети; недоступность синхронизации при текущем способе входа VK показывается явно. YouTube пока сохраняется локально.
 
 Плейлист запоминает последнее видео и выбранную сортировку. При открытии сразу виден блок продолжения с позицией просмотра; запуск и переход к ролику выполняются отдельными кнопками. «Показать в списке» прокручивает список до нужной карточки, выделяет её и передаёт ей фокус. Прогресс сохраняется между запусками независимо от ограничения истории. После завершённого ролика предлагается следующий в выбранном порядке; досмотренным считается естественное окончание или последние 10 секунд. Кнопка «Сбросить прогресс» появляется только в блоке продолжения рядом с его действиями и очищает точку продолжения и позиции видео плейлиста после подтверждения; сортировка, закладки и история сохраняются.
@@ -21,6 +23,8 @@
 Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
 
 ### English
+
+PC installations now offer an embedded web interface for tablets on the local network. Enable access in Settings and pair a browser with a one-time code or QR code; paired devices can be revoked there. Search, channels, playlists, bookmarks and progress share one library with GTK. The web player streams through the PC, supports seeking and fullscreen, and combines separate tracks using FFmpeg streamcopy. Access is off by default and lasts while the PC application is open. Real Lenovo P11 validation is still required.
 
 The Bookmarks tab saves videos, playlists and channels independently of followed channels. It offers search, combined type/source/sync filters, sorting and manually ordered pins. Save from a card or a link. Bookmarks work offline; unavailable VK bookmark sync is explained for the current sign-in method. YouTube bookmarks remain local.
 

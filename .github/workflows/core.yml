@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0
+name: Shared core
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # No GTK, haltia-kit, aiohttp or platform keyring is installed here.
+      - run: >-
+          python -m unittest tests.test_application tests.test_library
+          tests.test_bookmarks tests.test_kept tests.test_playlist
+          tests.test_playlist_progress tests.test_search tests.test_signin
+          tests.test_pairing tests.test_web_controller

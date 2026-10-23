@@ -1,0 +1,11 @@
+# Optional PC LAN server, at Alpine 3.24 versions.
+aiohttp==3.13.5
+multidict==6.7.1
+yarl==1.24.2
+frozenlist==1.8.0
+propcache==0.5.2
+aiohappyeyeballs==2.6.1
+aiosignal==1.4.0
+attrs==26.1.0
+idna==3.16
+typing-extensions==4.15.0
