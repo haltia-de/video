@@ -4,6 +4,8 @@
 
 ### Русский
 
+Плейлисты получили локальный «Мой порядок» и редактор с перестановками через страницы, сохранением и отменой. В сортировке по урокам можно менять порядок внутри одинакового номера и вручную отмечать задания выполненными независимо от просмотра. «Продолжить» пропускает выполненные задания; прогресс, выполнение и ручной порядок сбрасываются отдельно. Правки общие для GTK и веб, оригинал в сервисе сохраняется. Сохранение порядка обновляет очередь, сохраняя текущий ролик и позицию.
+
 Добавлена необязательная публикация веб-интерфейса через nginx: в настройках ПК можно указать внешний адрес и IP доверенного прокси. Ссылка и QR-код используют этот адрес, подключение браузеров по коду сохраняется; внешний HTTPS поддерживается с завершением TLS в прокси. По умолчанию публикация выключена.
 
 На ПК появился встроенный веб-интерфейс для планшета в локальной сети. Включите доступ в настройках, подключите браузер одноразовым кодом или QR-кодом; подключённые устройства можно отозвать там же. Поиск, каналы, плейлисты, закладки и прогресс используют общую библиотеку с GTK. Веб-плеер передаёт видео через ПК, поддерживает перемотку и полноэкранный режим; раздельные дорожки объединяются FFmpeg без перекодирования. Доступ выключен по умолчанию и работает, пока открыто приложение на ПК. Проверка на реальном Lenovo P11 ещё требуется.
@@ -25,6 +27,8 @@
 Исправлен импорт каналов аккаунта VK: сообщества с видео, в том числе закрытые, больше не пропускаются из-за отсутствующих счётчиков в пакетном ответе VK.
 
 ### English
+
+Playlists now offer a local custom order and a paged editor with save and cancel. Lesson order allows rearrangement within equal lesson numbers and manual task completion independently of watching. Resume skips completed tasks; playback progress, task completion and manual order have separate resets. Edits are shared by GTK and the web client without changing the service playlist. Saving an order updates playback queues while preserving the current video and position.
 
 Optional nginx publication now accepts an external URL and trusted proxy IPs in PC settings. Pairing links and QR codes use that URL, browser code pairing remains required, and external HTTPS works with TLS termination at the proxy. Publication is off by default.
 

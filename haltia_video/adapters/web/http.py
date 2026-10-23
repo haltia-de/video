@@ -12,6 +12,7 @@ from aiohttp import web
 
 from .media import Media
 from .access import AccessPolicy
+from ...core.playlist import same_entry
 
 COOKIE = "haltia_device"
 ASSETS = Path(__file__).with_name("static")
@@ -39,6 +40,7 @@ class WebApplication:
         self.app.router.add_post("/api/bookmark-link", self.bookmark_link)
         self.app.router.add_post("/api/cookies", self.cookies)
         self.app.router.add_post("/api/play", self.play)
+        self.app.router.add_post("/api/playback", self.playback)
         self.app.router.add_post("/api/progress", self.progress)
         self.app.router.add_post("/api/seek", self.seek)
         self.app.router.add_post("/api/stop", self.stop)
@@ -243,6 +245,13 @@ class WebApplication:
             existing = self.core.play_requests.get((device, nonce)) if nonce else None
             if existing and existing in self.core.sessions.sessions:
                 return {"id": existing}
+            if p.get("adjacent"):
+                s = self.core.sessions.get(p["previous"], device)
+                index = next((i for i, v in enumerate(s["queue"]) if same_entry(v, s["video"])), None)
+                step = {"next": 1, "previous": -1}.get(p["adjacent"])
+                if index is None or step is None or not 0 <= index + step < len(s["queue"]):
+                    raise ValueError("В этом направлении больше нет видео.")
+                p.update(video=s["queue"][index + step], playlist=s["playlist"], order=s.get("order"))
             plan = self.core.playback_plan(p.get("video"), p.get("playlist"), p.get("order"),
                                             bool(p.get("resume")), bool(p.get("start_over")), device)
             if plan is None:
@@ -251,7 +260,7 @@ class WebApplication:
             if previous and previous in self.core.sessions.sessions:
                 self.core.sessions.get(previous, device)
             session = self.core.sessions.start(device, plan["video"], plan["playlist"], plan["queue"],
-                                                plan["start_over"], activate=False)
+                                                plan["start_over"], activate=False, start_at=plan["start"])
             self.core.sessions.get(session["id"])["order"] = plan["order"]
             if nonce:
                 self.core.play_requests[(device, nonce)] = session["id"]
@@ -270,9 +279,13 @@ class WebApplication:
             previous = p.get("previous")
             if previous and previous != session["id"] and previous in self.core.sessions.sessions:
                 self.core.sessions.get(previous, device)
-                self.core.sessions.stop(previous)
+                self.core.sessions.stop(previous, "replaced")
         await self.owner(replace)
         return web.json_response(result)
+
+    async def playback(self, request):
+        p = await self.payload(request)
+        return web.json_response(await self.media.public(p["id"], request["device"]))
 
     async def progress(self, request):
         p = await self.payload(request)

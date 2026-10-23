@@ -430,6 +430,8 @@ class Video(Gtk.Application):
             self.bookmark_sync_changed()
         elif kind == "playback_stopped" and data["id"] == self.core.local_session:
             self.stop_playback()
+        elif kind == "queue_changed" and data["id"] == self.core.local_session:
+            self.player.reorder_queue(self.core.sessions.get(data["id"])["queue"])
 
     def ordered(self):
         return self.core.ordered()
@@ -605,7 +607,10 @@ class Video(Gtk.Application):
         self.left(left)
 
     def go_back(self, *_args):
-        if self.sub and self.sub["kind"] == "playlist" and not self.sub["chan"].get("bookmarked"):
+        if self.sub and self.sub["kind"] == "playlist_editor":
+            self.finish_playlist_editor(False)
+            return
+        if self.sub and self.sub["kind"] == "playlist" and not self.sub["chan"].get("from_bookmarks"):
             self.show_channel(self.sub["chan"])
             return
         self.show_page(self.page if self.sub is not None else "home")
@@ -624,6 +629,11 @@ class Video(Gtk.Application):
         if sub and sub["kind"] == "settings":
             for sign in self.signins.values():
                 sign.cancel()
+        if sub and sub["kind"] == "playlist_editor" and sub.get("token"):
+            try:
+                self.core.command("playlist_cancel", {"entity": sub["playlist"], "token": sub["token"]})
+            except ValueError:
+                pass
 
     def on_sub(self, kind, **match):
         """Whether that page is still the one on show (work done in the
@@ -642,7 +652,7 @@ class Video(Gtk.Application):
         def add(video):
             card = self.card(video)
             flow.add(card)
-            if focus_video and (video["source"], video["id"]) == (focus_video["source"], focus_video["id"]):
+            if focus_video and playlist_view.same_entry(video, focus_video):
                 card.get_style_context().add_class("located")
                 self.reveal_video(card, sub)
             return card
@@ -765,8 +775,21 @@ class Video(Gtk.Application):
                                              self.follow_menu(video)))
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         outer._video_key = (video["source"], video["id"])
+        outer._entry_id = video.get("entry_id")
         outer.pack_start(ev, True, True, 0)
         outer.pack_start(self.bookmark_button("video", video), False, False, 0)
+        if self.on_sub("playlist") and self.sub["order"] == "lesson":
+            task = Gtk.CheckButton(label="Выполнено")
+            task.set_active(bool(video.get("task_done")))
+            playlist = self.sub["playlist"]
+            def toggle(check):
+                try:
+                    self.core.command("playlist_task", {"entity": playlist, "video": video,
+                                                         "on": check.get_active()})
+                except ValueError as exc:
+                    self.say(str(exc))
+            task.connect("toggled", toggle)
+            outer.pack_start(task, False, False, 0)
         return outer
 
     def section(self, box, title, action=None):
@@ -1024,6 +1047,23 @@ class Video(Gtk.Application):
         tools.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"])),
                          False, False, 0)
         box.pack_start(tools, False, False, 0)
+        edit = Gtk.Button(label="Изменить порядок")
+        edit.get_style_context().add_class("more")
+        edit.connect("clicked", lambda _b: self.show_playlist_editor(playlist, chan,
+                     "lesson" if order == "lesson" else "custom", return_order=order))
+        box.pack_start(edit, False, False, 0)
+        if order == "lesson":
+            box.pack_start(label("Выполнено %d из %d" % (result["tasks"]["done"], result["tasks"]["total"]),
+                                 "csub"), False, False, 0)
+        resets = Gtk.Box(spacing=12)
+        for title, action, shown in (("Сбросить выполнение", "reset_tasks", order == "lesson" and result["has_tasks"]),
+                                     ("Сбросить ручной порядок", "reset_order", result["has_manual"])):
+            if shown:
+                btn = Gtk.Button(label=title)
+                btn.get_style_context().add_class("more")
+                btn.connect("clicked", lambda _b, a=action: self.playlist_resume_action(sub, a))
+                resets.pack_start(btn, True, True, 0)
+        box.pack_start(resets, False, False, 0)
         resume = self.playlist_resume_block(self.sub)
         if resume:
             box.pack_start(resume, False, False, 0)
@@ -1047,12 +1087,113 @@ class Video(Gtk.Application):
         box.pack_start(nav, False, False, 0)
         self.set_content(box)
 
+    def show_playlist_editor(self, playlist=None, chan=None, order=None, return_order=None, again=False):
+        if not again:
+            self.open_sub({"kind": "playlist_editor", "playlist": playlist, "chan": chan,
+                           "key": (playlist["source"], str(playlist.get("owner_id", "")), playlist["id"]),
+                           "order": order, "return_order": return_order, "offset": 0}, "Изменить порядок")
+        sub = self.sub
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        tools = Gtk.Box(spacing=12)
+        save_button = None
+        for title, fn in (("Сохранить", lambda: self.finish_playlist_editor(True)),
+                          ("Отмена", lambda: self.finish_playlist_editor(False)),
+                          ("Загрузить свежий вариант", self.reload_playlist_editor)):
+            btn = Gtk.Button(label=title)
+            btn.get_style_context().add_class("more")
+            if title == "Сохранить":
+                save_button = btn
+                btn.set_sensitive(False)
+            btn.connect("clicked", lambda _b, call=fn: call())
+            tools.pack_start(btn, True, True, 0)
+        box.pack_start(tools, False, False, 0)
+        box.pack_start(label("Черновик. Сохранение применит порядок на всех устройствах." +
+                              (" Перестановки доступны внутри одинакового номера урока." if sub["order"] == "lesson" else ""),
+                              "csub", wrap=True), False, False, 0)
+        try:
+            result = self.core.query("playlist_editor", {"entity": sub["playlist"], "order": sub["order"],
+                                     "token": sub.get("token"), "offset": sub["offset"]})
+            if result.get("loading") or result.get("failed"):
+                self.say("Не удалось загрузить плейлист." if result.get("failed") else "Загружаю плейлист…")
+                self.set_content(box)
+                return
+            sub["token"] = result["token"]
+            save_button.set_sensitive(True)
+            self.say("")
+            for item in result["items"]:
+                row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+                row.get_style_context().add_class("chan")
+                row._entry_id = item["entry_id"]
+                row.pack_start(label("%d. %s" % (item["position"] + 1, item["title"]), "ttl", wrap=True), False, False, 0)
+                controls = Gtk.Box(spacing=12)
+                spin = Gtk.SpinButton.new_with_range(item["minimum"] + 1, item["maximum"] + 1, 1)
+                spin.set_value(item["position"] + 1)
+                for title, target, sensitive in (
+                        ("Выше", lambda v=item: v["position"] - 1, item["position"] > item["minimum"]),
+                        ("Ниже", lambda v=item: v["position"] + 1, item["position"] < item["maximum"]),
+                        ("На позицию…", lambda s=spin: s.get_value_as_int() - 1, True)):
+                    btn = Gtk.Button(label=title, sensitive=sensitive)
+                    btn.get_style_context().add_class("more")
+                    btn.connect("clicked", lambda _b, v=item, dest=target: self.move_playlist_entry(v["entry_id"], dest()))
+                    controls.pack_start(btn, True, True, 0)
+                controls.pack_start(spin, False, False, 0)
+                row.pack_start(controls, False, False, 0)
+                box.pack_start(row, False, False, 0)
+                if sub.get("target") == item["entry_id"]:
+                    self.reveal_video(row, sub)
+            nav = Gtk.Box(spacing=12)
+            for title, offset in (("← Предыдущие", max(0, sub["offset"] - 30) if sub["offset"] else None),
+                                  ("Следующие →", result["next"])):
+                if offset is not None:
+                    btn = Gtk.Button(label=title)
+                    btn.get_style_context().add_class("more")
+                    btn.connect("clicked", lambda _b, off=offset: self.editor_page(off))
+                    nav.pack_start(btn, True, True, 0)
+            box.pack_start(nav, False, False, 0)
+        except ValueError as exc:
+            self.say(str(exc))
+        self.set_content(box)
+
+    def editor_page(self, offset):
+        self.sub["offset"] = offset
+        self.show_playlist_editor(again=True)
+
+    def reload_playlist_editor(self):
+        sub = self.sub
+        if sub.get("token"):
+            self.core.command("playlist_cancel", {"entity": sub["playlist"], "token": sub.pop("token")})
+        self.show_playlist_editor(again=True)
+
+    def move_playlist_entry(self, ident, position):
+        sub = self.sub
+        try:
+            self.core.command("playlist_move", {"entity": sub["playlist"], "token": sub["token"],
+                                               "entry_id": ident, "position": position})
+            sub.update(offset=(position // 30) * 30, target=ident)
+            self.show_playlist_editor(again=True)
+        except ValueError as exc:
+            self.say(str(exc))
+
+    def finish_playlist_editor(self, save):
+        sub = self.sub
+        try:
+            if sub.get("token"):
+                self.core.command("playlist_save" if save else "playlist_cancel",
+                                  {"entity": sub["playlist"], "token": sub["token"]})
+                sub.pop("token", None)
+            self.playlist_order[sub["key"]] = sub["order"] if save else sub["return_order"]
+            self.show_playlist(sub["playlist"], sub["chan"])
+        except ValueError as exc:
+            self.say(str(exc))
+
     def _playlist_came(self, key, _error):
         if self.on_sub("playlist", key=key) and self.sub["order"] == "vk":
             self.show_playlist(self.sub["playlist"], self.sub["chan"], key[3], again=True,
                                previous=self.sub["previous"])
 
     def _playlist_all_came(self, key, _error):
+        if self.on_sub("playlist_editor") and self.sub["key"] == key:
+            self.show_playlist_editor(again=True)
         resume = self.pending_playlist_resume
         if resume and resume["key"] == key and self.sub is resume["sub"]:
             self.pending_playlist_resume = None
@@ -1066,7 +1207,7 @@ class Video(Gtk.Application):
                 self.pending_playlist_play = None
                 self.say("Не удалось загрузить очередь плейлиста: нет связи?")
             else:
-                self.play_from_playlist(pending["video"], pending["sub"], pending.get("start_over", False))
+                self.play_from_playlist(pending["video"], pending["sub"], pending.get("start_over", False), pending.get("start_at"))
         if (self.sub and self.sub["kind"] == "playlist"
                 and self.sub["key"][:3] == key and self.sub["order"] != "vk"):
             self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
@@ -1079,6 +1220,9 @@ class Video(Gtk.Application):
     def playlist_resume_block(self, sub):
         result = sub["result"]
         saved = result["resume"]
+        has_saved = bool(saved)
+        if not saved and sub["order"] == "lesson" and result["continuation"] and result["continuation"]["video"]:
+            saved = {"video": result["continuation"]["video"], "pos": None, "duration": None, "complete": False}
         if not saved:
             return None
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -1099,29 +1243,35 @@ class Video(Gtk.Application):
             box.pack_start(Gtk.ProgressBar(fraction=progress), False, False, 0)
         status = result["continuation"]
         note = {"missing": "Последнего видео нет среди доступных. Предлагаю первое доступное.",
+                "tasks_done": "Все задания выполнены.",
+                "task_next": "Следующее невыполненное задание: %s" % (status["video"]["title"] if status and status["video"] else ""),
                 "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео.",
                 "next": "Последнее видео досмотрено. Далее: %s" % (status["video"]["title"]
                                                                             if status and status["video"] else "")}
         if status and status["kind"] in note:
             box.pack_start(label(note[status["kind"]], "csub", wrap=True), False, False, 0)
-        elif saved["complete"]:
+        elif saved["complete"] and sub["order"] != "lesson":
             box.pack_start(label("Последнее видео досмотрено. Продолжим со следующего в этом порядке.",
                                  "csub", wrap=True), False, False, 0)
         row = Gtk.Box(spacing=12)
-        caption = ("Начать сначала" if status and status["kind"] == "finished" else
+        caption = ("Смотреть сначала" if status and status["kind"] == "tasks_done" else
+                   "Начать сначала" if status and status["kind"] == "finished" else
                    "Первое доступное видео" if status and status["kind"] == "missing" else "Продолжить")
         start = Gtk.Button(label=caption, sensitive=not status or status["kind"] != "empty")
         start.get_style_context().add_class("more")
-        start.connect("clicked", lambda _b: self.playlist_resume_action(sub, "play"))
+        start.connect("clicked", lambda _b: self.playlist_resume_action(sub,
+                      "first" if status and status["kind"] == "tasks_done" else "play"))
         row.pack_start(start, True, True, 0)
         locate = Gtk.Button(label="Показать в списке")
         locate.get_style_context().add_class("more")
         locate.connect("clicked", lambda _b: self.playlist_resume_action(sub, "locate"))
-        row.pack_start(locate, True, True, 0)
+        if has_saved:
+            row.pack_start(locate, True, True, 0)
         reset = Gtk.Button(label="Сбросить прогресс")
         reset.get_style_context().add_class("more")
         reset.connect("clicked", lambda _b: self.playlist_resume_action(sub, "reset"))
-        row.pack_start(reset, True, True, 0)
+        if has_saved:
+            row.pack_start(reset, True, True, 0)
         box.pack_start(row, False, False, 0)
         return box
 
@@ -1130,27 +1280,33 @@ class Video(Gtk.Application):
             return
         key = sub["key"][:3]
         try:
-            if action == "play":
-                result = self.core.playback_plan(playlist=sub["playlist"], order=sub["order"], resume=True)
+            if action in ("play", "first"):
+                result = self.core.playback_plan(playlist=sub["playlist"], order=sub["order"], resume=True,
+                                                 start_over=action == "first")
                 if result is not None:
-                    self.play(result["video"], start_over=result["start_over"])
+                    self.play(result["video"], start_over=result["start_over"], start_at=result["start"])
                     return
             else:
-                result = self.core.query("reset_preview" if action == "reset" else "locate",
-                                         {"entity": sub["playlist"], "order": sub["order"]})
+                reset = action.startswith("reset")
+                what = {"reset_tasks": "tasks", "reset_order": "order"}.get(action, "progress")
+                result = self.core.query("reset_preview" if reset else "locate",
+                                         {"entity": sub["playlist"], "order": sub["order"], "what": what})
                 if result.get("failed"):
                     raise ValueError("Не удалось проверить плейлист. Прогресс сохранён.")
                 if not result.get("loading"):
-                    if action == "reset":
-                        if dialogs.ask(self.win, "Будут сброшены последнее видео и позиции просмотра всех видео "
+                    if reset:
+                        text = ("Снять все отметки выполнения этого плейлиста?" if what == "tasks" else
+                                "Сбросить ручной порядок и поправки внутри уроков этого плейлиста?" if what == "order" else
+                                "Будут сброшены последнее видео и позиции просмотра всех видео "
                                        "плейлиста, также в других плейлистах, где они встречаются. "
-                                       "Закладки, история и сортировка сохранятся.", "Сбросить прогресс"):
+                                       "Закладки, история и сортировка сохранятся.")
+                        if dialogs.ask(self.win, text, {"tasks": "Сбросить выполнение", "order": "Сбросить ручной порядок"}.get(what, "Сбросить прогресс")):
                             if self.sub is sub:
                                 self.pending_playlist_play = None
                                 self.pending_playlist_resume = None
-                                self.core.command("reset_progress", {"token": result["token"]})
+                                self.core.command("playlist_reset", {"token": result["token"]})
                                 self.show_playlist(sub["playlist"], sub["chan"])
-                                self.say("Прогресс плейлиста сброшен.")
+                                self.say({"tasks": "Выполнение сброшено.", "order": "Ручной порядок сброшен."}.get(what, "Прогресс плейлиста сброшен."))
                     elif result.get("video"):
                         self.show_playlist(sub["playlist"], sub["chan"], result["offset"],
                                            previous=tuple(result["previous"]), focus_video=result["video"])
@@ -1300,7 +1456,7 @@ class Video(Gtk.Application):
         else:
             # Back leads to Закладки: a YouTube playlist may name no channel.
             chan = {"source": obj["source"], "id": obj.get("owner_id", ""),
-                    "title": obj.get("owner_title") or "Канал плейлиста", "bookmarked": True}
+                    "title": obj.get("owner_title") or "Канал плейлиста", "from_bookmarks": True}
             self.show_playlist(obj, chan)
 
     def show_bookmarks(self):
@@ -1799,7 +1955,10 @@ class Video(Gtk.Application):
 
     # --- channels ---------------------------------------------------------
     def library_changed(self, what):
-        if what == "bookmarks":
+        if what in ("playlist_edits", "tasks") and self.on_sub("playlist"):
+            self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
+                               again=True, previous=self.sub["previous"])
+        elif what == "bookmarks":
             self.redraw("bookmarks")
         elif what == "position":
             state = self.player.state
@@ -1832,38 +1991,38 @@ class Video(Gtk.Application):
         GLib.idle_add(question)
 
     # --- playing ----------------------------------------------------------
-    def play(self, video, start_over=False):
+    def play(self, video, start_over=False, start_at=None):
         self.pending_playlist_play = None
         src = self.sources.get(video["source"])
         if not src:
             return
         if (self.sub and self.sub["kind"] == "playlist" and self.player.stream_format is None
                 and hasattr(src, "stream")):
-            self.play_from_playlist(video, self.sub, start_over)
+            self.play_from_playlist(video, self.sub, start_over, start_at)
             return
         try:
             stream = getattr(src, "stream", None)
             context = self.sub["playlist"] if self.sub and self.sub["kind"] == "playlist" else None
-            self.player.open(video, src.watch_url(video), start=None if start_over else self.library.resume_at(video),
+            self.player.open(video, src.watch_url(video), start=None if start_over else start_at if start_at is not None else self.library.resume_at(video),
                              ytdl=getattr(src, "ytdl_options", dict)(),
                              resolve=stream and (lambda fmt: stream(video, fmt)),
                              resolve_desktop=getattr(src, "resolve_on_desktop", False), playlist=context)
         except OSError:
             self.say("Нет проигрывателя (haltia-vplay или mpv).")
 
-    def play_from_playlist(self, video, sub, start_over=False):
+    def play_from_playlist(self, video, sub, start_over=False, start_at=None):
         try:
             plan = self.core.playback_plan(video, sub["playlist"], sub["order"], start_over=start_over)
             if plan is None:
                 self.pending_playlist_play = {"key": sub["key"][:3], "sub": sub,
-                                              "video": video, "start_over": start_over}
+                                              "video": video, "start_over": start_over, "start_at": start_at}
                 self.say("Загружаю плейлист для проигрывателя…")
                 return
             self.pending_playlist_play = None
             src = self.sources[video["source"]]
             self.player.open_playlist(plan["queue"], plan["index"], src.stream,
                                       lambda v: None if start_over and v is plan["video"]
-                                      else self.library.resume_at(v), playlist=sub["playlist"])
+                                      else self.library.resume_at(v), playlist=sub["playlist"], order=sub["order"], start_at=start_at)
         except (OSError, ValueError) as exc:
             self.say(str(exc))
 

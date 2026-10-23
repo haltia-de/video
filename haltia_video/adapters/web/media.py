@@ -14,6 +14,7 @@ import shutil
 
 import aiohttp
 from aiohttp import web
+from ...core.playlist import same_entry
 
 RANGE = re.compile(r"bytes=(?:\d+-\d*|-\d+)\Z")
 
@@ -109,8 +110,7 @@ class Media:
         def snapshot():
             s = self.core.sessions.get(ident, device)
             queue = s["queue"]
-            index = next((i for i, v in enumerate(queue) if v["source"] == s["video"]["source"] and
-                          v["id"] == s["video"]["id"]), None)
+            index = next((i for i, v in enumerate(queue) if same_entry(v, s["video"])), None)
             return {"id": ident, "generation": s["generation"], "video": copy.deepcopy(s["video"]),
                     "playlist": copy.deepcopy(s["playlist"]), "pos": s["pos"],
                     "order": s.get("order"),

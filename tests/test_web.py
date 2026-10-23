@@ -228,3 +228,45 @@ class WebTest(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get(session["url"])
         self.assertEqual(response.status, 401)
         self.assertEqual(self.core.sessions.sessions, {})
+
+    async def test_reordering_updates_live_neighbors_without_replacing_media(self):
+        await self.pair()
+        playlist = {"source": "vk", "owner_id": "-7", "id": "7", "title": "Course"}
+        videos = [VIDEO, dict(VIDEO, id="-7_2"), VIDEO, dict(VIDEO, id="-7_3")]
+        self.source.playlist_videos = lambda p, offset=0: {"videos": videos, "next": None}
+        for _ in range(2):
+            response = await self.client.post("/api/query", json={"view": "playlist", "params": {
+                "entity": playlist, "order": "custom"}})
+            result = await response.json()
+        entries = result["items"]
+        response = await self.client.post("/api/play", json={"video": entries[0], "playlist": playlist,
+                                                            "order": "custom", "request": "live"})
+        original = await response.json()
+        self.assertEqual(response.status, 200, original)
+        await self.client.post("/api/progress", json={"id": original["id"], "generation": 0,
+                                                     "pos": 100, "duration": 600, "paused": True})
+        response = await self.client.post("/api/query", json={"view": "playlist_editor", "params": {
+            "entity": playlist, "order": "custom"}})
+        draft = await response.json()
+        for ident, pos in ((entries[1]["entry_id"], 0), (entries[3]["entry_id"], 2)):
+            response = await self.client.post("/api/command", json={"name": "playlist_move", "params": {
+                "entity": playlist, "token": draft["token"], "entry_id": ident, "position": pos}})
+            self.assertEqual(response.status, 200, await response.text())
+        response = await self.client.post("/api/command", json={"name": "playlist_save", "params": {
+            "entity": playlist, "token": draft["token"]}})
+        self.assertEqual(response.status, 200)
+        response = await self.client.post("/api/playback", json={"id": original["id"]})
+        updated = await response.json()
+        self.assertEqual(updated["url"], original["url"])
+        self.assertEqual(updated["generation"], 0)
+        self.assertEqual(updated["pos"], 100)
+        self.assertEqual(updated["next"]["entry_id"], entries[3]["entry_id"])
+        events = []
+        self.core.watch(events.append)
+        response = await self.client.post("/api/play", json={"adjacent": "next", "previous": original["id"],
+                                                            "request": "adjacent"})
+        next_video = await response.json()
+        self.assertEqual(response.status, 200, next_video)
+        self.assertEqual(next_video["video"]["entry_id"], entries[3]["entry_id"])
+        self.assertTrue(any(e["type"] == "playback_stopped" and e["data"].get("reason") == "replaced"
+                            for e in events))

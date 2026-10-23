@@ -16,6 +16,7 @@ from .kept import Kept
 from . import playlist as ordering
 from .signin import SignIn
 from .playback import Sessions
+from .playlist_editor import Editor
 
 
 class RecentInputs(OrderedDict):
@@ -91,6 +92,7 @@ class Application:
         self.local_last = None
         self.confirmations = RecentInputs()
         self.play_requests = RecentInputs()
+        self.editor = Editor(library)
         self.library.watch(self._library_changed)
 
     def watch(self, fn):
@@ -167,6 +169,8 @@ class Application:
 
     def reset_channel_data(self):
         self.epoch += 1
+        if hasattr(self, "editor"):
+            self.editor.drafts.clear()
         epoch = self.epoch
         self.channel_wanted = RecentInputs()
         self.playlist_wanted = RecentInputs()
@@ -183,7 +187,7 @@ class Application:
                 if self.closed or epoch != self.epoch:
                     raise OSError("account changed or application closed")
                 return self.sources[k[0]].playlist_videos(playlist, offset)
-            return ordering.collect(fetch, p, locations=True)
+            return ordering.identify(ordering.collect(fetch, p, locations=True))
         self.playlist_all = Kept(collect, 900, self.work, max_entries=8, max_bytes=32 * 1024 * 1024,
                                  prepare=lambda k: (copy.deepcopy(self.playlist_wanted[k]),))
         for name in ("channel_videos", "playlists", "playlist_pages", "playlist_all"):
@@ -191,6 +195,10 @@ class Application:
             collection.watch(lambda k, e, name=name, c=collection: self.emit(
                 "cache", {"kind": name, "key": k, "failed": bool(e)})
                 if getattr(self, name) is c else None)
+        collection = self.playlist_all
+        collection.watch(lambda k, e: self.update_playlist_queues(self.playlist_wanted[k], collection.peek(k))
+                         if not e and self.playlist_all is collection and k in self.playlist_wanted
+                         and hasattr(self, "sessions") else None)
 
     def _signin_changed(self, src, state):
         if self.closed:
@@ -270,17 +278,28 @@ class Application:
             return
         self.local_video = video
         if self.local_session:
-            self.sessions.stop(self.local_session)
+            previous = self.local_session
             self.local_session = None
+            self.sessions.stop(previous)
         if video:
-            session = self.sessions.start("gtk", video, state.get("playlist"))
+            playlist = state.get("playlist")
+            mode = state.get("order", "vk")
+            queue = ()
+            if playlist:
+                k = (playlist["source"], str(playlist.get("owner_id", "")), playlist["id"])
+                full = self.playlist_all.peek(k)
+                if full:
+                    queue = self.wanted(self.playlist_ordered(playlist, full, mode))
+            session = self.sessions.start("gtk", video, playlist, queue)
+            self.sessions.get(session["id"])["order"] = mode
             self.local_session = session["id"]
 
     def note_local_position(self, state):
         if state is None:
             if self.local_session:
-                self.sessions.stop(self.local_session)
+                previous = self.local_session
                 self.local_session = None
+                self.sessions.stop(previous)
             self.local_last = None
             return
         if self.local_session not in self.sessions.sessions:
@@ -419,7 +438,7 @@ class Application:
                           loading=self.channel_videos.is_loading(k) or self.playlists.is_loading(k),
                           failed=self.channel_videos.has_failed(k))
             return result
-        if view in ("playlist", "locate", "reset_preview"):
+        if view in ("playlist", "locate", "reset_preview", "playlist_editor"):
             playlist = p["entity"]
             src = self._source(playlist)
             if not hasattr(src, "playlist_videos"):
@@ -434,41 +453,76 @@ class Application:
             if order != "vk" or view != "playlist":
                 full = self.playlist_all.get(k)
             saved = self.library.playlist_resume(playlist)
+            if view == "playlist_editor":
+                if order not in ("lesson", "custom"):
+                    raise ValueError("Для редактирования выберите «Мой порядок» или номера уроков.")
+                if full is None:
+                    return {"loading": self.playlist_all.is_loading(k), "failed": self.playlist_all.has_failed(k)}
+                token = p.get("token") or self.editor.begin(device, playlist, order, full,
+                                                            self.wanted(self.playlist_ordered(playlist, full, order)), self.epoch)
+                draft = self.editor.get(token, device, full, self.epoch)
+                if key("playlist", draft["playlist"]) != key("playlist", playlist) or order != draft["order"]:
+                    raise ValueError("Черновик другого плейлиста.")
+                entries = full["_entries"]
+                ids = draft["ids"]
+                result = self._page([entries[i] for i in ids], offset)
+                result.update(token=token, order=order, total=len(ids))
+                for i, video in enumerate(result["items"], offset):
+                    video.update(position=i, minimum=0, maximum=len(ids) - 1)
+                    if order == "lesson":
+                        lo, hi = draft["bounds"][i]
+                        video.update(minimum=lo, maximum=hi)
+                return result
             if view != "playlist":
                 if full is None:
                     return {"loading": self.playlist_all.is_loading(k),
                             "failed": self.playlist_all.has_failed(k)}
-                videos = self.wanted(full[order])
+                videos = self.wanted(self.playlist_ordered(playlist, full, order))
                 if view == "reset_preview":
                     token = secrets.token_urlsafe(24)
                     self.confirmations[token] = {"device": device, "epoch": self.epoch,
                                                   "until": time.monotonic() + 120,
                                                   "playlist": copy.deepcopy(playlist),
+                                                  "what": p.get("what", "progress"),
                                                   "key": k, "time": self.playlist_all.entries[k]["time"]}
                     return {"token": token, "count": len(full["vk"])}
                 if not saved or not videos:
                     return {"missing": True}
-                target = next((v for v in videos if key("video", v) == key("video", saved["video"])), videos[0])
+                target = next((v for v in videos if ordering.same_entry(v, saved["video"])), videos[0])
                 if order == "vk":
-                    pos, previous = full["_locations"][(target["source"], target["id"])]
+                    pos, previous = full["_entry_locations"][target["entry_id"]]
                 else:
                     pos = (videos.index(target) // 30) * 30
                     previous = tuple(range(0, pos, 30))
                 return {"offset": pos, "target": target["id"], "video": target,
+                        "entry_id": target["entry_id"],
                         "previous": previous, "missing": key("video", target) != key("video", saved["video"])}
             if order == "vk":
                 page = (full or {}).get("_pages", {}).get(offset)
                 if page is None:
                     page = self.playlist_pages.get(k + (offset,))
+                    if page is not None:
+                        page = {"videos": [dict(v, source_offset=offset + i) for i, v in enumerate(page["videos"])],
+                                "next": page["next"]}
                 loading = self.playlist_pages.is_loading(k + (offset,))
                 failed = self.playlist_pages.has_failed(k + (offset,))
             else:
-                page = ordering.page(self.wanted(full[order]), offset) if full else None
+                page = ordering.page(self.wanted(self.playlist_ordered(playlist, full, order)), offset) if full else None
                 loading = self.playlist_all.is_loading(k)
                 failed = self.playlist_all.has_failed(k)
-            continuation = ordering.continuation(self.wanted(full[order]), saved) if full and saved else None
+            videos = self.wanted(self.playlist_ordered(playlist, full, order)) if full else []
+            done = self.library.task_done(playlist)
+            continuation = (ordering.task_continuation(videos, saved, done) if order == "lesson" and full else
+                            ordering.continuation(videos, saved) if full and saved else None)
+            items = self._videos(self.wanted((page or {}).get("videos", [])))
+            if order == "lesson":
+                for video in items:
+                    video["task_done"] = key("video", video) in done
+            tasks = {key("video", v) for v in videos}
             return {"entity": playlist, "order": order, "offset": offset,
-                    "items": self._videos(self.wanted((page or {}).get("videos", []))),
+                    "items": items, "tasks": {"done": len(tasks & done), "total": len(tasks)},
+                    "has_tasks": bool(done), "has_manual": bool(self.library.manual_order(playlist, "custom") or
+                                                                self.library.manual_order(playlist, "lesson")),
                     "next": (page or {}).get("next"), "loading": loading,
                     "failed": failed, "ready": page is not None, "resume": saved, "continuation": continuation}
         raise ValueError("Неизвестный запрос.")
@@ -481,7 +535,35 @@ class Application:
 
     def command(self, name, p=None, device="gtk"):
         p = p or {}
-        if name == "follow":
+        if name == "playlist_cancel":
+            draft = self.editor.drafts.get(p.get("token"))
+            if draft and draft["device"] == device:
+                self.editor.drafts.pop(p["token"], None)
+        elif name in ("playlist_move", "playlist_save", "playlist_task"):
+            playlist = p["entity"]
+            self._source(playlist)
+            k = (playlist["source"], str(playlist.get("owner_id", "")), playlist["id"])
+            full = self.playlist_all.peek(k)
+            if full is None:
+                raise ValueError("Плейлист устарел. Загрузите свежий вариант.")
+            if name == "playlist_task":
+                video = p["video"]
+                video = next((v for v in full["vk"] if ordering.same_entry(v, video)), None)
+                if video is None:
+                    raise ValueError("Этого видео нет в плейлисте.")
+                self.library.set_task(playlist, video, bool(p["on"]))
+            else:
+                draft = self.editor.get(p["token"], device, full, self.epoch)
+                if key("playlist", draft["playlist"]) != key("playlist", playlist):
+                    raise ValueError("Черновик другого плейлиста.")
+                if name == "playlist_move":
+                    self.editor.move(draft, full, p["entry_id"], p["position"])
+                else:
+                    if name == "playlist_save":
+                        self.editor.save(draft)
+                        self.update_playlist_queues(playlist, full)
+                    self.editor.drafts.pop(p["token"], None)
+        elif name == "follow":
             obj = p["entity"]
             self._source(obj)
             self.library.follow(obj)
@@ -547,7 +629,7 @@ class Application:
             self.feed.invalidate()
         elif name == "sync_enabled":
             self.bookmark_sync.enable(p["source"], bool(p["on"]))
-        elif name == "reset_progress":
+        elif name in ("reset_progress", "playlist_reset"):
             preview = self.confirmations.pop(p.get("token"), None)
             if (not preview or preview["device"] != device or preview["epoch"] != self.epoch or
                     preview["until"] < time.monotonic()):
@@ -555,7 +637,18 @@ class Application:
             entry = self.playlist_all.entries.get(preview["key"])
             if not entry or entry["time"] != preview["time"]:
                 raise ValueError("Список изменился. Подтвердите сброс ещё раз.")
-            self.reset_progress(preview["playlist"], entry["value"]["vk"])
+            what = preview.get("what", "progress")
+            if name == "reset_progress" and what != "progress":
+                raise ValueError("Неверное подтверждение сброса.")
+            if what == "progress":
+                self.reset_progress(preview["playlist"], entry["value"]["vk"])
+            elif what == "tasks":
+                self.library.reset_tasks(preview["playlist"])
+            elif what == "order":
+                self.library.reset_manual_order(preview["playlist"])
+                self.update_playlist_queues(preview["playlist"], entry["value"])
+            else:
+                raise ValueError("Неизвестный вид сброса.")
         else:
             raise ValueError("Неизвестная команда.")
         return {"ok": True, "revision": self.revision}
@@ -577,24 +670,63 @@ class Application:
                     raise ValueError("Не удалось загрузить плейлист. Повторите при подключении.")
                 return None
             order = order or self.library.playlist_order(playlist, device)
-            if order not in ("vk", "reverse", "lesson"):
+            if order not in dict(ordering.ORDERS):
                 raise ValueError("Неизвестный порядок.")
-            queue = self.wanted(orders[order])
+            queue = self.wanted(self.playlist_ordered(playlist, orders, order))
             if resume:
                 saved = self.library.playlist_resume(playlist)
-                if not saved:
+                if not saved and order != "lesson":
                     raise ValueError("Нет сохранённого прогресса.")
-                result = ordering.continuation(queue, saved)
+                result = (ordering.task_continuation(queue, saved, self.library.task_done(playlist))
+                          if order == "lesson" else ordering.continuation(queue, saved))
                 video = result["video"]
-                start_over = result["kind"] == "finished"
+                if start_over and queue:
+                    video = queue[0]
+                start_over = start_over or result["kind"] in ("finished", "tasks_done")
             else:
-                video = next((v for v in queue if video and key("video", v) == key("video", video)), None)
+                requested = video
+                video = next((v for v in queue if requested and (
+                    ordering.same_entry(v, requested) if requested.get("entry_id") else
+                    v.get("source_offset") == requested["source_offset"] if "source_offset" in requested else
+                    key("video", v) == key("video", requested))), None)
             if not video:
                 raise ValueError("Этого видео нет среди доступных видео плейлиста.")
             index = next(i for i, v in enumerate(queue) if v is video)
         self._source(video)
         return {"video": video, "queue": queue, "index": index, "playlist": playlist,
-                "start_over": start_over, "order": order}
+                "start_over": start_over, "order": order,
+                "start": None if start_over else self.resume_at(video, order, resume)}
+
+    def resume_at(self, video, order=None, continuation=False):
+        if order == "lesson" and continuation:
+            pos = (self.library.position(video) or {}).get("pos")
+            return pos if pos is not None and pos >= 10 else None
+        return self.library.resume_at(video)
+
+    def playlist_ordered(self, playlist, full, mode):
+        if mode not in ("custom", "lesson"):
+            return full[mode]
+        version = self.library.edit_version(playlist)
+        if full.get("_view_version") != version:
+            full["_view_version"], full["_views"] = version, {}
+        if mode not in full["_views"]:
+            full["_views"][mode] = ordering.arranged(full, mode, self.library.manual_order(playlist, mode))
+        return full["_views"][mode]
+
+    def update_playlist_queues(self, playlist, full):
+        for session in list(self.sessions.sessions.values()):
+            if not session["playlist"] or key("playlist", session["playlist"]) != key("playlist", playlist):
+                continue
+            mode = session.get("order", "vk")
+            if mode not in ("custom", "lesson"):
+                continue
+            queue = list(self.wanted(self.playlist_ordered(playlist, full, mode)))
+            if not any(ordering.same_entry(v, session["video"]) for v in queue):
+                old_index = next((i for i, v in enumerate(session["queue"])
+                                  if ordering.same_entry(v, session["video"])), len(queue))
+                queue.insert(min(len(queue), old_index), session["video"])
+            session["queue"] = tuple(queue)
+            self.emit("queue_changed", {"id": session["id"]})
 
     def reset_progress(self, playlist, videos):
         ids = {key("video", v) for v in videos}

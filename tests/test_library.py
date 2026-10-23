@@ -164,9 +164,9 @@ class LibraryTest(unittest.TestCase):
         lib = self.library()
         playlist = {"source": "vk", "owner_id": "-1", "id": "2", "title": "P"}
         lib.set_playlist_order(playlist, "lesson")
-        lib._playback["orders"]["vk|playlist|-1|2"] = "custom"  # written by a newer version
+        lib._playback["orders"]["vk|playlist|-1|2"] = "chapters"  # written by a newer version
         self.assertEqual(lib.playlist_order(playlist), "vk")
-        self.assertEqual(lib._playback["orders"]["vk|playlist|-1|2"], "custom")
+        self.assertEqual(lib._playback["orders"]["vk|playlist|-1|2"], "chapters")
 
     def test_positions_outlive_history_up_to_a_limit(self):
         lib = self.library()

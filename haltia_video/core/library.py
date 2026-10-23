@@ -56,6 +56,8 @@ class Library:
         self._playback.setdefault("videos", {})
         self._playback.setdefault("playlists", {})
         self._playback.setdefault("orders", {})
+        self._playback.setdefault("playlist_edits", {})
+        self._playback.setdefault("tasks", {})
         # Import existing positions once; future history eviction must
         # not forget a lesson's position or a playlist's last video.
         for video in self._history:
@@ -77,7 +79,7 @@ class Library:
         if what in ("history", "position"):
             self.store.save("history", self._history)
             self.store.save("playback", self._playback)
-        elif what in ("playlist_progress", "playlist_order"):
+        elif what in ("playlist_progress", "playlist_order", "playlist_edits", "tasks"):
             self.store.save("playback", self._playback)
         else:
             self.store.save("config", self._cfg)
@@ -221,7 +223,8 @@ class Library:
     def note_playlist(self, playlist, video):
         ident = bookmark_key("playlist", playlist)
         old = self._playback["playlists"].get(ident)
-        if not old or not _same(old["video"], video["source"], video["id"]):
+        if (not old or not _same(old["video"], video["source"], video["id"]) or
+                old["video"].get("entry_id") != video.get("entry_id")):
             self._playback["playlists"][ident] = {"playlist": dict(playlist), "video": dict(video)}
             self._changed("playlist_progress")
 
@@ -265,6 +268,44 @@ class Library:
         if not pos or not duration:
             return None
         return 1.0 if self.completed(video) else min(pos / duration, 1.0)
+
+    def edit_version(self, playlist):
+        return self._playback["playlist_edits"].get(bookmark_key("playlist", playlist), {}).get("version", 0)
+
+    def manual_order(self, playlist, mode):
+        return list(self._playback["playlist_edits"].get(bookmark_key("playlist", playlist), {}).get(mode, []))
+
+    def save_manual_order(self, playlist, mode, ids, version):
+        if version != self.edit_version(playlist):
+            raise ValueError("Порядок уже изменён на другом устройстве. Загрузите свежий вариант.")
+        entry = self._playback["playlist_edits"].setdefault(bookmark_key("playlist", playlist), {})
+        entry[mode] = list(ids)
+        entry["version"] = version + 1
+        self._changed("playlist_edits")
+
+    def reset_manual_order(self, playlist):
+        ident = bookmark_key("playlist", playlist)
+        self._playback["playlist_edits"][ident] = {"version": self.edit_version(playlist) + 1}
+        self._changed("playlist_edits")
+
+    def task_done(self, playlist):
+        return set(self._playback["tasks"].get(bookmark_key("playlist", playlist), []))
+
+    def set_task(self, playlist, video, on):
+        done = self.task_done(playlist)
+        ident = bookmark_key("video", video)
+        if (ident in done) == bool(on):
+            return
+        if on:
+            done.add(ident)
+        else:
+            done.discard(ident)
+        self._playback["tasks"][bookmark_key("playlist", playlist)] = sorted(done)
+        self._changed("tasks")
+
+    def reset_tasks(self, playlist):
+        self._playback["tasks"].pop(bookmark_key("playlist", playlist), None)
+        self._changed("tasks")
 
     # --- settings ---------------------------------------------------------
     def is_disabled(self, source_id):

@@ -76,6 +76,9 @@ from haltia_video.core.runtime import Runtime
         self.assertEqual(self.library.resume_at(VIDEO), 200)
 
     def test_local_queue_releases_previous_sessions_across_many_videos(self):
+        player_stops = []
+        self.core.watch(lambda e: player_stops.append(e) if e["type"] == "playback_stopped"
+                        and e["data"]["id"] == self.core.local_session else None)
         for index in range(12):
             video = dict(VIDEO, id="-7_%d" % index)
             state = {"video": video, "playlist": PLAYLIST, "pos": 100,
@@ -90,6 +93,7 @@ from haltia_video.core.runtime import Runtime
         self.core.note_local_played(None)
         self.assertEqual(self.core.sessions.sessions, {})
         self.assertEqual(self.library.resume_at(dict(VIDEO, id="-7_0")), 100)
+        self.assertEqual(player_stops, [], "natural local transitions must not stop the native player")
 
     def test_reset_is_confirmed_scoped_and_stops_sessions_before_clearing(self):
         ident = self.core.sessions.start("tablet", VIDEO, PLAYLIST)["id"]

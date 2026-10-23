@@ -18,7 +18,7 @@ class Sessions:
         self.video_owner = {}
         self.playlist_owner = {}
 
-    def start(self, device, video, playlist=None, queue=None, start_over=False, activate=True):
+    def start(self, device, video, playlist=None, queue=None, start_over=False, activate=True, start_at=None):
         if len(self.sessions) >= self.limit:
             raise ValueError("Слишком много активных сеансов просмотра.")
         ident = secrets.token_urlsafe(24)
@@ -26,7 +26,7 @@ class Sessions:
         video.pop("progress", None)
         video.pop("bookmarked", None)
         playlist = copy.deepcopy(playlist)
-        start = None if start_over else self.library.resume_at(video)
+        start = None if start_over else start_at if start_at is not None else self.library.resume_at(video)
         session = {"id": ident, "device": device, "video": video, "playlist": playlist,
                    "queue": tuple(queue or ()), "pos": start or 0,
                    "duration": video.get("duration"), "paused": False, "ended": False,
@@ -73,7 +73,7 @@ class Sessions:
             self.library.note_playlist(playlist, session["video"])
         return {"saved": owner}
 
-    def stop(self, ident):
+    def stop(self, ident, reason=None):
         session = self.sessions.get(ident)
         if session is None:
             return
@@ -87,7 +87,7 @@ class Sessions:
         playlist = session["playlist"]
         if playlist and self.playlist_owner.get(key("playlist", playlist)) == ident:
             self.playlist_owner.pop(key("playlist", playlist), None)
-        self.changed("playback_stopped", {"id": ident, "device": session["device"]})
+        self.changed("playback_stopped", {"id": ident, "device": session["device"], "reason": reason})
 
     def stop_source(self, source):
         for ident, session in list(self.sessions.items()):
