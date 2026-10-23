@@ -1,5 +1,9 @@
 # haltia-video
 
+План выделения общего ядра и встроенного веб-интерфейса для локальной сети:
+[архитектура, этапы и проверки производительности](docs/architecture/embedded-web.md).
+Это план развития, а не описание уже доступного веб-режима.
+
 «Видео» (`io.github.haltia_de.Video`): видео с YouTube и VK Видео,
 поиск, подписки на каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H,
 [device-lenovo-b8000h](https://github.com/haltia-de/device-lenovo-b8000h))
