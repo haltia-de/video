@@ -1,8 +1,9 @@
 # haltia-video
 
 «Видео» (`io.github.haltia_de.Video`): видео с YouTube и VK Видео,
-поиск, подписки на каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H) с
-оболочкой Haltia ([device-lenovo-b8000h](https://github.com/haltia-de/device-lenovo-b8000h)),
+поиск, подписки на каналы, история. Сделано для планшета Lenovo YOGA Tablet 10 (B8000-H,
+[device-lenovo-b8000h](https://github.com/haltia-de/device-lenovo-b8000h))
+с оболочкой [Haltia](https://github.com/haltia-de/shell),
 но это обычная программа GTK 3: работает и в GNOME, и в KDE. Видео
 открывается на весь экран в `haltia-vplay` из этого же репозитория (`vplay/`:
 libmpv, кадры масштабирует видеокарта), а где его нет — в `mpv`.
@@ -118,14 +119,6 @@ sh install.sh /mnt/root  # в другой корень, например при
 `~/.local/share/haltia-video/history.json`. В `~/.cache/haltia-video/` — картинки
 (не дольше месяца и не больше 150 МБ), последняя лента и Главная: при
 запуске они показываются сразу, а свежие подгружаются за ними.
-
-## До 2.0
-
-До 2.0 программа называлась b8k-video (`io.github.trudenboy.Video`). При
-первом запуске 2.0 подписки, настройки, вход, история и кэш переезжают
-из `~/.config/b8k` и папок `b8k-video` на новые места, а на старых
-остаются ссылки. Команды `b8k-video` и `b8k-vplay` остаются ссылками на
-новые до 3.0.
 
 ## Лицензия
 
