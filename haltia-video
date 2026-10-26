@@ -1996,8 +1996,7 @@ class Video(Gtk.Application):
         src = self.sources.get(video["source"])
         if not src:
             return
-        if (self.sub and self.sub["kind"] == "playlist" and self.player.stream_format is None
-                and hasattr(src, "stream")):
+        if self.sub and self.sub["kind"] == "playlist" and hasattr(src, "stream"):
             self.play_from_playlist(video, self.sub, start_over, start_at)
             return
         try:

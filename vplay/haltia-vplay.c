@@ -4,6 +4,12 @@
  * programs may open it too (Файлы does).
  *
  *   haltia-vplay [--title TITLE] URL|FILE [mpv-option=value ...]
+ *   haltia-vplay --queue [mpv-option=value ...]
+ *
+ * --queue starts with nothing to play and waits for a playlist over the
+ * IPC (Видео's haltia-queue.lua, given as scripts=): the previous and next
+ * buttons walk it, the title follows each entry, and the window closes
+ * when the playlist ends (idle=once) instead of after the first video.
  *
  * libmpv decodes on the CPU and renders each frame at the video's own size
  * (a colour conversion, no scaling) into a wl_shm buffer on a subsurface;
@@ -18,7 +24,8 @@
  * the whole video behind black. The strips are small enough to blend.
  *
  * A tap shows the controls for four seconds: the title, the middle buttons
- * that go back 10 s, pause or play, and go on 10 s, and the bar
+ * that go back 10 s, pause or play, and go on 10 s (and, in a playlist,
+ * the previous and next video further out), and the bar
  * at the bottom seeks (tap or drag). While the video plays, a logind
  * (systemd-logind or elogind) "idle" inhibitor keeps the screen on. The
  * window draws no close
@@ -112,7 +119,10 @@ static int wake[2], ui_fd;
 static mpv_handle *mpv;
 static mpv_render_context *rc;
 
+static struct xdg_toplevel *toplevel;
 static char title[256];
+static int queue_mode;
+static int64_t pl_pos = -1, pl_count; /* where in the playlist, as mpv told it */
 static char error_text[128];
 static double t_pos = -1, t_dur = -1;
 static int paused, last_sec = -1, was_active;
@@ -361,6 +371,20 @@ static void commit_base(void)
 #define BTN_R 78
 #define BTN_GAP 240
 
+/* The middle row: the gap between button centres, closer on a narrow
+ * window so that the previous and next buttons stay on it. */
+static double btn_gap(void)
+{
+	double fit = (win_w / 2.0 - BTN_R * 0.8 - 16) / 2;
+
+	return pl_count > 1 && fit < BTN_GAP ? fit : BTN_GAP;
+}
+
+static int pl_can(int dir)
+{
+	return dir < 0 ? pl_pos > 0 : pl_pos >= 0 && pl_pos < pl_count - 1;
+}
+
 static void bar_span(int *x0, int *x1)
 {
 	*x0 = 150;
@@ -419,15 +443,27 @@ static void draw_controls(cairo_t *cr, PangoLayout *pl)
 		text(cr, pl, "DejaVu Sans 30", error_text[0] ? error_text : "Загрузка…", cx, cy,
 		     0, win_w - 80);
 	} else {
-		/* Middle: back 10 s, pause or play, on 10 s. */
-		for (int i = -1; i <= 1; i++) {
-			double bx = cx + i * BTN_GAP, r = i ? BTN_R * 0.8 : BTN_R;
+		/* Middle: back 10 s, pause or play, on 10 s; in a playlist the
+		 * previous and next video further out, dim at either end. */
+		int n = pl_count > 1 ? 2 : 1;
+
+		for (int i = -n; i <= n; i++) {
+			double bx = cx + i * btn_gap(), r = i ? BTN_R * 0.8 : BTN_R;
 
 			cairo_arc(cr, bx, cy, r, 0, 2 * M_PI);
 			cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
 			cairo_fill(cr);
-			cairo_set_source_rgb(cr, 1, 1, 1);
-			if (i) {
+			cairo_set_source_rgba(cr, 1, 1, 1, i * i < 4 || pl_can(i) ? 1 : 0.35);
+			if (i * i == 4) {
+				double s = i < 0 ? -1 : 1; /* the triangles point this way */
+
+				cairo_move_to(cr, bx - s * 24, cy - 28);
+				cairo_line_to(cr, bx + s * 14, cy);
+				cairo_line_to(cr, bx - s * 24, cy + 28);
+				cairo_close_path(cr);
+				cairo_rectangle(cr, s > 0 ? bx + 16 : bx - 24, cy - 28, 8, 56);
+				cairo_fill(cr);
+			} else if (i) {
 				text(cr, pl, "DejaVu Sans Bold 26", i < 0 ? "−10" : "+10", bx, cy, 0, 0);
 			} else if (paused) {
 				cairo_move_to(cr, bx - 22, cy - 34);
@@ -657,12 +693,18 @@ static void press_up(void)
 	if (have_frame && !error_text[0]) {
 		double cx = win_w / 2.0, cy = win_h / 2.0;
 
-		for (int i = -1; i <= 1; i++) {
-			double dx = x - (cx + i * BTN_GAP), dy = y - cy;
+		int n = pl_count > 1 ? 2 : 1;
+
+		for (int i = -n; i <= n; i++) {
+			double dx = x - (cx + i * btn_gap()), dy = y - cy;
 
 			if (dx * dx + dy * dy > BTN_R * BTN_R * 1.3)
 				continue;
-			if (i)
+			if (i * i == 4) {
+				if (pl_can(i))
+					mpv_command_async(mpv, 0, (const char *[]){
+						i < 0 ? "playlist-prev" : "playlist-next", NULL });
+			} else if (i)
 				seek_rel(i * SEEK_STEP);
 			else
 				mpv_command_async(mpv, 0, (const char *[]){ "cycle", "pause", NULL });
@@ -915,6 +957,14 @@ static void mpv_events(void)
 			break;
 		if (ev->event_id == MPV_EVENT_SHUTDOWN) {
 			quit = 1;
+		} else if (ev->event_id == MPV_EVENT_START_FILE) {
+			/* The next in a playlist: loading again, from its start. */
+			error_text[0] = '\0';
+			have_frame = 0;
+			t_pos = t_dur = drag_frac = -1;
+			last_sec = -1;
+			show_ui(1);
+			ui_dirty = 1;
 		} else if (ev->event_id == MPV_EVENT_END_FILE) {
 			mpv_event_end_file *ef = ev->data;
 
@@ -924,8 +974,8 @@ static void mpv_events(void)
 				show_ui(1);
 				ui_dirty = 1;
 				hold_screen(0);
-			} else {
-				quit = 1;
+			} else if (!queue_mode) {
+				quit = 1; /* a queue ends with idle=once's shutdown */
 			}
 		} else if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
 			mpv_event_property *p = ev->data;
@@ -952,8 +1002,14 @@ static void mpv_events(void)
 				show_ui(ui_visible || paused);
 				ui_dirty = 1;
 			} else if (!strcmp(p->name, "media-title") && p->format == MPV_FORMAT_STRING &&
-				   !title[0]) {
+				   (queue_mode || !title[0])) {
 				snprintf(title, sizeof(title), "%s", *(char **)p->data);
+				xdg_toplevel_set_title(toplevel, title);
+				ui_dirty = 1;
+			} else if (!strcmp(p->name, "playlist-pos") || !strcmp(p->name, "playlist-count")) {
+				int64_t v = p->format == MPV_FORMAT_INT64 ? *(int64_t *)p->data : -1;
+
+				*(p->name[9] == 'p' ? &pl_pos : &pl_count) = v;
 				ui_dirty = 1;
 			}
 		}
@@ -972,11 +1028,16 @@ int main(int argc, char **argv)
 		snprintf(title, sizeof(title), "%s", argv[2]);
 		i = 3;
 	}
-	if (i >= argc) {
-		fprintf(stderr, "usage: %s [--title TITLE] URL|FILE [option=value ...]\n", argv[0]);
+	if (i < argc && !strcmp(argv[i], "--queue")) {
+		queue_mode = 1;
+		i++;
+	} else if (i >= argc) {
+		fprintf(stderr, "usage: %s [--title TITLE] URL|FILE [option=value ...]\n"
+			"       %s --queue [option=value ...]\n", argv[0], argv[0]);
 		return 2;
+	} else {
+		url = argv[i++];
 	}
-	url = argv[i++];
 	if (pipe2(wake, O_CLOEXEC | O_NONBLOCK) < 0)
 		return 1;
 	ui_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
@@ -1019,7 +1080,7 @@ int main(int argc, char **argv)
 
 	xs = xdg_wm_base_get_xdg_surface(wm, base);
 	xdg_surface_add_listener(xs, &xs_listener, NULL);
-	tl = xdg_surface_get_toplevel(xs);
+	tl = toplevel = xdg_surface_get_toplevel(xs);
 	xdg_toplevel_add_listener(tl, &tl_listener, NULL);
 	xdg_toplevel_set_app_id(tl, "haltia-vplay");
 	xdg_toplevel_set_title(tl, title[0] ? title : "Видео");
@@ -1042,6 +1103,8 @@ int main(int argc, char **argv)
 	mpv_set_option_string(mpv, "ytdl-raw-options", "js-runtimes=quickjs");
 	if (title[0])
 		mpv_set_option_string(mpv, "force-media-title", title);
+	if (queue_mode)
+		mpv_set_option_string(mpv, "idle", "once");
 	for (; i < argc; i++) {
 		char *eq = strchr(argv[i], '=');
 
@@ -1067,9 +1130,11 @@ int main(int argc, char **argv)
 	mpv_observe_property(mpv, 0, "media-title", MPV_FORMAT_STRING);
 	mpv_observe_property(mpv, 0, "dwidth", MPV_FORMAT_INT64);
 	mpv_observe_property(mpv, 0, "dheight", MPV_FORMAT_INT64);
+	mpv_observe_property(mpv, 0, "playlist-pos", MPV_FORMAT_INT64);
+	mpv_observe_property(mpv, 0, "playlist-count", MPV_FORMAT_INT64);
 	mpv_set_wakeup_callback(mpv, poke, NULL);
 	mpv_render_context_set_update_callback(rc, poke, NULL);
-	{
+	if (url) {
 		const char *cmd[] = { "loadfile", url, NULL };
 
 		mpv_command_async(mpv, 0, cmd);

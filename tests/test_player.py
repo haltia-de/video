@@ -392,6 +392,25 @@ class PlayerTest(unittest.TestCase):
         self.assertEqual(mpv.received(), ["set_property", "playlist-pos", 1])
         p.stop()
 
+    def test_haltia_vplay_takes_the_queue_with_its_own_format(self):
+        p = self.player()
+        p.player = "/usr/bin/haltia-vplay"
+        asked = []
+
+        def resolve(video, fmt):
+            asked.append(fmt)
+            return {"urls": ["https://cdn/" + video["id"]], "user_agent": "UA"}
+        p.open_playlist([VIDEO, dict(VIDEO, id="3_4")], 0, resolve)
+        cmd = self.spawned[0]
+        self.assertEqual(cmd[:2], ["/usr/bin/haltia-vplay", "--queue"])
+        self.assertTrue(cmd[2].startswith("input-ipc-server="))
+        self.assertTrue(cmd[3].startswith("scripts=") and cmd[3].endswith("haltia-queue.lua"))
+        self.pump(until=lambda: p.sock is not None)
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "0"])
+        self.pump(until=lambda: asked)
+        self.assertEqual(asked, [VPLAY_FORMAT])
+        p.stop()
+
     def test_reordering_native_entries_keeps_placeholder_identity_and_current_state(self):
         p, mpv, videos = self.queued()
         mpv.message("haltia-queue-ready")
