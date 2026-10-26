@@ -14,6 +14,7 @@ import os
 import time
 
 from bookmarks import Bookmarks, key as bookmark_key
+from playlist import ORDERS
 
 from sources import CONFIG_DIR, DATA_DIR, load_json, save_json
 
@@ -30,6 +31,7 @@ DETAILS_MAX_AGE = 7 * 86400
 RESUME_MIN = 10
 DONE_TAIL = 10
 SCOPES_ALL = "all"
+PLAYLIST_ORDERS = tuple(oid for oid, _title in ORDERS)
 SORTS = ("date", "relevance")
 
 
@@ -204,10 +206,13 @@ class Library:
                               _done(entry.get("pos") or 0, entry.get("duration"))))
 
     def playlist_order(self, playlist):
-        return self._playback["orders"].get(bookmark_key("playlist", playlist), "vk")
+        # An order a newer version saved (its "custom") falls back to the
+        # service's, and stays in the file for that version.
+        order = self._playback["orders"].get(bookmark_key("playlist", playlist))
+        return order if order in PLAYLIST_ORDERS else "vk"
 
     def set_playlist_order(self, playlist, order):
-        if order not in ("vk", "reverse", "lesson"):
+        if order not in PLAYLIST_ORDERS:
             raise ValueError(order)
         if order != self.playlist_order(playlist):
             self._playback["orders"][bookmark_key("playlist", playlist)] = order

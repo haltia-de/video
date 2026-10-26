@@ -160,6 +160,14 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(lib.history()[0]["title"], "new title")
         self.assertEqual(lib.resume_at(video(1)), 100.0)
 
+    def test_unknown_playlist_order_falls_back_and_is_kept(self):
+        lib = self.library()
+        playlist = {"source": "vk", "owner_id": "-1", "id": "2", "title": "P"}
+        lib.set_playlist_order(playlist, "lesson")
+        lib._playback["orders"]["vk|playlist|-1|2"] = "custom"  # written by a newer version
+        self.assertEqual(lib.playlist_order(playlist), "vk")
+        self.assertEqual(lib._playback["orders"]["vk|playlist|-1|2"], "custom")
+
     def test_positions_outlive_history_up_to_a_limit(self):
         lib = self.library()
         lib.played(video(0))
