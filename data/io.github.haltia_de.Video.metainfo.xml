@@ -18,7 +18,7 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
-    <release version="2.5.0" date="2026-10-22">
+    <release version="2.5.0" date="2026-10-26">
       <description>
         <p>The Bookmarks tab saves videos, playlists and channels independently of followed channels. It offers search, combined type/source/sync filters, sorting and manually ordered pins. Save from a card or a link. Bookmarks work offline; unavailable VK bookmark sync is explained for the current sign-in method. YouTube bookmarks remain local.</p>
         <p>Playlists remember their last played video and chosen order. Opening one immediately shows a resume block with playback position; playback and locating its video require separate buttons. Locating scrolls to, highlights and focuses the actual card. Progress survives restarts and history eviction. Completed videos offer the next video in the selected order; completion means a natural end or at most ten seconds remaining. Reset progress appears only alongside the resume actions and clears the playlist cursor and its videos' positions after confirmation, keeping sorting, bookmarks and history.</p>
