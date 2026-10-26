@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock
 
-from player import VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
+from player import DESKTOP_FORMAT, VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
 
 VIDEO = {"source": "vk", "id": "1_2", "title": "Кино"}
 
@@ -36,6 +36,10 @@ class FakeMpv:
 
     def closes(self):
         self.end.close()
+
+    def message(self, *args):
+        self.end.sendall((json.dumps({"event": "client-message", "args": list(args)})
+                          + "\n").encode())
 
 
 class FakeMpvTest(unittest.TestCase):
@@ -141,6 +145,30 @@ class PlayerTest(unittest.TestCase):
         self.pump(until=lambda: p.state is None)
         self.assertIsNone(p.state)
         self.assertIsNone(self.states[-1])
+
+    def test_only_eof_marks_complete_and_teardown_keeps_last_position(self):
+        p, mpv = self.started()
+        p._changed(p.run_no, "time-pos", 42)
+        p._changed(p.run_no, "duration", 100)
+        p._changed(p.run_no, "time-pos", None)
+        p._changed(p.run_no, "duration", None)
+        self.assertEqual((p.state["pos"], p.state["duration"]), (42, 100))
+        p._file_ended(p.run_no, "stop")
+        self.assertFalse(p.state.get("ended", False))
+        p._file_ended(p.run_no - 1, "eof")
+        self.assertFalse(p.state.get("ended", False))
+        p._file_ended(p.run_no, "eof")
+        self.assertTrue(p.state["ended"])
+        p.stop()
+
+    def test_playlist_context_survives_native_entry_changes(self):
+        p, mpv, videos = self.queued()
+        context = {"source": "vk", "owner_id": "-7", "id": "1", "title": "Course"}
+        p.queue_playlist = context
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "0"])
+        self.assertIs(p.state["playlist"], context)
+        self.pump(until=lambda: True)
+        p.stop()
 
     def test_stop_quits_and_ends_at_once(self):
         p, mpv = self.started()
@@ -319,12 +347,105 @@ class PlayerTest(unittest.TestCase):
         p.open(VIDEO, "u", resolve=lambda fmt: self.fail("asked"))
         self.assertEqual(self.spawned[0][-2:], ["u", "--ytdl-raw-options=js-runtimes=quickjs"])
 
+    def test_mpv_uses_an_authenticated_stream_when_the_source_requires_it(self):
+        p = self.player()
+        p.player = "/usr/bin/mpv"
+        asked = []
+        p.open(VIDEO, "https://vkvideo.ru/video1_2", resolve_desktop=True,
+               resolve=lambda fmt: asked.append(fmt) or {
+                   "urls": ["https://cdn/private.mp4"], "user_agent": "Bound UA"})
+        self.pump(until=lambda: p.sock is not None)
+        self.assertEqual(asked, [DESKTOP_FORMAT])
+        self.assertIn("https://cdn/private.mp4", self.spawned[0])
+        self.assertIn("--ytdl=no", self.spawned[0])
+        self.assertIn("--user-agent=Bound UA", self.spawned[0])
+        self.assertNotIn("https://vkvideo.ru/video1_2", self.spawned[0])
+
     def test_edl(self):
         self.assertEqual(edl(["https://both"]), "https://both")
         self.assertEqual(command("mpv", VIDEO, "u", {}, "/s", stream={"urls": ["https://b"]})[-2:],
                          ["https://b", "--ytdl=no"])
         self.assertTrue(edl(["https://в", "a"]).startswith("edl://!no_clip;!no_chapters;%10%"),
                         "lengths in bytes")
+
+    def queued(self):
+        p = self.player()
+        p.player = "/usr/bin/mpv"
+        videos = [VIDEO, dict(VIDEO, id="3_4", title="Second")]
+        p.open_playlist(videos, 1, lambda video, fmt: {"urls": ["https://cdn/" + video["id"]],
+                                                       "user_agent": "Bound UA"},
+                        start_for=lambda video: 60 if video is VIDEO else None)
+        self.pump(until=lambda: p.sock is not None)
+        mpv = self.mpvs[-1]
+        for _ in range(3):
+            mpv.received()
+        return p, mpv, videos
+
+    def test_native_queue_is_loaded_after_the_script_is_ready(self):
+        p, mpv, videos = self.queued()
+        self.assertIn("--idle=once", self.spawned[0])
+        self.assertTrue(any(arg.endswith("haltia-queue.lua") for arg in self.spawned[0]))
+        mpv.message("haltia-queue-ready")
+        self.pump(until=lambda: p.queue_loaded)
+        self.assertEqual(mpv.received(), ["loadfile", "haltia-queue://0", "append"])
+        self.assertEqual(mpv.received(), ["loadfile", "haltia-queue://1", "append"])
+        self.assertEqual(mpv.received(), ["set_property", "playlist-pos", 1])
+        p.stop()
+
+    def test_native_entry_change_saves_old_state_and_resolves_the_new_entry(self):
+        p, mpv, videos = self.queued()
+        p._changed(p.run_no, "time-pos", 42)
+        p._changed(p.run_no, "duration", 100)
+        p._changed(p.run_no, "time-pos", None)
+        self.assertEqual(p.state["pos"], 42, "teardown must not erase the saved position")
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "0"])
+        self.pump(until=lambda: True)
+        cmd = mpv.received()
+        self.assertEqual(cmd, ["script-message", "haltia-queue-resolved", "1",
+                               "https://cdn/1_2", "Bound UA", "Кино", "60"])
+        self.assertIs(p.state["video"], videos[0])
+        self.assertIsNone(p.state["pos"])
+        self.assertIsNone(self.states[-2], "position observers settle before a new video")
+        p.stop()
+
+    def test_cancelled_queue_drops_late_resolution_and_ends_its_process(self):
+        p, mpv, videos = self.queued()
+        p.queue_request = "1"
+        proc = FakeProc([])
+        p.proc = proc
+        old_run = p.run_no
+        p.stop()
+        self.assertTrue(proc.terminated)
+        self.assertIsNone(p.queue)
+        self.assertEqual(mpv.received(), ["quit"])
+        with unittest.mock.patch.object(p, "_send") as send:
+            p._queue_resolved(old_run, "1", videos[0], None, {"urls": ["https://old"]})
+            send.assert_not_called()
+
+    def test_a_stale_entry_resolution_cannot_replace_the_current_entry(self):
+        p, mpv, videos = self.queued()
+        p.queue_request = "2"
+        with unittest.mock.patch.object(p, "_send") as send:
+            p._queue_resolved(p.run_no, "1", videos[0], None, {"urls": ["https://old"]})
+            send.assert_not_called()
+        p.stop()
+
+    def test_invalid_queue_stream_stops_instead_of_opening_a_local_file(self):
+        p, mpv, videos = self.queued()
+        p.queue_request = "1"
+        p._queue_resolved(p.run_no, "1", videos[0], None, {"urls": ["file:///private"]})
+        self.assertIsNone(p.state)
+        self.assertIsNone(p.queue)
+        self.assertEqual(mpv.received(), ["quit"])
+
+    def test_a_failed_queue_spawn_clears_the_loading_state(self):
+        p = self.player()
+        p.player = "/usr/bin/mpv"
+        p.spawn = unittest.mock.Mock(side_effect=OSError("missing"))
+        with self.assertRaises(OSError):
+            p.open_playlist([VIDEO], 0, lambda video, fmt: {})
+        self.assertIsNone(p.state)
+        self.assertIsNone(p.queue)
 
 
 if __name__ == "__main__":

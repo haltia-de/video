@@ -24,11 +24,11 @@ def method(name):
 
 class NavigationTest(unittest.TestCase):
     def setUp(self):
-        self.app = SimpleNamespace(page="home", sub=None)
-        for name in ("header", "back_btn"):
+        self.app = SimpleNamespace(page="home", sub=None, bookmark_query="")
+        for name in ("header", "back_btn", "entry"):
             setattr(self.app, name, Mock())
         for name in ("left", "mark_tab", "say", "show_home", "show_feed",
-                     "show_channels", "show_history"):
+                     "show_channels", "show_history", "show_bookmarks", "update_scope"):
             setattr(self.app, name, Mock())
         for name in ("go_back", "update_back", "show_page", "open_sub"):
             setattr(self.app, name, method(name).__get__(self.app))
@@ -54,7 +54,7 @@ class NavigationTest(unittest.TestCase):
         self.app.back_btn.set_visible.assert_called_with(False)
 
     def test_tabs_return_home(self):
-        for page in ("feed", "channels", "history"):
+        for page in ("feed", "channels", "bookmarks", "history"):
             with self.subTest(page=page):
                 self.app.show_page(page)
                 self.assertTrue(self.actions.get_action_enabled("back"))
@@ -63,8 +63,8 @@ class NavigationTest(unittest.TestCase):
                 self.assertFalse(self.actions.get_action_enabled("back"))
 
     def test_subpages_return_to_their_tab(self):
-        for page in ("home", "feed", "channels", "history"):
-            for kind in ("search", "channels", "channel", "settings"):
+        for page in ("home", "feed", "channels", "bookmarks", "history"):
+            for kind in ("search", "channels", "channel", "settings", "bookmark_link"):
                 with self.subTest(page=page, kind=kind):
                     self.app.show_page(page)
                     self.app.open_sub({"kind": kind}, "Title")

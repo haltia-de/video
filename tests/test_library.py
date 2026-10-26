@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from library import DETAILS_MAX_AGE, HISTORY_MAX, Library
+from library import DETAILS_MAX_AGE, HISTORY_MAX, PLAYBACK_MAX, Library
 
 YT = {"source": "youtube", "id": "UC1", "title": "One"}
 VK = {"source": "vk", "id": "-2", "title": "Two", "thumb": "https://a/b.jpg", "subscribers": 5}
@@ -143,12 +143,13 @@ class LibraryTest(unittest.TestCase):
     def test_watched_to_the_end_starts_over_and_shows_whole(self):
         lib = self.library()
         lib.played(video(1))
-        lib.note_position(video(1), 580.0, 600.0)  # 20 s left
+        lib.note_position(video(1), 590.0, 600.0)  # 10 s left
         self.assertIsNone(lib.resume_at(video(1)))
         self.assertEqual(lib.progress(video(1)), 1.0)
         lib.played(video(2))
         lib.note_position(video(2), 3500.0, 3600.0)  # 97%, 100 s left
-        self.assertEqual(lib.progress(video(2)), 1.0)
+        self.assertEqual(lib.resume_at(video(2)), 3500.0)
+        self.assertAlmostEqual(lib.progress(video(2)), 3500 / 3600)
 
     def test_playing_again_keeps_the_position(self):
         lib = self.library()
@@ -158,6 +159,26 @@ class LibraryTest(unittest.TestCase):
         lib.played(dict(video(1), title="new title"))
         self.assertEqual(lib.history()[0]["title"], "new title")
         self.assertEqual(lib.resume_at(video(1)), 100.0)
+
+    def test_unknown_playlist_order_falls_back_and_is_kept(self):
+        lib = self.library()
+        playlist = {"source": "vk", "owner_id": "-1", "id": "2", "title": "P"}
+        lib.set_playlist_order(playlist, "lesson")
+        lib._playback["orders"]["vk|playlist|-1|2"] = "custom"  # written by a newer version
+        self.assertEqual(lib.playlist_order(playlist), "vk")
+        self.assertEqual(lib._playback["orders"]["vk|playlist|-1|2"], "custom")
+
+    def test_positions_outlive_history_up_to_a_limit(self):
+        lib = self.library()
+        lib.played(video(0))
+        lib.note_position(video(0), 100.0, 600.0)
+        for n in range(1, PLAYBACK_MAX):
+            lib.played(video(n))
+        lib.played(video(0))  # played again: kept as the most recent
+        lib.played(video(PLAYBACK_MAX))
+        self.assertEqual(lib.resume_at(video(0)), 100.0)
+        self.assertIsNone(lib.position(video(1)))
+        self.assertEqual(len(self.stored("playback.json", self.data)["videos"]), PLAYBACK_MAX)
 
     def test_positions_of_videos_not_played_are_ignored(self):
         lib = self.library()

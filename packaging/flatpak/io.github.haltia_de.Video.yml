@@ -170,9 +170,10 @@ modules:
     buildsystem: simple
     build-commands:
       - install -D -m 755 haltia-video /app/bin/haltia-video
-      - for f in library.py kept.py search.py signin.py player.py pictures.py renamed.py; do
+      - for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
         install -D -m 644 $f /app/lib/haltia-video/$f; done
       - for f in sources/*.py; do install -D -m 644 $f /app/lib/haltia-video/$f; done
+      - install -D -m 644 haltia-queue.lua /app/lib/haltia-video/haltia-queue.lua
       - install -D -m 644 data/io.github.haltia_de.Video.desktop /app/share/applications/io.github.haltia_de.Video.desktop
       - install -D -m 644 data/io.github.haltia_de.Video.svg /app/share/icons/hicolor/scalable/apps/io.github.haltia_de.Video.svg
       - install -D -m 644 data/io.github.haltia_de.Video.metainfo.xml /app/share/metainfo/io.github.haltia_de.Video.metainfo.xml
