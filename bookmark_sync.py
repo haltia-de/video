@@ -51,7 +51,7 @@ class Sync:
             session["kinds"] = kinds if not error else None
             session["note"] = ("Не удалось проверить синхронизацию. Повторите обновление." if error else
                                ("Синхронизация доступна: %s." % ", ".join(
-                                   {"video": "видео", "channel": "каналы"}[k] for k in kinds)
+                                   {"video": "видео", "channel": "каналы", "playlist": "плейлисты"}.get(k, k) for k in kinds)
                                 if kinds else "VK не разрешает доступ к закладкам при этом способе входа. "
                                 "Закладки сохраняются только на устройстве."))
             self.changed()

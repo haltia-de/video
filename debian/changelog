@@ -1,5 +1,7 @@
 haltia-video (2.5.0) unstable; urgency=medium
 
+  * Add a Bookmarks tab for videos, playlists and channels, independent of follows.
+  * Remember each playlist's order and last video, with resume and a progress reset.
   * Browse VK channel playlists with paginated videos in playlist order.
   * Offer original, reverse and natural lesson-number order across playlist pages.
   * Keep a native desktop mpv queue with authenticated resolution per video.

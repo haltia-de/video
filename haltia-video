@@ -382,8 +382,9 @@ class Video(Gtk.Application):
         self.signed_in = {sid: s.state["kind"] == "in" for sid, s in self.signins.items()}
         self.player = Player(post=lambda fn, *a: GLib.idle_add(lambda: (fn(*a), False)[1]))
         self.player.watch(self.show_bar)
-        self.player.watch(self.note_position)
+        # note_played first: Library.note_position keeps only a video it knows.
         self.player.watch(self.note_played)
+        self.player.watch(self.note_position)
         self.recorded_video = None
         self.play_last = None  # the player's state as last seen
         self.play_saved = 0  # when its position was last written down
@@ -583,7 +584,7 @@ class Video(Gtk.Application):
         self.left(left)
 
     def go_back(self, *_args):
-        if self.sub and self.sub["kind"] == "playlist":
+        if self.sub and self.sub["kind"] == "playlist" and not self.sub["chan"].get("bookmarked"):
             self.show_channel(self.sub["chan"])
             return
         self.show_page(self.page if self.sub is not None else "home")
@@ -1399,8 +1400,9 @@ class Video(Gtk.Application):
         elif kind == "channel":
             self.show_channel(obj)
         else:
+            # Back leads to Закладки: a YouTube playlist may name no channel.
             chan = {"source": obj["source"], "id": obj.get("owner_id", ""),
-                    "title": obj.get("owner_title") or "Канал плейлиста"}
+                    "title": obj.get("owner_title") or "Канал плейлиста", "bookmarked": True}
             self.show_playlist(obj, chan)
 
     def show_bookmarks(self):

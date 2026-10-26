@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock
 
-from player import VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
+from player import DESKTOP_FORMAT, VPLAY_FORMAT, Player, command, connect_unix, edl, find_player
 
 VIDEO = {"source": "vk", "id": "1_2", "title": "Кино"}
 
@@ -355,7 +355,7 @@ class PlayerTest(unittest.TestCase):
                resolve=lambda fmt: asked.append(fmt) or {
                    "urls": ["https://cdn/private.mp4"], "user_agent": "Bound UA"})
         self.pump(until=lambda: p.sock is not None)
-        self.assertEqual(asked, ["best"])
+        self.assertEqual(asked, [DESKTOP_FORMAT])
         self.assertIn("https://cdn/private.mp4", self.spawned[0])
         self.assertIn("--ytdl=no", self.spawned[0])
         self.assertIn("--user-agent=Bound UA", self.spawned[0])

@@ -48,6 +48,10 @@ VPLAY = ("haltia-vplay", "b8k-vplay")  # b8k-vplay: its name before 2.0, until 3
 # and AV1 cost more) and the AAC audio. Asked of a source's stream(), so
 # that the tablet starts no yt-dlp of its own for every video.
 VPLAY_FORMAT = "bv*[height<=480][vcodec^=avc1]+ba[ext=m4a]/b[height<=480]/b"
+# What a desktop mpv is given when Видео resolves for it (a queue, a
+# private VK video): yt-dlp's "best" is the best single file, which on
+# YouTube is 360p or nothing; mpv's own hook takes video and audio apart.
+DESKTOP_FORMAT = "bv*+ba/b"
 
 
 def find_player(which=shutil.which):
@@ -199,7 +203,7 @@ class Player:
             self.state["playlist"] = playlist
         self._tell()
         args = (self.run_no, video, url, ytdl, start)
-        fmt = self.stream_format or ("best" if resolve_desktop else None)
+        fmt = self.stream_format or (DESKTOP_FORMAT if resolve_desktop else None)
         if not (resolve and fmt):
             self._start(*args, None)
             return
@@ -291,7 +295,7 @@ class Player:
 
             def resolving():
                 try:
-                    stream = resolver(video, "best")
+                    stream = resolver(video, DESKTOP_FORMAT)
                 except Exception:
                     self.post(self._queue_failed, run_no, request)
                     return

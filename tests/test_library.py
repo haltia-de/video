@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from library import DETAILS_MAX_AGE, HISTORY_MAX, Library
+from library import DETAILS_MAX_AGE, HISTORY_MAX, PLAYBACK_MAX, Library
 
 YT = {"source": "youtube", "id": "UC1", "title": "One"}
 VK = {"source": "vk", "id": "-2", "title": "Two", "thumb": "https://a/b.jpg", "subscribers": 5}
@@ -159,6 +159,18 @@ class LibraryTest(unittest.TestCase):
         lib.played(dict(video(1), title="new title"))
         self.assertEqual(lib.history()[0]["title"], "new title")
         self.assertEqual(lib.resume_at(video(1)), 100.0)
+
+    def test_positions_outlive_history_up_to_a_limit(self):
+        lib = self.library()
+        lib.played(video(0))
+        lib.note_position(video(0), 100.0, 600.0)
+        for n in range(1, PLAYBACK_MAX):
+            lib.played(video(n))
+        lib.played(video(0))  # played again: kept as the most recent
+        lib.played(video(PLAYBACK_MAX))
+        self.assertEqual(lib.resume_at(video(0)), 100.0)
+        self.assertIsNone(lib.position(video(1)))
+        self.assertEqual(len(self.stored("playback.json", self.data)["videos"]), PLAYBACK_MAX)
 
     def test_positions_of_videos_not_played_are_ignored(self):
         lib = self.library()

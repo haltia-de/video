@@ -18,6 +18,10 @@ from bookmarks import Bookmarks, key as bookmark_key
 from sources import CONFIG_DIR, DATA_DIR, load_json, save_json
 
 HISTORY_MAX = 100
+# Positions outlive the history, but not forever: playback.json is written
+# whole at every pause and half minute, and the tablet's flash is slow.
+# The least recently played go first; a course of lessons fits many times.
+PLAYBACK_MAX = 1000
 # A followed channel's avatar, subscribers and description are asked for
 # again after this long; a channel followed from a card has none at all.
 DETAILS_MAX_AGE = 7 * 86400
@@ -163,7 +167,12 @@ class Library:
         for key in ("pos", "duration", "ended"):
             if old and key in old:
                 entry[key] = old[key]
-        self._playback["videos"][bookmark_key("video", video)] = dict(entry)
+        videos = self._playback["videos"]
+        ident = bookmark_key("video", video)
+        videos.pop(ident, None)  # last in the dict = most recently played
+        videos[ident] = dict(entry)
+        for old_ident in list(videos)[:max(0, len(videos) - PLAYBACK_MAX)]:
+            del videos[old_ident]
         self._history = [entry] + [v for v in self._history
                                   if not _same(v, video["source"], video["id"])]
         del self._history[HISTORY_MAX:]
