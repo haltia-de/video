@@ -87,6 +87,31 @@ class PlaylistUITest(unittest.TestCase):
     def button(self, title):
         return next(w for w in self.widgets() if isinstance(w, self.Gtk.Button) and w.get_label() == title)
 
+    def test_editor_moves_across_pages_and_task_toggle_does_not_start_player(self):
+        self.open(order="lesson")
+        self.view.show_playlist_editor(self.playlist, self.chan, "custom", return_order="lesson")
+        self.pump()
+        self.assertEqual(self.view.sub["kind"], "playlist_editor")
+        token = self.view.sub["token"]
+        first = self.view.core.query("playlist_editor", {"entity": self.playlist, "order": "custom", "token": token})["items"][0]
+        self.view.move_playlist_entry(first["entry_id"], 60)
+        self.pump()
+        self.assertEqual(self.view.sub["offset"], 60)
+        self.assertTrue(any(getattr(w, "_entry_id", None) == first["entry_id"] for w in self.widgets()))
+        self.button("Сохранить").clicked()
+        self.pump()
+        self.assertEqual(self.view.sub["order"], "custom")
+        self.assertNotEqual(self.view.sub["result"]["items"][0]["id"], first["id"])
+        k = (self.playlist["source"], self.playlist["owner_id"], self.playlist["id"])
+        self.view.playlist_order[k] = "lesson"
+        self.view.show_playlist(self.playlist, self.chan)
+        self.pump()
+        check = next(w for w in self.widgets() if isinstance(w, self.Gtk.CheckButton) and w.get_label() == "Выполнено")
+        check.set_active(True)
+        self.pump()
+        self.assertEqual(self.view.sub["result"]["tasks"]["done"], 1)
+        self.assertIsNone(self.view.player.state)
+
     def open(self, video=None, order="vk"):
         if video:
             self.view.library.played(video)

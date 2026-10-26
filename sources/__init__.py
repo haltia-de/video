@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 """The places videos come from. Every module of this package that defines
-SOURCE is one; Видео lists them all and needs nothing else to know
+create_source() (or a legacy SOURCE) is one; Видео lists them all and needs nothing else to know
 about a new one (Vimeo, ...).
 
 SOURCE has:
@@ -39,6 +39,9 @@ and may have:
                             for a format: the player then needs no yt-dlp
                             of its own (haltia-vplay; a new yt-dlp per
                             video is slow on the tablet)
+  browser_stream(video, fmt) private descriptor of HTTP tracks, headers,
+                            containers and codecs for the web media adapter;
+                            returned by browser_stream_of(), never sent to UI
   resolve_on_desktop        true when stream() must resolve for mpv too
                             (a signed-in VK account cannot be passed to
                             the player's guest yt-dlp); defaults to false
@@ -85,10 +88,12 @@ A source may block (network): Видео calls it from worker threads, more
 than one at a time.
 """
 import importlib
-import json
 import os
 import pkgutil
 import sys
+
+from haltia_video.adapters.storage.json_store import load_json, save_json
+from haltia_video.adapters.platform.paths import defaults
 
 
 
@@ -112,27 +117,7 @@ def vault_in(config_dir, **kwargs):
 
 
 # Where Видео keeps what it must: the Library's files, an account, a token.
-CONFIG_DIR = os.path.join(xdg("XDG_CONFIG_HOME", "~/.config"), "haltia-video")
-DATA_DIR = os.path.join(xdg("XDG_DATA_HOME", "~/.local/share"), "haltia-video")
-CACHE_DIR = os.path.join(xdg("XDG_CACHE_HOME", "~/.cache"), "haltia-video")
-
-
-def load_json(path, default=None):
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
-        return default
-
-
-def save_json(path, data, private=False):
-    """Written whole or not at all; private: readable by the owner only."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".new"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o644)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False)
-    os.replace(tmp, path)
+CONFIG_DIR, DATA_DIR, CACHE_DIR = defaults()
 
 
 def stream_of(info):
@@ -150,16 +135,38 @@ def stream_of(info):
             "user_agent": (formats[0].get("http_headers") or {}).get("User-Agent")}
 
 
+def browser_stream_of(info):
+    """Private server-side descriptor; never returned as browser JSON.
+    Keep the extraction metadata needed to select delivery and codecs.
+    """
+    stream_of(info)  # the same URL/protocol validation as the local player
+    formats = info.get("requested_formats") or [info]
+    tracks = []
+    for fmt in formats:
+        video = fmt.get("vcodec") not in (None, "none")
+        audio = fmt.get("acodec") not in (None, "none")
+        headers = dict(info.get("http_headers") or {})
+        headers.update(fmt.get("http_headers") or {})
+        tracks.append({"url": fmt["url"], "headers": headers,
+                       "kind": "combined" if video and audio else "audio" if audio else "video",
+                       "container": fmt.get("ext") or info.get("ext"),
+                       "vcodec": fmt.get("vcodec"), "acodec": fmt.get("acodec"),
+                       "height": fmt.get("height"), "protocol": fmt.get("protocol")})
+    return {"tracks": tracks, "duration": info.get("duration"),
+            "height": max((f.get("height") or 0 for f in formats), default=0)}
+
+
 def load():
-    """{id: SOURCE} of every source that imports; a broken one is skipped."""
+    """Fresh source instances owned by the application, not import globals."""
     found = {}
     for info in pkgutil.iter_modules(__path__):
         try:
             mod = importlib.import_module("%s.%s" % (__name__, info.name))
+            factory = getattr(mod, "create_source", None)
+            src = factory() if factory else getattr(mod, "SOURCE", None)
         except Exception as exc:  # a source must never take the program down
             sys.stderr.write("haltia-video: source %s: %s\n" % (info.name, exc))
             continue
-        src = getattr(mod, "SOURCE", None)
         if src is not None:
             found[src.id] = src
     return found

@@ -36,6 +36,18 @@ _Avoid_: config, state, storage, profile
 A named collection of Videos on a Source. Its Channel can differ from the Channels of the Videos it contains; a Bookmark opens its current contents.
 _Avoid_: album, folder
 
+**Playlist entry**:
+One occurrence of a Video in a Playlist. The same Video may occur several times, and each entry has its own place in the order.
+_Avoid_: video identity, track
+
+**Manual playlist order** («Мой порядок»):
+The person's locally arranged order of Playlist entries, shared by the program's interfaces. It leaves the Source's Playlist unchanged.
+_Avoid_: source order, synchronized order
+
+**Task completion** («Выполнено»):
+A reversible manual mark that a Video's task is completed in one Playlist, shared by its repeated entries there. It is independent of watching the Video and of completion in other Playlists.
+_Avoid_: watched, playback progress, finished video
+
 **Bookmark** («Закладка»):
 A saved Video, Playlist or Channel, independent of following. It can be local or linked to an Account's bookmarks; pinning and the order of pins belong to the program.
 _Avoid_: favourite, subscription

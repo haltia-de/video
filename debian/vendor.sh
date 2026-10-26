@@ -10,6 +10,9 @@
 #   sh debian/vendor.sh install DIR DEST
 set -eu
 dir=$2
+mkdir -p "$dir"
+dir=$(cd "$dir" && pwd)
+project=$(cd "$(dirname "$0")/.." && pwd)
 
 fetch() {  # url sha256
 	file=$dir/src/${1##*/}
@@ -24,12 +27,23 @@ build)
 		1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf
 	fetch https://files.pythonhosted.org/packages/e3/bd/520769863744b669440a924271a6159ddd82ad5ae26b4ac4d4b69e9f8d44/yt_dlp_ejs-0.8.0-py3-none-any.whl \
 		79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4
+	python3 - "$project/packaging/web-python.json" <<-'PYTHON' > "$dir/web-sources"
+	import json, sys
+	for package in json.load(open(sys.argv[1])):
+	    print(package["url"], package["sha256"])
+	PYTHON
+	while read -r url digest; do
+		fetch "$url" "$digest"
+	done < "$dir/web-sources"
 	# bellard.org is slow at times; Alpine keeps the same file.
 	fetch https://distfiles.alpinelinux.org/distfiles/v3.24/quickjs-2025-09-13-2.tar.xz \
 		996c6b5018fc955ad4d06426d0e9cb713685a00c825aa5c0418bd53f7df8b0b4
 	for whl in "$dir"/src/*.whl; do
 		python3 -m zipfile -e "$whl" "$dir/out"
 	done
+	tar -xzf "$dir/src/aiohttp-3.13.5.tar.gz" -C "$dir/src"
+	(cd "$dir/src/aiohttp-3.13.5" && python3 setup.py build --build-base "$dir/build/aiohttp")
+	cp -r "$dir"/build/aiohttp/lib*/aiohttp "$dir/out/"
 	tar -xJf "$dir/src/quickjs-2025-09-13-2.tar.xz" -C "$dir/src"
 	make -C "$dir/src/quickjs-2025-09-13" qjs
 	cp "$dir/src/quickjs-2025-09-13/qjs" "$dir/out/bin/qjs"
@@ -43,7 +57,7 @@ build)
 install)
 	dest=$3
 	mkdir -p "$dest"
-	cp -r "$dir"/out/yt_dlp "$dir"/out/yt_dlp_ejs "$dest/"
+	cp -r "$dir/out/." "$dest/"
 	install -D -m 755 "$dir/out/bin/qjs" "$dest/bin/qjs"
 	install -D -m 755 "$dir/out/bin/yt-dlp" "$dest/bin/yt-dlp"
 	find "$dest" -type d -exec chmod 755 {} + -o -type f -name '*.py' -exec chmod 644 {} +

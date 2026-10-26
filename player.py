@@ -232,7 +232,7 @@ class Player:
         self.proc = self.spawn(command(self.player, video, url, ytdl, ipc, start, stream))
         threading.Thread(target=self._read, args=(run_no, ipc, self.proc), daemon=True).start()
 
-    def open_playlist(self, videos, index, resolve, start_for=None, playlist=None):
+    def open_playlist(self, videos, index, resolve, start_for=None, playlist=None, order="vk", start_at=None):
         """A native desktop mpv playlist; resolve(video, fmt) runs per entry."""
         if not self.player or os.path.basename(self.player) in VPLAY:
             raise OSError("a desktop mpv is needed for playlist controls")
@@ -242,6 +242,13 @@ class Player:
         self.stop()
         self.run_no += 1
         self.queue = videos
+        self.queue_slots = dict(enumerate(videos))
+        self.queue_tokens = list(range(len(videos)))
+        self.queue_serial = len(videos)
+        self.queue_current = index
+        self.queue_initial = index
+        self.queue_initial_start = start_at
+        self.queue_order = order
         self.queue_playlist = playlist
         self.queue_index = index
         self.queue_resolve = resolve
@@ -250,7 +257,7 @@ class Player:
         self.queue_request = None
         video = self.queue[index]
         self.state = {"video": video, "pos": None, "duration": None, "paused": False,
-                      "start": None}
+                      "start": None, "order": order}
         if playlist is not None:
             self.state["playlist"] = playlist
         self._tell()
@@ -271,23 +278,27 @@ class Player:
             return
         if args[0] == "haltia-queue-ready" and not self.queue_loaded:
             self.queue_loaded = True
-            for i in range(len(self.queue)):
+            for i in self.queue_tokens:
                 self._send("loadfile", "haltia-queue://%d" % i, "append")
-            self._send("set_property", "playlist-pos", self.queue_index)
+            self._send("set_property", "playlist-pos", self.queue_tokens.index(self.queue_current))
         elif args[0] == "haltia-queue-load" and len(args) == 3:
             try:
                 index = int(args[2])
             except ValueError:
                 return
-            if not 0 <= index < len(self.queue):
+            if index not in self.queue_slots or index not in self.queue_tokens:
                 return
             self.queue_request = args[1]
             self.state = None
             self._tell()  # save the previous video's position before replacing it
-            video = self.queue[index]
+            self.queue_current = index
+            video = self.queue_slots[index]
             start = self.queue_start(video) if self.queue_start else None
+            if self.queue_initial == index and self.queue_initial_start is not None:
+                start = self.queue_initial_start
+            self.queue_initial = None
             self.state = {"video": video, "pos": None, "duration": None, "paused": False,
-                          "start": start}
+                          "start": start, "order": self.queue_order}
             if self.queue_playlist is not None:
                 self.state["playlist"] = self.queue_playlist
             self._tell()
@@ -302,6 +313,59 @@ class Player:
                 self.post(self._queue_resolved, run_no, request, video, start, stream)
 
             threading.Thread(target=resolving, daemon=True).start()
+
+    def reorder_queue(self, videos):
+        """Move native entries, keeping the current stream and resolver token.
+        Sorting a Python list alone would change old placeholder meanings.
+        """
+        if self.queue is None:
+            return
+        def identity(v):
+            return v.get("entry_id") or (v["source"], v["id"])
+        tokens = {identity(v): token for token, v in self.queue_slots.items()}
+        wanted = []
+        for video in videos:
+            token = tokens.get(identity(video))
+            if token is None:
+                token = self.queue_serial
+                self.queue_serial += 1
+                self.queue_slots[token] = video
+                if self.queue_loaded:
+                    self._send("loadfile", "haltia-queue://%d" % token, "append")
+                self.queue_tokens.append(token)
+            wanted.append(token)
+        if self.queue_current not in wanted:
+            wanted.insert(min(self.queue_tokens.index(self.queue_current), len(wanted)), self.queue_current)
+        wanted_set = set(wanted)
+        for index in range(len(self.queue_tokens) - 1, -1, -1):
+            token = self.queue_tokens[index]
+            if token not in wanted_set:
+                if self.queue_loaded:
+                    self._send("playlist-remove", index)
+                self.queue_tokens.pop(index)
+                self.queue_slots.pop(token, None)
+        # A long "move to position" normally changes one entry. Send one
+        # command, not thousands of shifts through the GTK thread.
+        changed = [i for i, token in enumerate(wanted) if self.queue_tokens[i] != token]
+        if changed:
+            first, last = changed[0], changed[-1]
+            if self.queue_tokens[first:last] == wanted[first + 1:last + 1]:
+                if self.queue_loaded:
+                    self._send("playlist-move", last, first)
+                self.queue_tokens.insert(first, self.queue_tokens.pop(last))
+            elif self.queue_tokens[first + 1:last + 1] == wanted[first:last]:
+                if self.queue_loaded:
+                    self._send("playlist-move", first, last + 1)
+                self.queue_tokens.insert(last, self.queue_tokens.pop(first))
+        # Fix the remaining prefix from left to right: every move is backwards,
+        # avoiding mpv's forward move destination-index adjustment.
+        for dest, token in enumerate(wanted):
+            if self.queue_tokens[dest] != token:
+                index = self.queue_tokens.index(token, dest)
+                if self.queue_loaded:
+                    self._send("playlist-move", index, dest)
+                self.queue_tokens.insert(dest, self.queue_tokens.pop(index))
+        self.queue = [self.queue_slots[token] for token in self.queue_tokens]
 
     def _queue_resolved(self, run_no, request, video, start, stream):
         if (run_no != self.run_no or self.state is None or self.queue is None

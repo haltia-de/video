@@ -12,7 +12,7 @@ import time
 
 from haltia_kit.vault import Locked
 
-from . import CACHE_DIR, CONFIG_DIR, load_json, net, save_json, stream_of, vault_in
+from . import CACHE_DIR, CONFIG_DIR, browser_stream_of, load_json, net, save_json, stream_of, vault_in
 
 API = "https://api.vk.com/method/%s"
 API_VERSION = "5.274"
@@ -228,6 +228,8 @@ class VKVideo:
                 raise ApiError(err.get("error_code"), err.get("error_msg"))
             if user:
                 # The person's token was revoked: carry on as a guest.
+                if self.user is not user:
+                    raise ApiError("account", "Аккаунт изменился.")
                 self.logout()
                 user = None
         return None
@@ -496,7 +498,7 @@ class VKVideo:
         # videos here even on a desktop, without handing it the token.
         return bool(self.user)
 
-    def stream(self, video, fmt):
+    def stream(self, video, fmt, _browser=False):
         """The stream through this process's yt-dlp (see sources): a new
         one for every video took 17 s on the tablet."""
         import yt_dlp  # slow to import: only when first needed
@@ -519,9 +521,15 @@ class VKVideo:
                     # VK binds CDN links to the API request's User-Agent;
                     # mpv's default causes HTTP 400 even for a valid URL.
                     info = {"id": video["id"], "title": video["title"], "formats": formats,
+                            "duration": video.get("duration"),
                             "extractor": "vk", "extractor_key": "VK"}
-                    return stream_of(ydl.process_ie_result(info, download=False))
-            return stream_of(ydl.extract_info(self.watch_url(video), download=False))
+                    result = ydl.process_ie_result(info, download=False)
+                    return browser_stream_of(result) if _browser else stream_of(result)
+            result = ydl.extract_info(self.watch_url(video), download=False)
+            return browser_stream_of(result) if _browser else stream_of(result)
+
+    def browser_stream(self, video, fmt):
+        return self.stream(video, fmt, _browser=True)
 
 
 class VKBookmarks:
@@ -647,4 +655,5 @@ class VKBookmarks:
                     (not users[0].get("is_closed") or users[0].get("can_access_closed")))
 
 
-SOURCE = VKVideo()
+def create_source():
+    return VKVideo()

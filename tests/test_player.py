@@ -392,6 +392,50 @@ class PlayerTest(unittest.TestCase):
         self.assertEqual(mpv.received(), ["set_property", "playlist-pos", 1])
         p.stop()
 
+    def test_reordering_native_entries_keeps_placeholder_identity_and_current_state(self):
+        p, mpv, videos = self.queued()
+        mpv.message("haltia-queue-ready")
+        self.pump(until=lambda: p.queue_loaded)
+        for _ in range(3):
+            mpv.received()
+        p._changed(p.run_no, "time-pos", 42)
+        p._changed(p.run_no, "pause", True)
+        state = p.state
+        p.reorder_queue(list(reversed(videos)))
+        self.assertEqual(mpv.received(), ["playlist-move", 1, 0])
+        self.assertIs(p.state, state)
+        self.assertEqual(p.state["pos"], 42)
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "0"])
+        self.assertIs(p.state["video"], videos[0], "placeholder zero still means its original entry")
+        self.pump(until=lambda: True)
+        self.assertEqual(mpv.received()[0], "script-message")
+        p.stop()
+
+    def test_move_to_distant_position_uses_a_single_native_move(self):
+        p, mpv, videos = self.queued()
+        mpv.message("haltia-queue-ready")
+        self.pump(until=lambda: p.queue_loaded)
+        for _ in range(3):
+            mpv.received()
+        third = dict(VIDEO, id="5_6", title="Third")
+        state = p.state
+        p.reorder_queue([videos[1], third, videos[0]])
+        self.assertEqual(mpv.received(), ["loadfile", "haltia-queue://2", "append"])
+        self.assertEqual(mpv.received(), ["playlist-move", 0, 3])
+        self.assertIs(p.state, state)
+        p.stop()
+
+    def test_explicit_continuation_position_is_used_only_for_initial_entry(self):
+        p, mpv, videos = self.queued()
+        p.queue_initial_start = 95
+        p._queue_message(p.run_no, ["haltia-queue-load", "1", "1"])
+        self.pump(until=lambda: True)
+        self.assertEqual(mpv.received()[-1], "95")
+        p._queue_message(p.run_no, ["haltia-queue-load", "2", "1"])
+        self.pump(until=lambda: True)
+        self.assertEqual(mpv.received()[-1], "none")
+        p.stop()
+
     def test_native_entry_change_saves_old_state_and_resolves_the_new_entry(self):
         p, mpv, videos = self.queued()
         p._changed(p.run_no, "time-pos", 42)

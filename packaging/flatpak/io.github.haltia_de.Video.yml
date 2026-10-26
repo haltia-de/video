@@ -58,6 +58,45 @@ modules:
         url: https://files.pythonhosted.org/packages/dd/b8/d2d6d731733f51684bbf76bf34dab3b70a9148e8f2cef2bb544fccec681a/qrcode-8.2-py3-none-any.whl
         sha256: 16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f
 
+  # Optional embedded PC web adapter. Native aiohttp parser; other
+  # dependencies are portable wheels at the Alpine 3.24 versions.
+  - name: python3-aiohttp
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --prefix=${FLATPAK_DEST} *.whl
+      - pip3 install --no-index --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} aiohttp-*.tar.gz
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/77/9a/152096d4808df8e4268befa55fba462f440f14beab85e8ad9bf990516918/aiohttp-3.13.5.tar.gz
+        sha256: 9d98cc980ecc96be6eb4c1994ce35d28d8b1f5e5208a23b421187d1209dbb7d1
+      - type: file
+        url: https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl
+        sha256: 55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56
+      - type: file
+        url: https://files.pythonhosted.org/packages/fd/4d/4b880086bd0d3e034d25647be1d830afc3e3f610e98c4ab3490af6b1b6d5/yarl-1.24.2-py3-none-any.whl
+        sha256: 2783d9226db8797636cd6896e4de81feed252d1db72265686c9558d97a4d94b9
+      - type: file
+        url: https://files.pythonhosted.org/packages/9a/9a/e35b4a917281c0b8419d4207f4334c8e8c5dbf4f3f5f9ada73958d937dcc/frozenlist-1.8.0-py3-none-any.whl
+        sha256: 0c18a16eab41e82c295618a77502e17b195883241c563b00f0aa5106fc4eaa0d
+      - type: file
+        url: https://files.pythonhosted.org/packages/3a/ed/1cdcab6ba3d6ab7feca11fc14f0eeea80755bb53ef4e892079f31b10a25f/propcache-0.5.2-py3-none-any.whl
+        sha256: be1ddfcbb376e3de5d2e2db1d58d6d67463e6b4f9f040c000de8e300295465fe
+      - type: file
+        url: https://files.pythonhosted.org/packages/0f/15/5bf3b99495fb160b63f95972b81750f18f7f4e02ad051373b669d17d44f2/aiohappyeyeballs-2.6.1-py3-none-any.whl
+        sha256: f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
+      - type: file
+        url: https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl
+        sha256: 053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e
+      - type: file
+        url: https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl
+        sha256: c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
+      - type: file
+        url: https://files.pythonhosted.org/packages/94/16/70255075a9859a0e3adb789b68ceb0e210dec03934245fd98d248226572f/idna-3.16-py3-none-any.whl
+        sha256: cc246e3a3f89580c3a951b5ad298ca4638078b2cdd4f115654332b5c26daded5
+      - type: file
+        url: https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl
+        sha256: f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+
   # yt-dlp is raised on its own (requirements-yt-dlp.txt); the EJS scripts
   # answer YouTube's JavaScript challenges, run by QuickJS.
   - name: yt-dlp
@@ -173,6 +212,7 @@ modules:
       - for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
         install -D -m 644 $f /app/lib/haltia-video/$f; done
       - for f in sources/*.py; do install -D -m 644 $f /app/lib/haltia-video/$f; done
+      - find haltia_video -type f \( -name '*.py' -o -name '*.js' -o -name '*.css' -o -name '*.html' \) -exec sh -c 'install -D -m 644 "$1" "/app/lib/haltia-video/$1"' sh {} \;
       - install -D -m 644 haltia-queue.lua /app/lib/haltia-video/haltia-queue.lua
       - install -D -m 644 data/io.github.haltia_de.Video.desktop /app/share/applications/io.github.haltia_de.Video.desktop
       - install -D -m 644 data/io.github.haltia_de.Video.svg /app/share/icons/hicolor/scalable/apps/io.github.haltia_de.Video.svg
