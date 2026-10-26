@@ -1,3 +1,12 @@
+haltia-video (2.6.0) unstable; urgency=medium
+
+  * Offer an embedded web interface for tablets on the local network, off by default.
+  * Allow optional publication through an explicitly trusted reverse proxy.
+  * Add a custom playlist order with an editor, and task completion marks.
+  * Share the library, playlists and progress between GTK and the web client.
+
+ -- Haltia <rensomail@gmail.com>  Mon, 26 Oct 2026 23:45:00 +0300
+
 haltia-video (2.5.0) unstable; urgency=medium
 
   * Add a Bookmarks tab for videos, playlists and channels, independent of follows.
