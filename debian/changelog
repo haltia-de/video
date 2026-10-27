@@ -1,3 +1,12 @@
+haltia-video (2.10.0) unstable; urgency=medium
+
+  * Edit a playlist's order by tap to pick and tap to place over the whole
+    list, saving each move at once with undo.
+  * Let haltia-vplay go to the whole screen and back with a button or a
+    double tap, keeping the choice.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 14:00:00 +0300
+
 haltia-video (2.9.0) unstable; urgency=medium
 
   * Let Главная's sections be chosen and ordered in Settings, with new

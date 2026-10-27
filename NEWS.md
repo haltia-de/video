@@ -1,5 +1,19 @@
 # Что нового · What's new
 
+## 2.10.0 (2026-10-27)
+
+### Русский
+
+Свой порядок плейлиста стало удобно менять: весь плейлист открывается одним списком с картинками, нажмите видео, затем то, перед которым его поставить, — или «В начало» и «В конец». Каждое перемещение сохраняется сразу, «Отменить» возвращает последнее, «Вернуть порядок сервиса» убирает все перестановки.
+
+Проигрыватель на планшете разворачивается на весь экран кнопкой рядом с названием или двойным нажатием на видео; так же он возвращается в окно. Выбор запоминается для следующего видео.
+
+### English
+
+A playlist's own order is now easy to change: the whole playlist opens as one list with pictures; tap a video, then the one to put it before, or «В начало» and «В конец». Each move is saved at once, «Отменить» takes back the last one, and «Вернуть порядок сервиса» removes all moves.
+
+On the tablet the player goes to the whole screen with the button beside the title or a double tap on the video, and back the same way. The choice is kept for the next video.
+
 ## 2.9.0 (2026-10-27)
 
 ### Русский

@@ -86,6 +86,10 @@ HOME_REFRESH_SEC = 60 * 60
 SEARCH_KEEP_SEC = 10 * 60
 CHANNEL_KEEP_SEC = 15 * 60
 THUMB_W, THUMB_H = 352, 198
+# The order editor's rows: a picture small enough for a long list, rows
+# built in batches so a playlist of hundreds opens at once.
+EDITOR_THUMB = (112, 63)
+EDITOR_AT_ONCE = 40
 AVATAR = 96
 QR_SIZE = 320
 # Cards made at once; the rest follow in batches while the first are
@@ -1375,103 +1379,182 @@ class Video(Gtk.Application):
         self.set_content(box)
 
     def show_playlist_editor(self, playlist=None, chan=None, order=None, return_order=None, again=False):
+        """The whole playlist in the order being made: a tap picks a video, a
+        tap on another puts it before that one. Each move is saved at once;
+        «Отменить» takes the last back. Dragging was left out: under a finger
+        GTK 3 would need it written by hand, and the B8000 would jerk."""
         if not again:
             self.open_sub({"kind": "playlist_editor", "playlist": playlist, "chan": chan,
                            "key": (playlist["source"], str(playlist.get("owner_id", "")), playlist["id"]),
-                           "order": order, "return_order": return_order, "offset": 0}, "Изменить порядок")
+                           "order": order, "return_order": return_order, "pick": None, "undo": []},
+                          "Порядок уроков" if order == "lesson" else "Мой порядок")
         sub = self.sub
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        tools = Gtk.Box(spacing=12)
-        save_button = None
-        for title, fn in (("Сохранить", lambda: self.finish_playlist_editor(True)),
-                          ("Отмена", lambda: self.finish_playlist_editor(False)),
-                          ("Загрузить свежий вариант", self.reload_playlist_editor)):
-            btn = Gtk.Button(label=title)
-            btn.get_style_context().add_class("more")
-            if title == "Сохранить":
-                save_button = btn
-                btn.set_sensitive(False)
-            btn.connect("clicked", lambda _b, call=fn: call())
-            tools.pack_start(btn, True, True, 0)
-        box.pack_start(tools, False, False, 0)
-        box.pack_start(label("Черновик. Сохранение применит порядок на всех устройствах." +
-                              (" Перестановки доступны внутри одинакового номера урока." if sub["order"] == "lesson" else ""),
-                              "csub", wrap=True), False, False, 0)
         try:
             result = self.core.query("playlist_editor", {"entity": sub["playlist"], "order": sub["order"],
-                                     "token": sub.get("token"), "offset": sub["offset"]})
-            if result.get("loading") or result.get("failed"):
-                self.say("Не удалось загрузить плейлист." if result.get("failed") else "Загружаю плейлист…")
-                self.set_content(box)
-                return
-            sub["token"] = result["token"]
-            save_button.set_sensitive(True)
-            self.say("")
-            for item in result["items"]:
-                row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-                row.get_style_context().add_class("chan")
-                row._entry_id = item["entry_id"]
-                row.pack_start(label("%d. %s" % (item["position"] + 1, item["title"]), "ttl", wrap=True), False, False, 0)
-                controls = Gtk.Box(spacing=12)
-                spin = Gtk.SpinButton.new_with_range(item["minimum"] + 1, item["maximum"] + 1, 1)
-                spin.set_value(item["position"] + 1)
-                for title, target, sensitive in (
-                        ("Выше", lambda v=item: v["position"] - 1, item["position"] > item["minimum"]),
-                        ("Ниже", lambda v=item: v["position"] + 1, item["position"] < item["maximum"]),
-                        ("На позицию…", lambda s=spin: s.get_value_as_int() - 1, True)):
-                    btn = Gtk.Button(label=title, sensitive=sensitive)
-                    btn.get_style_context().add_class("more")
-                    btn.connect("clicked", lambda _b, v=item, dest=target: self.move_playlist_entry(v["entry_id"], dest()))
-                    controls.pack_start(btn, True, True, 0)
-                controls.pack_start(spin, False, False, 0)
-                row.pack_start(controls, False, False, 0)
-                box.pack_start(row, False, False, 0)
-                if sub.get("target") == item["entry_id"]:
-                    self.reveal_video(row, sub)
-            nav = Gtk.Box(spacing=12)
-            for title, offset in (("← Предыдущие", max(0, sub["offset"] - 30) if sub["offset"] else None),
-                                  ("Следующие →", result["next"])):
-                if offset is not None:
-                    btn = Gtk.Button(label=title)
-                    btn.get_style_context().add_class("more")
-                    btn.connect("clicked", lambda _b, off=offset: self.editor_page(off))
-                    nav.pack_start(btn, True, True, 0)
-            box.pack_start(nav, False, False, 0)
+                                     "token": sub.get("token"), "count": 2000})
         except ValueError as exc:
+            sub.pop("token", None)
             self.say(str(exc))
-        self.set_content(box)
+            self.set_content(box)
+            return
+        if result.get("loading") or result.get("failed"):
+            self.say("Не удалось загрузить плейлист." if result.get("failed") else "Загружаю плейлист…")
+            self.set_content(box)
+            return
+        sub["token"] = result["token"]
+        items = result["items"]
+        sub["items"] = items
+        picked = next((v for v in items if v["entry_id"] == sub["pick"]), None)
+        if picked is None:
+            sub["pick"] = None
+        tools = Gtk.Box(spacing=12)
 
-    def editor_page(self, offset):
-        self.sub["offset"] = offset
+        def tool(title, fn, style="more"):
+            btn = Gtk.Button(label=title)
+            btn.get_style_context().add_class(style)
+            btn.connect("clicked", lambda _b: fn())
+            tools.pack_start(btn, False, False, 0)
+
+        if picked:
+            hint = "Куда поставить «%s»? Нажмите видео, перед которым оно встанет." % picked["title"]
+            tool("В начало", lambda: self.editor_place(picked["minimum"]))
+            tool("В конец", lambda: self.editor_place(picked["maximum"]))
+            tool("Отмена", lambda: self.editor_pick(None))
+        else:
+            hint = ("Нажмите видео, затем место, куда его поставить. Изменения сохраняются сразу." +
+                    (" Переставлять можно внутри одного номера урока." if sub["order"] == "lesson" else ""))
+            if sub["undo"]:
+                tool("↶ Отменить", self.editor_undo)
+            if self.library.manual_order(sub["playlist"], sub["order"]):
+                tool("Вернуть порядок сервиса" if sub["order"] == "custom" else "Сбросить поправки",
+                     self.editor_reset)
+        box.pack_start(label(hint, "hint", wrap=True), False, False, 0)
+        if tools.get_children():
+            box.pack_start(tools, False, False, 0)
+        self.say("" if items else "В плейлисте нет доступных видео.")
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.pack_start(rows, False, False, 0)
+
+        def add(item):
+            row = Gtk.Button()
+            row.get_style_context().add_class("open")
+            row.get_style_context().add_class("chan")
+            if item["entry_id"] == sub["pick"]:
+                row.get_style_context().add_class("picked")
+            row._entry_id = item["entry_id"]
+            inner = Gtk.Box(spacing=16)
+            num = label("%d" % (item["position"] + 1), "csub")
+            num.set_width_chars(4)
+            num.set_xalign(1)
+            inner.pack_start(num, False, False, 0)
+            mini = Gtk.Image()
+            mini.set_size_request(EDITOR_THUMB[0], EDITOR_THUMB[1])
+            self.thumbs.get(item.get("thumb"), mini, EDITOR_THUMB)
+            inner.pack_start(mini, False, False, 0)
+            title = label(item["title"], "ttl")
+            title.set_ellipsize(3)  # Pango.EllipsizeMode.END
+            inner.pack_start(title, True, True, 0)
+            row.add(inner)
+            row.connect("clicked", lambda _b, v=item: self.editor_tap(v))
+            rows.pack_start(row, False, False, 0)
+            return row
+
+        for item in items[:EDITOR_AT_ONCE]:
+            add(item)
+        rest = list(items[EDITOR_AT_ONCE:])
+        if rest:
+            alive = {"on": True}
+            rows.connect("destroy", lambda *_a: alive.update(on=False))
+
+            def more():
+                if not alive["on"]:
+                    return False
+                for item in rest[:EDITOR_AT_ONCE]:
+                    add(item).show_all()
+                del rest[:EDITOR_AT_ONCE]
+                return bool(rest)
+            GLib.idle_add(more, priority=GLib.PRIORITY_LOW)
+        if again:
+            keep_scroll(self.scroll, lambda: self.set_content(box))
+        else:
+            self.set_content(box)
+
+    def editor_pick(self, ident):
+        self.sub["pick"] = ident
         self.show_playlist_editor(again=True)
 
-    def reload_playlist_editor(self):
+    def editor_tap(self, item):
         sub = self.sub
-        if sub.get("token"):
-            self.core.command("playlist_cancel", {"entity": sub["playlist"], "token": sub.pop("token")})
+        if sub["pick"] is None:
+            self.editor_pick(item["entry_id"])
+        elif sub["pick"] == item["entry_id"]:
+            self.editor_pick(None)
+        else:
+            old = next(v["position"] for v in sub["items"] if v["entry_id"] == sub["pick"])
+            target = item["position"]
+            self.editor_place(target - 1 if old < target else target)
+
+    def editor_place(self, position):
+        sub = self.sub
+        ident, sub["pick"] = sub["pick"], None
+        old = next(v["position"] for v in sub["items"] if v["entry_id"] == ident)
+        if self.editor_move(ident, position):
+            sub["undo"].append((ident, old))
         self.show_playlist_editor(again=True)
 
-    def move_playlist_entry(self, ident, position):
+    def editor_move(self, ident, position):
+        """Move and save at once; the next view opens a fresh draft."""
         sub = self.sub
         try:
             self.core.command("playlist_move", {"entity": sub["playlist"], "token": sub["token"],
                                                "entry_id": ident, "position": position})
-            sub.update(offset=(position // 30) * 30, target=ident)
-            self.show_playlist_editor(again=True)
+            self.core.command("playlist_save", {"entity": sub["playlist"], "token": sub["token"]})
+        except ValueError as exc:
+            self.say(str(exc))
+            return False
+        finally:
+            sub.pop("token", None)
+        sub["changed"] = True
+        return True
+
+    def editor_undo(self):
+        sub = self.sub
+        ident, old = sub["undo"].pop()
+        self.editor_move(ident, old)
+        self.show_playlist_editor(again=True)
+
+    def editor_reset(self):
+        sub = self.sub
+        try:
+            result = self.core.query("reset_preview", {"entity": sub["playlist"], "order": sub["order"],
+                                                       "what": "order"})
+            if result.get("loading") or result.get("failed"):
+                self.say("Не удалось проверить плейлист.")
+                return
+            text = ("Вернуть порядок сервиса? Ваши перестановки в этом плейлисте пропадут."
+                    if sub["order"] == "custom" else "Сбросить поправки внутри уроков этого плейлиста?")
+            if dialogs.ask(self.win, text, "Вернуть порядок сервиса" if sub["order"] == "custom"
+                           else "Сбросить поправки") and self.sub is sub:
+                if sub.get("token"):
+                    self.core.command("playlist_cancel", {"entity": sub["playlist"], "token": sub.pop("token")})
+                self.core.command("playlist_reset", {"token": result["token"]})
+                sub.update(undo=[], pick=None, changed=True)
+                self.show_playlist_editor(again=True)
         except ValueError as exc:
             self.say(str(exc))
 
-    def finish_playlist_editor(self, save):
+    def finish_playlist_editor(self, _save=False):
+        """Leaving the editor: what was moved is saved already; the playlist
+        shows the order edited if anything was."""
         sub = self.sub
-        try:
-            if sub.get("token"):
-                self.core.command("playlist_save" if save else "playlist_cancel",
-                                  {"entity": sub["playlist"], "token": sub["token"]})
-                sub.pop("token", None)
-            self.playlist_order[sub["key"]] = sub["order"] if save else sub["return_order"]
-            self.show_playlist(sub["playlist"], sub["chan"])
-        except ValueError as exc:
-            self.say(str(exc))
+        if sub.get("token"):
+            try:
+                self.core.command("playlist_cancel", {"entity": sub["playlist"], "token": sub.pop("token")})
+            except ValueError:
+                pass
+        self.playlist_order[sub["key"]] = sub["order"] if sub.get("changed") else sub["return_order"]
+        self.show_playlist(sub["playlist"], sub["chan"])
 
     def _playlist_came(self, key, _error):
         if self.on_sub("playlist", key=key) and self.sub["order"] == "vk":
