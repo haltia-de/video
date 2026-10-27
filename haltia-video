@@ -175,6 +175,19 @@ switch { min-width: 96px; min-height: 48px; }
 expander.fold title { min-height: 52px; }
 expander.fold title label { font-size: 24px; color: #5e5c64; }
 .picked { background-color: #c4dcf7; }
+button.step {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: 1px solid #c0bfbc;
+  box-shadow: none;
+  border-radius: 14px;
+  min-width: 64px;
+  min-height: 64px;
+  padding: 0;
+  font-size: 28px;
+  color: #2e3436;
+}
+button.step:disabled { background-color: #ebebea; border-color: #deddda; color: #c0bfbc; }
 button.chip {
   background-image: none;
   background-color: #f2f2f0;
@@ -440,7 +453,6 @@ class Video(Gtk.Application):
         self.searching = False  # the search holds the row on top
         self.web_open = False  # «Для разработчика» unfolded in Настройки
         self.hints_open = set()  # sources whose «Как войти» is unfolded
-        self.home_pick = None  # the Главная section picked up to be moved
         self.back_action = Gio.SimpleAction.new("back", None)
         self.back_action.set_enabled(False)
         self.back_action.connect("activate", self.go_back)
@@ -732,7 +744,6 @@ class Video(Gtk.Application):
         if self.pending_playlist_resume and self.pending_playlist_resume["sub"] is sub:
             self.pending_playlist_resume = None
         if sub and sub["kind"] == "settings":
-            self.home_pick = None
             for sign in self.signins.values():
                 sign.cancel()
         if sub and sub["kind"] == "playlist_editor" and sub.get("token"):
@@ -1422,7 +1433,8 @@ class Video(Gtk.Application):
             tool("В конец", lambda: self.editor_place(picked["maximum"]))
             tool("Отмена", lambda: self.editor_pick(None))
         else:
-            hint = ("Нажмите видео, затем место, куда его поставить. Изменения сохраняются сразу." +
+            hint = ("↑ и ↓ передвигают видео на одно место. Чтобы перенести дальше, нажмите видео, "
+                    "затем то, перед которым его поставить. Изменения сохраняются сразу." +
                     (" Переставлять можно внутри одного номера урока." if sub["order"] == "lesson" else ""))
             if sub["undo"]:
                 tool("↶ Отменить", self.editor_undo)
@@ -1437,12 +1449,15 @@ class Video(Gtk.Application):
         box.pack_start(rows, False, False, 0)
 
         def add(item):
-            row = Gtk.Button()
-            row.get_style_context().add_class("open")
+            # ↑ and ↓ step it, as Настройки of the shell orders the panel; a
+            # tap on the row picks it for a longer way.
+            row = Gtk.Box(spacing=12)
             row.get_style_context().add_class("chan")
             if item["entry_id"] == sub["pick"]:
                 row.get_style_context().add_class("picked")
-            row._entry_id = item["entry_id"]
+            pick = Gtk.Button()
+            pick.get_style_context().add_class("open")
+            pick._entry_id = item["entry_id"]
             inner = Gtk.Box(spacing=16)
             num = label("%d" % (item["position"] + 1), "csub")
             num.set_width_chars(4)
@@ -1455,8 +1470,16 @@ class Video(Gtk.Application):
             title = label(item["title"], "ttl")
             title.set_ellipsize(3)  # Pango.EllipsizeMode.END
             inner.pack_start(title, True, True, 0)
-            row.add(inner)
-            row.connect("clicked", lambda _b, v=item: self.editor_tap(v))
+            pick.add(inner)
+            pick.connect("clicked", lambda _b, v=item: self.editor_tap(v))
+            row.pack_start(pick, True, True, 0)
+            for text, step, can in (("↑", -1, item["position"] > item["minimum"]),
+                                    ("↓", 1, item["position"] < item["maximum"])):
+                btn = Gtk.Button(label=text, sensitive=can)
+                btn.get_style_context().add_class("step")
+                btn.set_valign(Gtk.Align.CENTER)
+                btn.connect("clicked", lambda _b, v=item, d=step: self.editor_step(v, d))
+                row.pack_start(btn, False, False, 0)
             rows.pack_start(row, False, False, 0)
             return row
 
@@ -1494,6 +1517,13 @@ class Video(Gtk.Application):
             old = next(v["position"] for v in sub["items"] if v["entry_id"] == sub["pick"])
             target = item["position"]
             self.editor_place(target - 1 if old < target else target)
+
+    def editor_step(self, item, step):
+        sub = self.sub
+        sub["pick"] = None
+        if self.editor_move(item["entry_id"], item["position"] + step):
+            sub["undo"].append((item["entry_id"], item["position"]))
+        self.show_playlist_editor(again=True)
 
     def editor_place(self, position):
         sub = self.sub
@@ -2164,48 +2194,35 @@ class Video(Gtk.Application):
             self.set_content(box)
 
     def home_settings(self):
-        """Which sections Главная shows, and their order: a tap picks one,
-        a tap on another puts it before that one (dragging is unreliable
-        under a finger in GTK 3, and jerky on the B8000)."""
+        """Which sections Главная shows, and their order: ↑ and ↓ on each
+        row, as Настройки of the shell orders the panel; a step is saved
+        at once."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         sections = self.home_sections()
-        pick = self.home_pick
-        titles = {sid: title for sid, title, _on in sections}
-        if pick not in titles:
-            pick = self.home_pick = None
-        box.pack_start(label("Куда поставить «%s»? Нажмите раздел, перед которым он встанет." % titles[pick]
-                             if pick else "Нажмите раздел, затем место, куда его поставить.",
-                             "hint", wrap=True), False, False, 0)
-        for n, (sid, title, on) in enumerate(sections, 1):
+        for n, (sid, title, on) in enumerate(sections):
             row = Gtk.Box(spacing=12)
             row.get_style_context().add_class("chan")
-            if sid == pick:
-                row.get_style_context().add_class("picked")
-            btn = Gtk.Button(label="%d. %s" % (n, title))
-            btn.get_style_context().add_class("open")
-            btn.get_child().set_xalign(0)
-            btn.get_child().get_style_context().add_class("ttl")
-            btn.connect("clicked", lambda _b, k=sid: self.home_tap(k))
-            row.pack_start(btn, True, True, 0)
+            name = label(title, "ttl")
+            name.set_ellipsize(3)  # Pango.EllipsizeMode.END
+            row.pack_start(name, True, True, 0)
+            for text, step, can in (("↑", -1, n > 0), ("↓", 1, n < len(sections) - 1)):
+                btn = Gtk.Button(label=text, sensitive=can)
+                btn.get_style_context().add_class("step")
+                btn.connect("clicked", lambda _b, k=sid, d=step: self.home_step(k, d))
+                row.pack_start(btn, False, False, 0)
             switch = Gtk.Switch(active=on)
             switch.set_valign(Gtk.Align.CENTER)
             switch.connect("notify::active", lambda sw, _p, k=sid: self.home_turn(k, sw.get_active()))
             row.pack_start(switch, False, False, 0)
             box.pack_start(row, False, False, 0)
-        if pick:
-            tools = Gtk.Box(spacing=12)
-            for title, fn in (("В конец", lambda: self.home_tap(None)),
-                              ("Отмена", lambda: self.home_tap(pick))):
-                btn = Gtk.Button(label=title)
-                btn.get_style_context().add_class("more")
-                btn.connect("clicked", lambda _b, f=fn: f())
-                tools.pack_start(btn, False, False, 0)
-            box.pack_start(tools, False, False, 0)
         return box
 
-    def home_store(self, sections):
-        self.core.command("home_sections", {"sections": [{"id": k, "on": on} for k, on in sections]})
-        if self.on_sub("settings"):
+    def home_step(self, sid, step):
+        sections = [(k, on) for k, _t, on in self.home_sections()]
+        n = [k for k, _on in sections].index(sid)
+        if 0 <= n + step < len(sections):
+            sections[n], sections[n + step] = sections[n + step], sections[n]
+            self.core.command("home_sections", {"sections": [{"id": k, "on": on} for k, on in sections]})
             self.redraw_after_settings()
 
     def redraw_after_settings(self):
@@ -2214,24 +2231,6 @@ class Video(Gtk.Application):
                 self.show_settings()
             return False
         GLib.idle_add(later)
-
-    def home_tap(self, sid):
-        """A tap on a section (None: «В конец»): pick it, put the picked
-        one before it, or let it go."""
-        sections = [(k, on) for k, _t, on in self.home_sections()]
-        pick, self.home_pick = self.home_pick, None
-        if pick is None:
-            self.home_pick = sid
-            self.redraw_after_settings()
-            return
-        if sid == pick:
-            self.redraw_after_settings()
-            return
-        moved = next(e for e in sections if e[0] == pick)
-        sections.remove(moved)
-        at = len(sections) if sid is None else [k for k, _on in sections].index(sid)
-        sections.insert(at, moved)
-        self.home_store(sections)
 
     def home_turn(self, sid, on):
         sections = [(k, on if k == sid else was) for k, _t, was in self.home_sections()]

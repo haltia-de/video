@@ -111,6 +111,15 @@ class PlaylistUITest(unittest.TestCase):
         self.button("↶ Отменить").clicked()
         self.pump()
         self.assertEqual(self.view.sub["items"][0]["entry_id"], first["entry_id"])
+        second = self.view.sub["items"][1]
+        down = [w for w in self.row(second["entry_id"]).get_parent().get_children()
+                if isinstance(w, self.Gtk.Button) and w.get_label() == "↓"][0]
+        down.clicked()
+        self.pump()
+        self.assertEqual(self.view.sub["items"][2]["entry_id"], second["entry_id"])
+        self.button("↶ Отменить").clicked()
+        self.pump()
+        self.assertEqual(self.view.sub["items"][1]["entry_id"], second["entry_id"])
         self.view.go_back()
         self.pump()
         self.assertEqual(self.view.sub["kind"], "playlist")
