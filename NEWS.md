@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.7.1 (2026-10-27)
+
+### Русский
+
+Видео больше не закрывается само при смене сортировки плейлиста и фильтров закладок: на планшете это иногда роняло программу.
+
+### English
+
+Video no longer closes by itself when a playlist's sort order or the bookmark filters change: on the tablet this sometimes crashed the program.
+
 ## 2.7.0 (2026-10-27)
 
 ### Русский

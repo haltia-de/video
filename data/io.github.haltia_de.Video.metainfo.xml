@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.7.1" date="2026-10-27">
+      <description>
+        <p>Video no longer closes by itself when a playlist's sort order or the bookmark filters change: on the tablet this sometimes crashed the program.</p>
+        <p xml:lang="ru">Видео больше не закрывается само при смене сортировки плейлиста и фильтров закладок: на планшете это иногда роняло программу.</p>
+      </description>
+    </release>
     <release version="2.7.0" date="2026-10-27">
       <description>
         <p>On the tablet a playlist now plays as a queue: the player shows previous and next video buttons beside the seek buttons, and the next video in the chosen order starts when one ends. The title follows each video, and the window closes at the end of the playlist. Private VK videos still open through the signed-in account without handing its token to the player.</p>

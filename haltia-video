@@ -1038,7 +1038,7 @@ class Video(Gtk.Application):
             selected = combo.get_active_id()
             if self.sub is sub and selected is not None and selected != order:
                 self.playlist_order[key[:3]] = selected
-                self.show_playlist(playlist, chan)
+                self.redraw_after(combo, lambda: self.show_playlist(playlist, chan))
 
         sorting.connect("changed", changed)
         sorting.set_halign(Gtk.Align.START)
@@ -1474,7 +1474,7 @@ class Video(Gtk.Application):
             for value, title in choices:
                 combo.append(value, title)
             combo.set_active_id(self.bookmark_filters[field])
-            combo.connect("changed", lambda c, f=field: self.bookmark_filter(f, c.get_active_id()))
+            combo.connect("changed", lambda c, f=field: self.bookmark_filter(f, c.get_active_id(), c))
             filters.pack_start(combo, True, True, 0)
         box.pack_start(filters, False, False, 0)
         tools = Gtk.Box(spacing=12)
@@ -1483,7 +1483,7 @@ class Video(Gtk.Application):
         for value, title in bookmark_view.SORTS:
             sort.append(value, title)
         sort.set_active_id(self.bookmark_filters["sort"])
-        sort.connect("changed", lambda c: self.bookmark_filter("sort", c.get_active_id()))
+        sort.connect("changed", lambda c: self.bookmark_filter("sort", c.get_active_id(), c))
         tools.pack_start(sort, True, True, 0)
         direction = Gtk.Button(label="↓" if self.bookmark_filters["reverse"] else "↑")
         direction.get_style_context().add_class("more")
@@ -1508,10 +1508,24 @@ class Video(Gtk.Application):
         self.say(self.bookmark_note or ("" if found else "Закладок пока нет или они не подходят под фильтры."))
         self.set_content(box)
 
-    def bookmark_filter(self, field, value):
+    def bookmark_filter(self, field, value, combo=None):
         if value is not None:
             self.bookmark_filters[field] = value
-            self.show_bookmarks()
+            if combo:
+                self.redraw_after(combo, self.show_bookmarks)
+            else:
+                self.show_bookmarks()
+
+    def redraw_after(self, combo, redraw):
+        """Redraw the page once a combo box's "changed" has returned. GTK
+        notifies "active" on the box after the handler, and a page rebuilt
+        inside it had already freed the box: a crash on the P11 whenever the
+        freed memory was reused. A page left meanwhile is not redrawn."""
+        def later():
+            if combo.get_parent():
+                redraw()
+            return False
+        GLib.idle_add(later)
 
     def bookmark_account(self, sid):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
