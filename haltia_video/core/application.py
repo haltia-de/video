@@ -594,6 +594,8 @@ class Application:
             self.bookmark_sync.refresh()
         elif name == "shorts":
             self.library.set_shorts(bool(p["on"]))
+        elif name == "home_sections":
+            self.library.set_home_sections([(e["id"], e["on"]) for e in p["sections"]])
         elif name == "confirm":
             self.library.set_confirm(bool(p["on"]))
         elif name == "scope":

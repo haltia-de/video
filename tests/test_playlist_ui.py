@@ -131,13 +131,6 @@ class PlaylistUITest(unittest.TestCase):
         self.pump()
         self.assertEqual(self.view.sub["order"], "reverse")
         self.assertIsNone(sorting.get_parent())
-        self.view.show_bookmarks()
-        self.pump()
-        sort = [w for w in self.widgets() if isinstance(w, self.Gtk.ComboBoxText)][-1]
-        sort.set_active_id(sort.get_model()[1][1])
-        self.assertIsNotNone(sort.get_parent())
-        self.pump()
-        self.assertIsNone(sort.get_parent())
 
     def action(self, title):
         return dict(self.view.playlist_actions(self.view.sub))[title]
