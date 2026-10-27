@@ -1,3 +1,14 @@
+haltia-video (2.8.0) unstable; urgency=medium
+
+  * Put the tabs, search and settings in one header row, move card actions
+    onto the picture with a menu, give playlists one row of controls, rename
+    Подписки to Новое, make questions before unfollowing optional, and use
+    two columns upright.
+  * Release card gestures before their widget, which logged GObject
+    criticals on every page change.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 12:00:00 +0300
+
 haltia-video (2.7.1) unstable; urgency=medium
 
   * Redraw a page only after its combo box's "changed" has returned, which
