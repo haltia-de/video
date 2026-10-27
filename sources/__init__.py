@@ -22,7 +22,8 @@ and may have:
                             write(kind, object, add). Must never fall back
                             to a guest or a replacement Account's token
   playlists(channel)        a list of playlists: source, owner_id (channel
-                            id), id, title; optional count of videos
+                            id), id, title; optional count of videos and
+                            thumb (the service's cover)
   playlist_videos(playlist, offset=0)
                             {"videos": [...], "next": offset or None};
                             keeps playlist order and actual video channels
@@ -90,6 +91,7 @@ than one at a time.
 import importlib
 import os
 import pkgutil
+import platform
 import sys
 
 from haltia_video.adapters.storage.json_store import load_json, save_json
@@ -118,6 +120,10 @@ def vault_in(config_dir, **kwargs):
 
 # Where Видео keeps what it must: the Library's files, an account, a token.
 CONFIG_DIR, DATA_DIR, CACHE_DIR = defaults()
+# Cards fill their width with pictures of some 600 px, but not on 32-bit
+# ARM (the B8000-H): three times the bytes to fetch and decode there, and
+# 1 GB of memory; it keeps the 320 px ones.
+LARGE_PICTURES = not platform.machine().startswith("armv")
 
 
 def stream_of(info):

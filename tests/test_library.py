@@ -93,6 +93,22 @@ class LibraryTest(unittest.TestCase):
         lib.note_playlist(two, b)
         self.assertEqual([c["playlist"]["id"] for c in lib.playlists_in_progress()], ["2", "1"])
 
+    def test_account_sync_adds_but_passes_over_channels_unfollowed_here(self):
+        lib = Library(self.conf, self.data)
+        a, b = ({"source": "vk", "id": i, "title": i} for i in ("a", "b"))
+        self.assertEqual(lib.follow_all([a, b], account=True), 2)
+        lib.unfollow("vk", "a")
+        self.assertEqual(lib.follow_all([a, b], account=True), 0)
+        self.assertFalse(lib.is_followed("vk", "a"))
+        lib.follow(a)  # by hand: a later sync may keep it
+        lib.unfollow("vk", "b")
+        lib = Library(self.conf, self.data)
+        self.assertEqual(lib.follow_all([a, b], account=True), 0)
+        self.assertEqual([c["id"] for c in lib.channels()], ["a"])
+        self.assertEqual(lib.synced("vk"), 0)
+        lib.note_synced("vk", 100)
+        self.assertEqual(Library(self.conf, self.data).synced("vk"), 100)
+
     def test_follow_again_replaces_not_duplicates(self):
         lib = self.library()
         lib.follow(YT)

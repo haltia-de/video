@@ -1,3 +1,11 @@
+haltia-video (2.11.0) unstable; urgency=medium
+
+  * Fill the card's width with larger pictures (not on 32-bit ARM), show
+    VK playlists' covers, bring an account's subscriptions over by
+    themselves, and give browser access a page of its own.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 14:44:21 +0300
+
 haltia-video (2.10.2) unstable; urgency=medium
 
   * Give the changelog entries since 2.8.0 increasing dates: 2.10.1's was

@@ -98,12 +98,19 @@ class Library:
         at puts it back at that place in the list (an unfollow undone)."""
         return self.follow_all([chan], at=at) == 1
 
-    def follow_all(self, chans, now=None, at=None):
+    def follow_all(self, chans, now=None, at=None, account=False):
         """Follow several channels at once (an account's); the number that
-        were not followed before."""
+        were not followed before. account: from an account's subscriptions,
+        which pass over the channels the person unfollowed here."""
         now = now or time.time()
         new = 0
         kept = self._cfg["channels"]
+        dropped = set(self._cfg.get("dropped", []))
+        if account:
+            chans = [c for c in chans if "%s|%s" % (c["source"], c["id"]) not in dropped]
+        elif dropped & {"%s|%s" % (c["source"], c["id"]) for c in chans}:
+            # Followed again by hand: an account may bring it back later.
+            self._cfg["dropped"] = sorted(dropped - {"%s|%s" % (c["source"], c["id"]) for c in chans})
         for chan in chans:
             if not self.is_followed(chan["source"], chan["id"]):
                 new += 1
@@ -121,10 +128,21 @@ class Library:
         return new
 
     def unfollow(self, source, cid):
+        """Unfollow; an account's sync will not bring the channel back."""
         before = len(self._cfg["channels"])
         self._cfg["channels"] = [c for c in self._cfg["channels"] if not _same(c, source, cid)]
         if len(self._cfg["channels"]) != before:
+            dropped = set(self._cfg.get("dropped", [])) | {"%s|%s" % (source, cid)}
+            self._cfg["dropped"] = sorted(dropped)
             self._changed("unfollow")
+
+    def synced(self, source_id):
+        """When the account's subscriptions were last brought here (0: never)."""
+        return self._cfg.get("synced", {}).get(source_id, 0)
+
+    def note_synced(self, source_id, now=None):
+        self._cfg.setdefault("synced", {})[source_id] = now or time.time()
+        self._changed("settings")
 
     def lacking_details(self, now=None):
         """Followed channels to ask about again: known only by name, or

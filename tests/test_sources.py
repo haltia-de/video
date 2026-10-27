@@ -95,7 +95,7 @@ class VKVideosTest(Dirs):
         video = self.vk("vk_search").search("veritasium")[0]
         item = next(e["video"] for e in recorded["catalog_videos"]
                     if "%s_%s" % (e["video"]["owner_id"], e["video"]["id"]) == video["id"])
-        plain = [i for i in item["image"] if not i.get("with_padding") and i["width"] >= 320]
+        plain = [i for i in item["image"] if not i.get("with_padding") and i["width"] >= vkvideo.THUMB_MIN]
         self.assertEqual(video["thumb"], min(plain, key=lambda i: i["width"])["url"])
 
     def test_videos_that_would_not_play_are_left_out(self):
@@ -130,7 +130,10 @@ class VKChannelsTest(Dirs):
     def test_playlists_load_all_pages_and_keep_the_channel_owner(self):
         vk = self.vk(exchanges=[TOKEN,
             exchange("video.getAlbums", {"response": {"count": 3, "items": [
-                {"id": 7, "title": "Series", "count": 45}, {"id": 0, "title": "All"}]}},
+                {"id": 7, "title": "Series", "count": 45, "image": [
+                    {"width": 320, "height": 180, "url": "https://c/320", "with_padding": 1},
+                    {"width": 800, "height": 450, "url": "https://c/800", "with_padding": 1}]},
+                {"id": 0, "title": "All"}]}},
                 owner_id=-7, count=100, offset=0, extended=1),
             exchange("video.getAlbums", {"response": {"count": 3, "items": [
                 {"id": 8, "title": "Other"}]}},
@@ -138,7 +141,9 @@ class VKChannelsTest(Dirs):
         playlists = vk.playlists({"source": "vk", "id": "-7", "title": "Channel"})
         self.assertEqual([p["id"] for p in playlists], ["7", "8"])
         self.assertEqual(playlists[0], {"source": "vk", "owner_id": "-7", "id": "7",
-                                        "title": "Series", "count": 45})
+                                        "title": "Series", "count": 45,
+                                        "thumb": "https://c/%d" % (800 if vkvideo.THUMB_MIN > 320 else 320)})
+        self.assertEqual(playlists[1]["thumb"], "")  # no cover: none
         self.assertAllAsked()
 
     def test_playlist_keeps_order_and_other_channels_and_pages_past_hidden_videos(self):
@@ -422,7 +427,7 @@ class YouTubeFeedTest(Dirs):
             self.assertEqual((v["source"], v["channel_id"], v["channel"]),
                              ("youtube", chan["id"], "Veritasium"))
             self.assertIsInstance(v["published"], float)
-            self.assertEqual(v["thumb"], "https://i.ytimg.com/vi/%s/mqdefault.jpg" % v["id"])
+            self.assertEqual(v["thumb"], "https://i.ytimg.com/vi/%s/%s" % (v["id"], youtube.THUMB_NAME))
         # From the «Видео» tab; it does not list the Shorts.
         self.assertEqual([(v["id"], v["duration"]) for v in videos],
                          [("6U6Z6pb6ewI", None), ("NiCgcUTL9_Q", 34 * 60 + 32),

@@ -18,6 +18,10 @@ from .signin import SignIn
 from .playback import Sessions
 from .playlist_editor import Editor
 
+# An account's channels are brought here when it signs in, and then at
+# most once a day (at the program's start).
+SUBSCRIPTIONS_SYNC_SEC = 86400
+
 
 class RecentInputs(OrderedDict):
     def __setitem__(self, name, value):
@@ -212,6 +216,11 @@ class Application:
             self.reset_channel_data()
             self.sessions.stop_source(src.id)
             self.account_notes[src.id] = None
+            if now and hasattr(src, "subscriptions") and \
+                    time.time() - self.library.synced(src.id) > SUBSCRIPTIONS_SYNC_SEC:
+                # Signed in just now, or a day since: the account's channels
+                # come here by themselves (never removed; see follow_all).
+                self.import_subscriptions(src.id)
         self.bookmark_sync.refresh_accounts()
         self.emit("account", {"source": src.id, "state": state})
 
@@ -256,8 +265,10 @@ class Application:
         self.work(fetch, done=done)
 
     def import_subscriptions(self, sid):
+        """The account's channels followed here too; the ones the person
+        unfollowed here stay unfollowed, and nothing is removed."""
         epoch = self.epoch
-        self.account_notes[sid] = "Загружаю каналы аккаунта…"
+        self.account_notes[sid] = "Синхронизирую подписки аккаунта…"
         self.emit("account_note", {"source": sid})
 
         def done(chans, error):
@@ -266,8 +277,10 @@ class Application:
             if error:
                 note = "Не удалось загрузить каналы: нет связи?"
             else:
-                new = self.library.follow_all(chans or [])
-                note = "Добавлено каналов: %d." % new if new else "Все каналы аккаунта уже здесь."
+                new = self.library.follow_all(chans or [], account=True)
+                self.library.note_synced(sid)
+                note = ("Подписки синхронизированы: добавлено каналов — %d." % new if new
+                        else "Подписки синхронизированы: все каналы аккаунта уже здесь.")
             self.account_notes[sid] = note
             self.emit("account_note", {"source": sid})
         self.work(self.sources[sid].subscriptions, done=done)

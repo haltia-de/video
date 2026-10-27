@@ -12,7 +12,8 @@ import time
 
 from haltia_kit.vault import Locked
 
-from . import CACHE_DIR, CONFIG_DIR, browser_stream_of, load_json, net, save_json, stream_of, vault_in
+from . import (CACHE_DIR, CONFIG_DIR, LARGE_PICTURES, browser_stream_of, load_json, net, save_json,
+               stream_of, vault_in)
 
 API = "https://api.vk.com/method/%s"
 API_VERSION = "5.274"
@@ -64,11 +65,16 @@ def _skip_subtitles():
     VKIE._download_payload = without_subtitles
 
 
-def _thumb(images):
-    # The smallest 16:9 picture a card can take; the others are padded.
+# The smallest picture a card can take (see LARGE_PICTURES).
+THUMB_MIN = 640 if LARGE_PICTURES else 320
+
+
+def _thumb(images, padded=False):
+    # The smallest 16:9 picture a card can take; the others are padded
+    # (an album's cover is padded in every size: padded=True takes them).
     best = None
     for img in images or []:
-        if img.get("with_padding") or img.get("width", 0) < 320:
+        if (img.get("with_padding") and not padded) or img.get("width", 0) < THUMB_MIN:
             continue
         if best is None or img["width"] < best["width"]:
             best = img
@@ -385,7 +391,8 @@ class VKVideo:
                 seen.add(pid)
                 out.append({"source": self.id, "owner_id": channel["id"],
                             "id": str(pid), "title": item.get("title") or "Плейлист",
-                            "count": item.get("count")})
+                            "count": item.get("count"),
+                            "thumb": _thumb(item.get("image"), padded=True)})
             offset += len(items)
             if not items or offset >= resp.get("count", offset):
                 return out

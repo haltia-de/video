@@ -35,6 +35,19 @@ class ApplicationTest(unittest.TestCase):
                 value, error = None, exc
             done(value, error)
 
+    def test_signing_in_brings_the_accounts_channels_once_a_day(self):
+        chans = [{"source": "vk", "id": "-1", "title": "One"}]
+        asked = []
+        self.source.subscriptions = lambda: asked.append(1) or chans
+        self.core._signin_changed(self.source, {"kind": "in", "name": "Me"})
+        self.pump()
+        self.assertTrue(self.library.is_followed("vk", "-1"))
+        self.assertIn("добавлено каналов — 1", self.core.account_notes["vk"])
+        self.core._signin_changed(self.source, {"kind": "out"})
+        self.core._signin_changed(self.source, {"kind": "in", "name": "Me"})
+        self.pump()
+        self.assertEqual(len(asked), 1)  # synced less than a day ago
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:

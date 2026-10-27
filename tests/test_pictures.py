@@ -30,8 +30,20 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual((pix.get_width(), pix.get_height()), (96, 96))
         pix = pictures.decode(self.picture(320, 180), (352, 198))  # YouTube's: made larger
         self.assertEqual((pix.get_width(), pix.get_height()), (352, 198))
-        pix = pictures.decode(self.picture(480, 360), (352, 198))  # 4:3 in a 16:9 box
-        self.assertEqual((pix.get_width(), pix.get_height()), (264, 198))
+        pix = pictures.decode(self.picture(480, 360), (352, 198))  # 4:3: its 16:9 middle
+        self.assertEqual((pix.get_width(), pix.get_height()), (352, 198))
+        pix = pictures.decode(self.picture(180, 320), (352, 198))  # upright: whole, narrower
+        self.assertEqual((pix.get_width(), pix.get_height()), (111, 198))
+
+    def test_four_three_drops_its_black_bars(self):
+        path = os.path.join(self.dir, "bars.png")
+        im = Image.new("RGB", (480, 360), (0, 0, 0))
+        im.paste((200, 30, 40), (0, 45, 480, 315))  # 16:9 between bars
+        im.save(path)
+        pix = pictures.decode(path, (640, 360))
+        data, stride = pix.get_pixels(), pix.get_rowstride()
+        for y in (0, 359):
+            self.assertEqual(tuple(data[y * stride:y * stride + 3]), (200, 30, 40))
 
     def test_the_pixels_are_the_pictures(self):
         pix = pictures.decode(self.picture(320, 180, "PNG"), (352, 198))
