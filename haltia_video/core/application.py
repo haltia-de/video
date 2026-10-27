@@ -465,7 +465,9 @@ class Application:
                     raise ValueError("Черновик другого плейлиста.")
                 entries = full["_entries"]
                 ids = draft["ids"]
-                result = self._page([entries[i] for i in ids], offset)
+                # The editor shows the whole playlist (it builds the rows lazily).
+                result = self._page([entries[i] for i in ids], offset,
+                                    max(1, min(int(p.get("count", 30)), 2000)))
                 result.update(token=token, order=order, total=len(ids))
                 for i, video in enumerate(result["items"], offset):
                     video.update(position=i, minimum=0, maximum=len(ids) - 1)

@@ -87,21 +87,34 @@ class PlaylistUITest(unittest.TestCase):
     def button(self, title):
         return next(w for w in self.widgets() if isinstance(w, self.Gtk.Button) and w.get_label() == title)
 
-    def test_editor_moves_across_pages_and_task_toggle_does_not_start_player(self):
+    def row(self, ident):
+        return next(w for w in self.widgets() if getattr(w, "_entry_id", None) == ident)
+
+    def test_editor_places_by_taps_saves_at_once_and_undoes(self):
         self.open(order="lesson")
         self.view.show_playlist_editor(self.playlist, self.chan, "custom", return_order="lesson")
         self.pump()
         self.assertEqual(self.view.sub["kind"], "playlist_editor")
-        token = self.view.sub["token"]
-        first = self.view.core.query("playlist_editor", {"entity": self.playlist, "order": "custom", "token": token})["items"][0]
-        self.view.move_playlist_entry(first["entry_id"], 60)
+        items = self.view.sub["items"]
+        self.assertEqual(len(items), 65)  # the whole playlist, built lazily
+        first, target = items[0], items[60]
+        self.row(first["entry_id"]).clicked()
         self.pump()
-        self.assertEqual(self.view.sub["offset"], 60)
-        self.assertTrue(any(getattr(w, "_entry_id", None) == first["entry_id"] for w in self.widgets()))
-        self.button("Сохранить").clicked()
+        self.assertEqual(self.view.sub["pick"], first["entry_id"])
         self.pump()
+        self.row(target["entry_id"]).clicked()
+        self.pump()
+        ids = [v["entry_id"] for v in self.view.sub["items"]]
+        self.assertEqual(ids.index(first["entry_id"]) + 1, ids.index(target["entry_id"]))
+        saved = self.view.library.manual_order(self.playlist, "custom")
+        self.assertTrue(saved)
+        self.button("↶ Отменить").clicked()
+        self.pump()
+        self.assertEqual(self.view.sub["items"][0]["entry_id"], first["entry_id"])
+        self.view.go_back()
+        self.pump()
+        self.assertEqual(self.view.sub["kind"], "playlist")
         self.assertEqual(self.view.sub["order"], "custom")
-        self.assertNotEqual(self.view.sub["result"]["items"][0]["id"], first["id"])
         k = (self.playlist["source"], self.playlist["owner_id"], self.playlist["id"])
         self.view.playlist_order[k] = "lesson"
         self.view.show_playlist(self.playlist, self.chan)

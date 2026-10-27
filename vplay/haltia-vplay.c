@@ -23,6 +23,10 @@
  * see wlroots-0.20-hybris.patch), and a translucent layer that big hid
  * the whole video behind black. The strips are small enough to blend.
  *
+ * The button beside the title, or a double tap away from the controls,
+ * puts the window on the whole screen and back; the choice is kept for
+ * the next video ($XDG_CONFIG_HOME/haltia-vplay/fullscreen).
+ *
  * A tap shows the controls for four seconds: the title, the middle buttons
  * that go back 10 s, pause or play, and go on 10 s (and, in a playlist,
  * the previous and next video further out), and the bar
@@ -72,6 +76,8 @@
 #include "xdg-shell-client-protocol.h"
 
 #define UI_SHOW_MS 4000
+#define DOUBLE_MS 350 /* two taps this close are one double tap */
+#define DOUBLE_PX 80
 #define BAR_H 120
 #define TOP_H 112
 #define SEEK_STEP 10
@@ -120,6 +126,9 @@ static mpv_handle *mpv;
 static mpv_render_context *rc;
 
 static struct xdg_toplevel *toplevel;
+static int fullscreen; /* asked for; the compositor's answer comes in tl_configure */
+static long last_tap_ms = -DOUBLE_MS;
+static int last_tap_x, last_tap_y, ui_before_tap;
 static char title[256];
 static int queue_mode;
 static int64_t pl_pos = -1, pl_count; /* where in the playlist, as mpv told it */
@@ -368,6 +377,7 @@ static void commit_base(void)
 #define BACK_Y 16
 #define BACK_H 80
 #define CORNER 128 /* the shell's close button, and a margin */
+#define FS_W 80 /* the whole-screen button, left of the corner */
 #define BTN_R 78
 #define BTN_GAP 240
 
@@ -422,6 +432,62 @@ static void text(cairo_t *cr, PangoLayout *pl, const char *font, const char *s, 
 	pango_cairo_show_layout(cr, pl);
 }
 
+static long now_ms(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+static char *fullscreen_file(void)
+{
+	return g_build_filename(g_get_user_config_dir(), "haltia-vplay", "fullscreen", NULL);
+}
+
+static void set_fullscreen(int on, int keep)
+{
+	fullscreen = on;
+	if (on)
+		xdg_toplevel_set_fullscreen(toplevel, NULL);
+	else
+		xdg_toplevel_unset_fullscreen(toplevel);
+	if (keep) {
+		char *path = fullscreen_file(), *dir = g_path_get_dirname(path);
+
+		g_mkdir_with_parents(dir, 0700);
+		g_file_set_contents(path, on ? "1\n" : "0\n", -1, NULL);
+		g_free(dir);
+		g_free(path);
+	}
+}
+
+static int fs_button(int x, int y)
+{
+	int bx = win_w - CORNER - FS_W;
+
+	return y < TOP_H && x >= bx - 16 && x <= bx + FS_W + 16;
+}
+
+/* Four corners of a square: their arms point in to go whole-screen, out
+ * to leave it. */
+static void draw_fs_icon(cairo_t *cr, double cx, double cy, int go)
+{
+	double h = 22, l = 14;
+
+	cairo_set_line_width(cr, 5);
+	for (int sx = -1; sx <= 1; sx += 2)
+		for (int sy = -1; sy <= 1; sy += 2) {
+			double d = go ? -1 : 1;
+			double x = cx + sx * (go ? h : h - l), y = cy + sy * (go ? h : h - l);
+
+			cairo_move_to(cr, x + sx * d * l, y);
+			cairo_line_to(cr, x, y);
+			cairo_line_to(cr, x, y + sy * d * l);
+		}
+	cairo_stroke(cr);
+}
+
 static void draw_controls(cairo_t *cr, PangoLayout *pl)
 {
 	double cx = win_w / 2.0, cy = win_h / 2.0, frac;
@@ -436,7 +502,8 @@ static void draw_controls(cairo_t *cr, PangoLayout *pl)
 	cairo_fill(cr);
 	cairo_set_source_rgb(cr, 1, 1, 1);
 	text(cr, pl, "DejaVu Sans 24", title, BACK_X + 8, BACK_Y + BACK_H / 2.0, -1,
-	     win_w - BACK_X - 8 - CORNER);
+	     win_w - BACK_X - 8 - CORNER - FS_W - 16);
+	draw_fs_icon(cr, win_w - CORNER - FS_W / 2.0, BACK_Y + BACK_H / 2.0, !fullscreen);
 
 	if (error_text[0] || !have_frame) {
 		cairo_set_source_rgb(cr, 1, 1, 1);
@@ -686,8 +753,27 @@ static void press_up(void)
 		show_ui(1);
 		return; /* drag_frac stays until mpv reports the new position */
 	}
+	if (now_ms() - last_tap_ms < DOUBLE_MS && abs(x - last_tap_x) < DOUBLE_PX &&
+	    abs(y - last_tap_y) < DOUBLE_PX) {
+		/* The first tap showed or hid the controls: put them back. */
+		last_tap_ms = -DOUBLE_MS;
+		set_fullscreen(!fullscreen, 1);
+		show_ui(ui_before_tap);
+		ui_dirty = 1;
+		return;
+	}
 	if (!ui_visible) {
+		last_tap_ms = now_ms();
+		last_tap_x = x;
+		last_tap_y = y;
+		ui_before_tap = 0;
 		show_ui(1);
+		return;
+	}
+	if (fs_button(x, y)) {
+		set_fullscreen(!fullscreen, 1);
+		show_ui(1);
+		ui_dirty = 1;
 		return;
 	}
 	if (have_frame && !error_text[0]) {
@@ -714,6 +800,10 @@ static void press_up(void)
 	}
 	if (y < TOP_H || y > win_h - BAR_H)
 		return; /* on a bar but not on a control */
+	last_tap_ms = now_ms();
+	last_tap_x = x;
+	last_tap_y = y;
+	ui_before_tap = 1;
 	show_ui(0);
 }
 
@@ -876,16 +966,23 @@ static void tl_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t 
 			 struct wl_array *states)
 {
 	uint32_t *state;
-	int active = 0;
+	int active = 0, full = 0;
 
 	(void)data; (void)t;
 	if (w > 0 && h > 0) {
 		win_w = w;
 		win_h = h;
 	}
-	wl_array_for_each(state, states)
+	wl_array_for_each(state, states) {
 		if (*state == XDG_TOPLEVEL_STATE_ACTIVATED)
 			active = 1;
+		if (*state == XDG_TOPLEVEL_STATE_FULLSCREEN)
+			full = 1;
+	}
+	if (full != fullscreen) {
+		fullscreen = full; /* the button shows what the compositor did */
+		ui_dirty = 1;
+	}
 	if (was_active && !active && mpv && !paused)
 		pause_video(); /* back: tap play */
 	was_active = active;
@@ -1084,6 +1181,14 @@ int main(int argc, char **argv)
 	xdg_toplevel_add_listener(tl, &tl_listener, NULL);
 	xdg_toplevel_set_app_id(tl, "haltia-vplay");
 	xdg_toplevel_set_title(tl, title[0] ? title : "Видео");
+	{
+		char *path = fullscreen_file(), *kept = NULL;
+
+		if (g_file_get_contents(path, &kept, NULL, NULL) && kept[0] == '1')
+			set_fullscreen(1, 0);
+		g_free(kept);
+		g_free(path);
+	}
 	wl_surface_commit(base);
 
 	mpv = mpv_create();
