@@ -85,8 +85,6 @@ FEED_REFRESH_SEC = 30 * 60
 HOME_REFRESH_SEC = 60 * 60
 SEARCH_KEEP_SEC = 10 * 60
 CHANNEL_KEEP_SEC = 15 * 60
-HOME_NEW = 6
-HOME_SOURCE = 12
 THUMB_W, THUMB_H = 352, 198
 AVATAR = 96
 QR_SIZE = 320
@@ -172,6 +170,18 @@ button.drop.wide { font-size: 24px; padding: 0 24px; }
 switch { min-width: 96px; min-height: 48px; }
 expander.fold title { min-height: 52px; }
 expander.fold title label { font-size: 24px; color: #5e5c64; }
+.picked { background-color: #c4dcf7; }
+button.chip {
+  background-image: none;
+  background-color: #f2f2f0;
+  border: none;
+  box-shadow: none;
+  border-radius: 28px;
+  min-height: 56px;
+  font-size: 22px;
+  padding: 0 24px;
+}
+button.chip.on { background-color: #3584e4; color: #ffffff; }
 button.pic {
   background-image: none;
   background-color: rgba(0, 0, 0, 0.55);
@@ -426,6 +436,7 @@ class Video(Gtk.Application):
         self.searching = False  # the search holds the row on top
         self.web_open = False  # «Для разработчика» unfolded in Настройки
         self.hints_open = set()  # sources whose «Как войти» is unfolded
+        self.home_pick = None  # the Главная section picked up to be moved
         self.back_action = Gio.SimpleAction.new("back", None)
         self.back_action.set_enabled(False)
         self.back_action.connect("activate", self.go_back)
@@ -699,7 +710,8 @@ class Video(Gtk.Application):
         if self.sub and self.sub["kind"] == "playlist_editor":
             self.finish_playlist_editor(False)
             return
-        if self.sub and self.sub["kind"] == "playlist" and not self.sub["chan"].get("from_bookmarks"):
+        if (self.sub and self.sub["kind"] == "playlist" and not self.sub["chan"].get("from_bookmarks")
+                and not self.sub["chan"].get("from_tab")):
             self.show_channel(self.sub["chan"])
             return
         self.show_page(self.page if self.sub is not None else "home")
@@ -716,6 +728,7 @@ class Video(Gtk.Application):
         if self.pending_playlist_resume and self.pending_playlist_resume["sub"] is sub:
             self.pending_playlist_resume = None
         if sub and sub["kind"] == "settings":
+            self.home_pick = None
             for sign in self.signins.values():
                 sign.cancel()
         if sub and sub["kind"] == "playlist_editor" and sub.get("token"):
@@ -959,33 +972,128 @@ class Video(Gtk.Application):
             keep_scroll(self.scroll, lambda: self.show_page(key))
 
     # Главная ------------------------------------------------------------
-    def show_home(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        more = Gtk.Button(label="Все")
-        more.get_style_context().add_class("more")
-        more.connect("clicked", lambda *_a: self.show_page("feed"))
-        self.section(box, "Новое в подписках", more if self.feed_shown() else None)
-        if not self.library.channels():
-            box.pack_start(label("Чтобы подписаться на канал, нажмите ⋮ на его видео "
-                                 "или найдите канал на странице «Каналы».", "hint", wrap=True),
-                           False, False, 0)
-        elif self.feed_shown():
-            box.pack_start(self.grid(self.feed_shown()[:HOME_NEW]), False, False, 0)
-        else:
-            box.pack_start(label("Загружаю…" if self.feed.is_loading("feed")
-                                 else "Пока ничего нет.", "hint"), False, False, 0)
-        for src in self.enabled():
+    def home_sections(self):
+        """Главная's sections, as (id, title, on), in the person's order."""
+        titles = {"continue": "Продолжить просмотр", "playlists": "Мои плейлисты",
+                  "feed": "Новое в подписках", "bookmarks": "Закладки"}
+        for src in self.ordered():
             got = self.home.get(src.id) if hasattr(src, "home") else None
-            videos = self.wanted((got or {}).get("videos") or [])
-            if videos:
-                self.section(box, got["title"])
-                box.pack_start(self.grid(videos[:HOME_SOURCE]), False, False, 0)
-            elif getattr(src, "login", None) == "cookies" and not src.account():
-                self.section(box, src.label)
-                box.pack_start(label("Рекомендации %s появятся после входа в аккаунт "
-                                     "в настройках (⚙)." % src.label, "hint", wrap=True),
-                               False, False, 0)
+            titles["source:" + src.id] = (got or {}).get("title") or src.label
+        return [(sid, titles[sid], on)
+                for sid, on in self.library.home_sections([s.id for s in self.ordered()])]
+
+    def show_home(self):
+        """One row of each section the person keeps on Главная, and «Все →»
+        for the rest of it: an overview, and fewer pictures for the B8000."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        row = self.columns()
+        enabled = {s.id for s in self.enabled()}
+        for sid, title, on in self.home_sections():
+            if not on or (sid.startswith("source:") and sid[7:] not in enabled):
+                continue
+            if sid == "continue":
+                videos = self.wanted(self.library.unfinished())
+                if videos:
+                    self.section(box, title, self.all_button(lambda: self.show_page("history")))
+                    box.pack_start(self.grid(videos[:row]), False, False, 0)
+            elif sid == "playlists":
+                cursors = self.library.playlists_in_progress()
+                if cursors:
+                    self.section(box, title, self.all_button(self.show_my_playlists)
+                                 if len(cursors) > row else None)
+                    box.pack_start(self.playlist_tiles(cursors[:row]), False, False, 0)
+            elif sid == "feed":
+                self.section(box, title, self.all_button(lambda: self.show_page("feed"))
+                             if self.feed_shown() else None)
+                if not self.library.channels():
+                    box.pack_start(label("Чтобы подписаться на канал, нажмите ⋮ на его видео "
+                                         "или найдите канал на странице «Каналы».", "hint", wrap=True),
+                                   False, False, 0)
+                elif self.feed_shown():
+                    box.pack_start(self.grid(self.feed_shown()[:row]), False, False, 0)
+                else:
+                    box.pack_start(label("Загружаю…" if self.feed.is_loading("feed")
+                                         else "Пока ничего нет.", "hint"), False, False, 0)
+            elif sid == "bookmarks":
+                videos = [b["object"] for b in self.library.bookmarks.view(kind="video")]
+                if videos:
+                    self.section(box, title, self.all_button(lambda: self.show_page("bookmarks")))
+                    box.pack_start(self.grid(videos[:row]), False, False, 0)
+            else:
+                src = self.sources[sid[7:]]
+                got = self.home.get(src.id) if hasattr(src, "home") else None
+                videos = self.wanted((got or {}).get("videos") or [])
+                if videos:
+                    self.section(box, title, self.all_button(lambda s=src: self.show_source_home(s))
+                                 if len(videos) > row else None)
+                    box.pack_start(self.grid(videos[:row]), False, False, 0)
+                elif getattr(src, "login", None) == "cookies" and not src.account():
+                    self.section(box, src.label)
+                    box.pack_start(label("Рекомендации %s появятся после входа в аккаунт "
+                                         "в настройках (⚙)." % src.label, "hint", wrap=True),
+                                   False, False, 0)
         self.set_content(box)
+
+    def all_button(self, fn):
+        more = Gtk.Button(label="Все →")
+        more.get_style_context().add_class("more")
+        more.connect("clicked", lambda *_a: fn())
+        return more
+
+    def show_source_home(self, src):
+        """All of what a source offers on Главная."""
+        self.open_sub({"kind": "source_home", "source": src.id}, src.label)
+        got = self.home.get(src.id) or {}
+        self.say("")
+        self.set_content(self.grid(self.wanted(got.get("videos") or [])))
+
+    def show_my_playlists(self):
+        self.open_sub({"kind": "my_playlists"}, "Мои плейлисты")
+        cursors = self.library.playlists_in_progress()
+        self.say("" if cursors else "Здесь будут плейлисты, которые вы начали смотреть.")
+        self.set_content(self.playlist_tiles(cursors))
+
+    def playlist_tiles(self, cursors):
+        """A playlist begun: its name, where it stopped, and «Продолжить»."""
+        cols = self.columns()
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                           max_children_per_line=cols, min_children_per_line=cols,
+                           row_spacing=16, column_spacing=16)
+        flow.set_valign(Gtk.Align.START)
+        for cursor in cursors:
+            playlist, video = cursor["playlist"], cursor["video"]
+            chan = {"source": playlist["source"], "id": str(playlist.get("owner_id", "")),
+                    "title": playlist.get("owner_title") or video.get("channel") or "",
+                    "from_tab": True}
+            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            tile.get_style_context().add_class("chan")
+            name = Gtk.Button()
+            name.get_style_context().add_class("open")
+            text = label(playlist.get("title") or "Плейлист", "cname")
+            text.set_ellipsize(3)  # Pango.EllipsizeMode.END
+            name.add(text)
+            name.connect("clicked", lambda _b, p=playlist, c=chan: self.show_playlist(p, c))
+            tile.pack_start(name, False, False, 0)
+            pos = self.library.position(video) or {}
+            where = label(" · ".join(b for b in (video.get("title"), nice_duration(pos.get("pos"))) if b),
+                          "csub")
+            where.set_ellipsize(3)
+            tile.pack_start(where, False, False, 0)
+            seen = self.library.progress(video)
+            if seen:
+                tile.pack_start(Gtk.ProgressBar(fraction=seen), False, False, 0)
+            go = Gtk.Button(label="▶ Продолжить")
+            go.get_style_context().add_class("find")
+            go.connect("clicked", lambda _b, p=playlist, c=chan: self.continue_playlist(p, c))
+            tile.pack_start(go, False, False, 0)
+            flow.add(tile)
+        return flow
+
+    def continue_playlist(self, playlist, chan):
+        """«Продолжить» from Главная: the playlist opens, and goes on as its
+        own «Продолжить» would."""
+        self.show_playlist(playlist, chan)
+        self.playlist_resume_action(self.sub, "play")
 
     # Новое --------------------------------------------------------------
     def feed_channels(self):
@@ -1110,29 +1218,87 @@ class Video(Gtk.Application):
         else:
             self.say("" if videos else "У канала пока нет видео.")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.pack_start(self.channel_header(chan), False, False, 0)
         src = self.sources[chan["source"]]
+        sub = self.sub
         if hasattr(src, "playlists") and hasattr(src, "playlist_videos"):
+            # Videos first: a channel's dozen playlists used to push them
+            # off the screen.
             playlists = self.playlists.get(key)
-            if playlists:
-                self.section(box, "Плейлисты")
-                for playlist in playlists:
-                    btn = Gtk.Button(label=playlist["title"])
-                    btn.get_style_context().add_class("more")
-                    btn.get_child().set_line_wrap(True)
-                    btn.get_child().set_xalign(0)
-                    btn.connect("clicked", lambda _b, p=playlist: self.show_playlist(p, chan))
-                    row = Gtk.Box(spacing=12)
-                    row.pack_start(btn, True, True, 0)
-                    saved = dict(playlist, owner_title=chan["title"])
-                    row.pack_start(self.bookmark_button("playlist", saved), False, False, 0)
-                    box.pack_start(row, False, False, 0)
-            elif playlists is None:
-                box.pack_start(label("Не удалось загрузить плейлисты." if
-                                      self.playlists.has_failed(key) else "Загружаю плейлисты…",
-                                      "cdesc", wrap=True), False, False, 0)
-            self.section(box, "Последние видео")
+            tab = sub.get("tab", "videos")
+            switch = Gtk.Box(spacing=0)
+            switch.get_style_context().add_class("seg")
+            switch.set_halign(Gtk.Align.START)
+            for kind, title in (("videos", "Видео"),
+                                ("playlists", "Плейлисты" + (" · %d" % len(playlists) if playlists else ""))):
+                btn = Gtk.Button(label=title)
+                btn.get_style_context().add_class("tab")
+                if kind == tab:
+                    btn.get_style_context().add_class("current")
+                btn.connect("clicked", lambda _b, k=kind: (sub.update(tab=k), self.show_channel(chan, again=True))
+                            if self.sub is sub and k != sub.get("tab", "videos") else None)
+                switch.pack_start(btn, False, False, 0)
+            box.pack_start(switch, False, False, 0)
+            if tab == "playlists":
+                self.say("")
+                if playlists:
+                    for playlist in playlists:
+                        btn = Gtk.Button(label=playlist["title"])
+                        btn.get_style_context().add_class("more")
+                        btn.get_child().set_line_wrap(True)
+                        btn.get_child().set_xalign(0)
+                        btn.connect("clicked", lambda _b, p=playlist: self.show_playlist(p, chan))
+                        row = Gtk.Box(spacing=12)
+                        row.pack_start(btn, True, True, 0)
+                        saved = dict(playlist, owner_title=chan["title"])
+                        row.pack_start(self.bookmark_button("playlist", saved), False, False, 0)
+                        box.pack_start(row, False, False, 0)
+                else:
+                    box.pack_start(label("Не удалось загрузить плейлисты." if self.playlists.has_failed(key)
+                                         else "Загружаю плейлисты…" if playlists is None
+                                         else "У канала нет плейлистов.", "hint", wrap=True), False, False, 0)
+                self.set_content(box)
+                return
         box.pack_start(self.grid(videos or []), False, False, 0)
         self.set_content(box)
+
+    def channel_header(self, chan):
+        """Who the channel is, and following and bookmarking it."""
+        known = next((c for c in self.library.channels()
+                      if c["source"] == chan["source"] and c["id"] == chan["id"]), chan)
+        row = Gtk.Box(spacing=16)
+        row.get_style_context().add_class("chan")
+        avatar = Gtk.Image()
+        avatar.set_size_request(AVATAR, AVATAR)
+        self.thumbs.get(known.get("thumb"), avatar, (AVATAR, AVATAR))
+        row.pack_start(avatar, False, False, 0)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        text.set_valign(Gtk.Align.CENTER)
+        name = label(known["title"], "cname")
+        name.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        text.pack_start(name, False, False, 0)
+        latest = nice_age(known.get("latest"))
+        src = self.sources.get(known["source"])
+        bits = [src.label if src and len(self.sources) > 1 else "", known.get("handle") or "",
+                nice_subscribers(known.get("subscribers")), ("новое видео " + latest) if latest else ""]
+        if any(bits):
+            sub = label(" · ".join(b for b in bits if b), "csub")
+            sub.set_ellipsize(3)
+            text.pack_start(sub, False, False, 0)
+        row.pack_start(text, True, True, 0)
+        if self.library.is_followed(chan["source"], chan["id"]):
+            follow = Gtk.Button(label="Отписаться")
+            follow.get_style_context().add_class("drop")
+            follow.get_style_context().add_class("wide")
+            follow.connect("clicked", lambda _b: self.unfollow(known))
+        else:
+            follow = Gtk.Button(label="Подписаться")
+            follow.get_style_context().add_class("add")
+            follow.connect("clicked", lambda _b: self.core.command("follow", {"entity": known}))
+        follow.set_valign(Gtk.Align.CENTER)
+        row.pack_start(follow, False, False, 0)
+        row.pack_start(self.bookmark_button("channel", known), False, False, 0)
+        return row
 
     def reset_channel_data(self):
         self.core.reset_channel_data()
@@ -1613,44 +1779,34 @@ class Video(Gtk.Application):
     def show_bookmarks(self):
         self.scope_btn.hide()  # this tab has its own Source filter
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        filters = Gtk.Box(spacing=12, homogeneous=True)
-        options = (
-            ("kind", [("all", "Все типы")] + list(bookmark_view.KINDS)),
-            ("source", [("all", "Все сервисы")] + [(s.id, s.label) for s in self.ordered()]),
-            ("state", [("all", "Все закладки"), ("local", "Локальные"),
-                       ("synced", "Синхронизируемые")]))
-        for field, choices in options:
-            combo = Gtk.ComboBoxText()
-            combo.get_style_context().add_class("choice")
-            for value, title in choices:
-                combo.append(value, title)
-            combo.set_active_id(self.bookmark_filters[field])
-            combo.connect("changed", lambda c, f=field: self.bookmark_filter(f, c.get_active_id(), c))
-            filters.pack_start(combo, True, True, 0)
-        box.pack_start(filters, False, False, 0)
-        tools = Gtk.Box(spacing=12)
-        sort = Gtk.ComboBoxText()
-        sort.get_style_context().add_class("choice")
-        for value, title in bookmark_view.SORTS:
-            sort.append(value, title)
-        sort.set_active_id(self.bookmark_filters["sort"])
-        sort.connect("changed", lambda c: self.bookmark_filter("sort", c.get_active_id(), c))
-        tools.pack_start(sort, True, True, 0)
-        direction = Gtk.Button(label="↓" if self.bookmark_filters["reverse"] else "↑")
-        direction.get_style_context().add_class("more")
-        direction.set_tooltip_text("Изменить направление сортировки")
-        direction.connect("clicked", lambda _b: self.bookmark_filter(
-            "reverse", not self.bookmark_filters["reverse"]))
-        tools.pack_start(direction, False, False, 0)
-        add = Gtk.Button(label="Добавить по ссылке")
-        add.get_style_context().add_class("more")
-        add.connect("clicked", lambda _b: self.bookmark_link_page())
-        tools.pack_start(add, False, False, 0)
-        refresh = Gtk.Button(label="Обновить")
-        refresh.get_style_context().add_class("more")
-        refresh.connect("clicked", lambda _b: self.refresh_bookmarks())
-        tools.pack_start(refresh, False, False, 0)
-        box.pack_start(tools, False, False, 0)
+        # One row: the kinds as chips, a chip for any other filter on (a
+        # tap clears it), and ⋮ for the rest. Two rows of drop-downs stood
+        # over even a single bookmark.
+        f = self.bookmark_filters
+        everything = self.library.bookmarks.view()
+        row = Gtk.Box(spacing=12)
+        for value, title in [("all", "Все")] + list(bookmark_view.KINDS):
+            chip = Gtk.Button(label=title)
+            chip.get_style_context().add_class("chip")
+            if f["kind"] == value:
+                chip.get_style_context().add_class("on")
+            chip.connect("clicked", lambda _b, v=value: self.bookmark_filter("kind", v))
+            row.pack_start(chip, False, False, 0)
+        names = dict([(s.id, s.label) for s in self.ordered()] +
+                     [("local", "Локальные"), ("synced", "Синхронизируемые")])
+        for field in ("source", "state"):
+            if f[field] != "all":
+                chip = Gtk.Button(label="%s ✕" % names.get(f[field], f[field]))
+                chip.get_style_context().add_class("chip")
+                chip.get_style_context().add_class("on")
+                chip.connect("clicked", lambda _b, k=field: self.bookmark_filter(k, "all"))
+                row.pack_start(chip, False, False, 0)
+        more = Gtk.Button(label="⋮")
+        more.get_style_context().add_class("more")
+        more.set_tooltip_text("Ещё")
+        more.connect("clicked", lambda b: self.menu(b, self.bookmark_actions(everything)))
+        row.pack_end(more, False, False, 0)
+        box.pack_start(row, False, False, 0)
         for sid in self.bookmark_sync.sessions:
             box.pack_start(self.bookmark_account(sid), False, False, 0)
         found = self.library.bookmarks.view(self.bookmark_query, **self.bookmark_filters)
@@ -1658,6 +1814,26 @@ class Video(Gtk.Application):
             box.pack_start(self.bookmark_row(saved), False, False, 0)
         self.say(self.bookmark_note or ("" if found else "Закладок пока нет или они не подходят под фильтры."))
         self.set_content(box)
+
+    def bookmark_actions(self, everything):
+        """What ⋮ on Закладки offers: the order, the filters that have
+        something to filter, adding by link and refreshing."""
+        f = self.bookmark_filters
+        mark = lambda on, title: ("✓ " if on else "") + title
+        actions = [(mark(f["sort"] == value, "Сортировать: " + title.lower()),
+                    lambda v=value: self.bookmark_filter("sort", v))
+                   for value, title in bookmark_view.SORTS]
+        actions.append(("Сначала старые" if f["reverse"] else "Сначала новые",
+                        lambda: self.bookmark_filter("reverse", not f["reverse"])))
+        sources = {b["object"].get("source") for b in everything}
+        if len(sources) > 1:
+            actions += [(mark(f["source"] == s.id, "Только " + s.label), lambda v=s.id: self.bookmark_filter("source", v))
+                        for s in self.ordered() if s.id in sources]
+        if any(b["links"] for b in everything):
+            actions += [(mark(f["state"] == v, t), lambda v=v: self.bookmark_filter("state", v))
+                        for v, t in (("local", "Только локальные"), ("synced", "Только синхронизируемые"))]
+        actions += [("Добавить по ссылке", self.bookmark_link_page), ("Обновить", self.refresh_bookmarks)]
+        return actions
 
     def bookmark_filter(self, field, value, combo=None):
         if value is not None:
@@ -1882,6 +2058,8 @@ class Video(Gtk.Application):
         box.pack_start(label("Поиск идёт во всех включённых сервисах, первыми — "
                              "результаты YouTube. Кнопка рядом с полем поиска "
                              "оставляет один сервис.", "hint", wrap=True), False, False, 0)
+        self.section(box, "Главная")
+        box.pack_start(self.home_settings(), False, False, 0)
         self.section(box, "Видео")
         box.pack_start(self.shorts_setting(), False, False, 0)
         box.pack_start(self.confirm_setting(), False, False, 0)
@@ -1901,6 +2079,80 @@ class Video(Gtk.Application):
             keep_scroll(self.scroll, lambda: self.set_content(box))
         else:
             self.set_content(box)
+
+    def home_settings(self):
+        """Which sections Главная shows, and their order: a tap picks one,
+        a tap on another puts it before that one (dragging is unreliable
+        under a finger in GTK 3, and jerky on the B8000)."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        sections = self.home_sections()
+        pick = self.home_pick
+        titles = {sid: title for sid, title, _on in sections}
+        if pick not in titles:
+            pick = self.home_pick = None
+        box.pack_start(label("Куда поставить «%s»? Нажмите раздел, перед которым он встанет." % titles[pick]
+                             if pick else "Нажмите раздел, затем место, куда его поставить.",
+                             "hint", wrap=True), False, False, 0)
+        for n, (sid, title, on) in enumerate(sections, 1):
+            row = Gtk.Box(spacing=12)
+            row.get_style_context().add_class("chan")
+            if sid == pick:
+                row.get_style_context().add_class("picked")
+            btn = Gtk.Button(label="%d. %s" % (n, title))
+            btn.get_style_context().add_class("open")
+            btn.get_child().set_xalign(0)
+            btn.get_child().get_style_context().add_class("ttl")
+            btn.connect("clicked", lambda _b, k=sid: self.home_tap(k))
+            row.pack_start(btn, True, True, 0)
+            switch = Gtk.Switch(active=on)
+            switch.set_valign(Gtk.Align.CENTER)
+            switch.connect("notify::active", lambda sw, _p, k=sid: self.home_turn(k, sw.get_active()))
+            row.pack_start(switch, False, False, 0)
+            box.pack_start(row, False, False, 0)
+        if pick:
+            tools = Gtk.Box(spacing=12)
+            for title, fn in (("В конец", lambda: self.home_tap(None)),
+                              ("Отмена", lambda: self.home_tap(pick))):
+                btn = Gtk.Button(label=title)
+                btn.get_style_context().add_class("more")
+                btn.connect("clicked", lambda _b, f=fn: f())
+                tools.pack_start(btn, False, False, 0)
+            box.pack_start(tools, False, False, 0)
+        return box
+
+    def home_store(self, sections):
+        self.core.command("home_sections", {"sections": [{"id": k, "on": on} for k, on in sections]})
+        if self.on_sub("settings"):
+            self.redraw_after_settings()
+
+    def redraw_after_settings(self):
+        def later():
+            if self.on_sub("settings"):
+                self.show_settings()
+            return False
+        GLib.idle_add(later)
+
+    def home_tap(self, sid):
+        """A tap on a section (None: «В конец»): pick it, put the picked
+        one before it, or let it go."""
+        sections = [(k, on) for k, _t, on in self.home_sections()]
+        pick, self.home_pick = self.home_pick, None
+        if pick is None:
+            self.home_pick = sid
+            self.redraw_after_settings()
+            return
+        if sid == pick:
+            self.redraw_after_settings()
+            return
+        moved = next(e for e in sections if e[0] == pick)
+        sections.remove(moved)
+        at = len(sections) if sid is None else [k for k, _on in sections].index(sid)
+        sections.insert(at, moved)
+        self.home_store(sections)
+
+    def home_turn(self, sid, on):
+        sections = [(k, on if k == sid else was) for k, _t, was in self.home_sections()]
+        self.core.command("home_sections", {"sections": [{"id": k, "on": v} for k, v in sections]})
 
     def confirm_setting(self):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -2169,14 +2421,22 @@ class Video(Gtk.Application):
                                again=True, previous=self.sub["previous"])
         elif what == "bookmarks":
             self.redraw("bookmarks")
+            self.redraw("home")
+        elif what in ("history", "playlist_progress"):
+            self.redraw("home")
         elif what == "position":
             state = self.player.state
             if state is None or state["paused"]:
                 self.redraw(self.page)  # the strips on the cards; not while one watches
         elif what == "follow":
             self.feed.invalidate()  # the new channels' videos are not in it yet
+            if self.on_sub("channel"):
+                self.show_channel(self.sub["chan"], again=True)
+            self.redraw("channels")
         elif what in ("unfollow", "details"):
             self.redraw(self.page)  # Каналы, and a feed without the channel
+            if self.on_sub("channel"):
+                self.show_channel(self.sub["chan"], again=True)
         elif what == "settings":
             self.update_scope()
 

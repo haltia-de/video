@@ -161,6 +161,10 @@ class Library:
     def history(self):
         return list(self._history)
 
+    def unfinished(self):
+        """Videos of the history begun and not watched to the end."""
+        return [v for v in self._history if self.progress(v) and not self.completed(v)]
+
     def played(self, video):
         """Put a video first in the history, once (keeping how far it was
         watched)."""
@@ -229,8 +233,15 @@ class Library:
         old = self._playback["playlists"].get(ident)
         if (not old or not _same(old["video"], video["source"], video["id"]) or
                 old["video"].get("entry_id") != video.get("entry_id")):
-            self._playback["playlists"][ident] = {"playlist": dict(playlist), "video": dict(video)}
+            self._playback["playlists"][ident] = {"playlist": dict(playlist), "video": dict(video),
+                                                  "at": time.time()}
             self._changed("playlist_progress")
+
+    def playlists_in_progress(self):
+        """The playlists with a video to go on from, the latest first."""
+        cursors = list(self._playback["playlists"].values())
+        cursors.reverse()  # 2.8 and before kept no time: the dict's order
+        return sorted(cursors, key=lambda c: -c.get("at", 0))
 
     def playlist_resume(self, playlist):
         cursor = self._playback["playlists"].get(bookmark_key("playlist", playlist))
@@ -330,6 +341,20 @@ class Library:
     def shorts(self):
         """Whether Shorts are shown: not unless the person turns them on."""
         return self._cfg.get("shorts", False)
+
+    def home_sections(self, source_ids):
+        """Главная's sections in order, as (id, on): "continue", "playlists",
+        "feed", "source:<id>" for each source, "bookmarks" (off unless
+        turned on). A section new since the person arranged them comes last."""
+        defaults = (["continue", "playlists", "feed"] +
+                    ["source:" + sid for sid in source_ids] + ["bookmarks"])
+        saved = [(e["id"], bool(e["on"])) for e in self._cfg.get("home", []) if e["id"] in defaults]
+        known = {sid for sid, _on in saved}
+        return saved + [(sid, sid != "bookmarks") for sid in defaults if sid not in known]
+
+    def set_home_sections(self, sections):
+        self._cfg["home"] = [{"id": sid, "on": bool(on)} for sid, on in sections]
+        self._changed("settings")
 
     @property
     def confirm(self):

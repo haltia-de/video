@@ -1,3 +1,12 @@
+haltia-video (2.9.0) unstable; urgency=medium
+
+  * Let Главная's sections be chosen and ordered in Settings, with new
+    «Продолжить просмотр» and «Мои плейлисты» sections of one row each.
+  * Give a channel's page a header with following and a Видео / Плейлисты
+    switch, and bookmarks kind chips with the rest in a menu.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 13:00:00 +0300
+
 haltia-video (2.8.0) unstable; urgency=medium
 
   * Put the tabs, search and settings in one header row, move card actions

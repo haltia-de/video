@@ -70,6 +70,29 @@ class LibraryTest(unittest.TestCase):
         lib.set_confirm(False)
         self.assertFalse(Library(self.conf, self.data).confirm)
 
+    def test_home_sections_keep_their_order_and_learn_new_ones(self):
+        lib = Library(self.conf, self.data)
+        self.assertEqual(lib.home_sections(["vk"]), [("continue", True), ("playlists", True), ("feed", True),
+                                                     ("source:vk", True), ("bookmarks", False)])
+        lib.set_home_sections([("feed", True), ("continue", False)])
+        self.assertEqual(Library(self.conf, self.data).home_sections(["vk", "youtube"]),
+                         [("feed", True), ("continue", False), ("playlists", True), ("source:vk", True),
+                          ("source:youtube", True), ("bookmarks", False)])
+
+    def test_unfinished_and_playlists_in_progress(self):
+        lib = Library(self.conf, self.data)
+        a, b = ({"source": "vk", "id": i, "title": i} for i in ("a", "b"))
+        for v in (a, b):
+            lib.played(v)
+        lib.note_position(a, 100, 600)
+        lib.note_position(b, 595, 600)
+        self.assertEqual([v["id"] for v in lib.unfinished()], ["a"])
+        one = {"source": "vk", "owner_id": "-1", "id": "1", "title": "One"}
+        two = {"source": "vk", "owner_id": "-1", "id": "2", "title": "Two"}
+        lib.note_playlist(one, a)
+        lib.note_playlist(two, b)
+        self.assertEqual([c["playlist"]["id"] for c in lib.playlists_in_progress()], ["2", "1"])
+
     def test_follow_again_replaces_not_duplicates(self):
         lib = self.library()
         lib.follow(YT)
