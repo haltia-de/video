@@ -8,7 +8,7 @@ makes the header and dialogs large, and its touch filter buzzes).
 
 Four pages under the search field: Главная (what is new in the followed
 channels, then what each source finds popular or picks for the account;
-it opens first), Подписки (the newest videos of the followed channels, all
+it opens first), Новое (the newest videos of the followed channels, all
 together), Каналы (those channels with their avatar, subscribers and
 latest video; a tap shows one, the cross unfollows; a field above them
 finds new channels) and История (what was played). A search shows its
@@ -170,6 +170,34 @@ button.drop {
 }
 button.drop.wide { font-size: 24px; padding: 0 24px; }
 switch { min-width: 96px; min-height: 48px; }
+expander.fold title { min-height: 52px; }
+expander.fold title label { font-size: 24px; color: #5e5c64; }
+button.pic {
+  background-image: none;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  border: none;
+  box-shadow: none;
+  border-radius: 28px;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 0;
+  font-size: 26px;
+}
+button.pic.saved { background-color: #e5a50a; color: #000000; }
+.toast { background-color: #303030; border-radius: 16px; padding: 8px 8px 8px 20px; }
+.toast label { font-size: 22px; color: #ffffff; }
+.toast button {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  min-height: 56px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #99c1f1;
+  padding: 0 20px;
+}
 .bar { background-color: #f2f2f0; border-radius: 16px; padding: 12px 16px; }
 .bar label.ttl { font-size: 22px; color: #2e3436; }
 .bar label.sub { font-size: 18px; color: #5e5c64; }
@@ -395,6 +423,9 @@ class Video(Gtk.Application):
         self.web_redraw_pending = False
         self.web_qr = None
         self.core.watch(self._core_event)
+        self.searching = False  # the search holds the row on top
+        self.web_open = False  # «Для разработчика» unfolded in Настройки
+        self.hints_open = set()  # sources whose «Как войти» is unfolded
         self.back_action = Gio.SimpleAction.new("back", None)
         self.back_action.set_enabled(False)
         self.back_action.connect("activate", self.go_back)
@@ -453,7 +484,7 @@ class Video(Gtk.Application):
 
     def scope_label(self):
         scope = self.scope()
-        return scope[0].label if len(scope) == 1 and len(self.enabled()) > 1 else "Везде"
+        return scope[0].label if len(scope) == 1 and len(self.enabled()) > 1 else "Все сервисы"
 
     def next_scope(self):
         choices = ["all"] + [s.id for s in self.enabled()]
@@ -489,7 +520,12 @@ class Video(Gtk.Application):
 
         self.win = Gtk.ApplicationWindow(application=self, title="Видео")
         self.win.set_default_size(1160, 800)
-        header = Gtk.HeaderBar(title="Видео")
+        self.portrait = False
+        self.win.connect("size-allocate", self._resized)
+        # One row on top: the tabs (or a page's title, or the search) between
+        # «←» and the search and gear buttons. Three rows of header, search
+        # and tabs took a fifth of the tablet's height on every page.
+        header = Gtk.HeaderBar()
         # The Haltia shell closes windows with its own button; any other desktop
         # gets the usual window buttons in the header.
         header.set_show_close_button(not ON_HALTIA)
@@ -507,32 +543,17 @@ class Video(Gtk.Application):
         gear.get_style_context().add_class("back")
         gear.connect("clicked", lambda *_a: self.show_settings())
         header.pack_end(gear)
-        self.win.set_titlebar(header)
-        self.header = header
+        self.find_btn = Gtk.Button.new_from_icon_name("system-search-symbolic", Gtk.IconSize.DIALOG)
+        self.find_btn.get_style_context().add_class("back")
+        self.find_btn.set_tooltip_text("Поиск")
+        self.find_btn.connect("clicked", lambda *_a: self.open_search())
+        header.pack_end(self.find_btn)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        box.set_border_width(16)
-        box.get_style_context().add_class("page")
-
-        row = Gtk.Box(spacing=12)
-        self.scope_btn = Gtk.Button()
-        self.scope_btn.get_style_context().add_class("source")
-        self.scope_btn.connect("clicked", lambda *_a: self.next_scope())
-        self.scope_btn.set_no_show_all(True)
-        row.pack_start(self.scope_btn, False, False, 0)
-        self.entry = Gtk.Entry(placeholder_text="Найти видео")
-        self.entry.get_style_context().add_class("search")
-        self.entry.connect("activate", lambda *_a: self.search())
-        row.pack_start(self.entry, True, True, 0)
-        find = Gtk.Button(label="Найти")
-        find.get_style_context().add_class("find")
-        find.connect("clicked", lambda *_a: self.search())
-        row.pack_start(find, False, False, 0)
-        box.pack_start(row, False, False, 0)
-
+        self.top = Gtk.Stack()
+        self.top.set_hexpand(True)
         tabs = Gtk.Box(spacing=12, homogeneous=True)
         self.tabs = {}
-        for key, text in (("home", "Главная"), ("feed", "Подписки"),
+        for key, text in (("home", "Главная"), ("feed", "Новое"),
                           ("channels", "Каналы"), ("bookmarks", "Закладки"),
                           ("history", "История")):
             btn = Gtk.Button(label=text)
@@ -540,7 +561,33 @@ class Video(Gtk.Application):
             btn.connect("clicked", lambda _b, k=key: self.show_page(k))
             tabs.pack_start(btn, True, True, 0)
             self.tabs[key] = btn
-        box.pack_start(tabs, False, False, 0)
+        self.top.add_named(tabs, "tabs")
+        self.title = Gtk.Label(label="Видео")
+        self.title.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        self.title.get_style_context().add_class("title")
+        self.top.add_named(self.title, "title")
+        row = Gtk.Box(spacing=12)
+        self.scope_btn = Gtk.Button()
+        self.scope_btn.get_style_context().add_class("source")
+        self.scope_btn.connect("clicked", lambda *_a: self.next_scope())
+        self.scope_btn.set_no_show_all(True)
+        self.entry = Gtk.Entry(placeholder_text="Найти видео")
+        self.entry.get_style_context().add_class("search")
+        self.entry.connect("activate", lambda *_a: self.search())
+        row.pack_start(self.entry, True, True, 0)
+        row.pack_start(self.scope_btn, False, False, 0)
+        find = Gtk.Button(label="Найти")
+        find.get_style_context().add_class("find")
+        find.connect("clicked", lambda *_a: self.search())
+        row.pack_start(find, False, False, 0)
+        self.top.add_named(row, "search")
+        header.set_custom_title(self.top)
+        self.win.set_titlebar(header)
+        self.header = header
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(16)
+        box.get_style_context().add_class("page")
 
         # The note and the cards scroll together: a wrapped label outside
         # the scrolled part made the window taller than the room the
@@ -554,6 +601,19 @@ class Video(Gtk.Application):
         self.body.pack_start(self.note, False, False, 0)
         self.scroll.add(self.body)
         box.pack_start(self.scroll, True, True, 0)
+        self.toast = Gtk.Box(spacing=12)
+        self.toast.get_style_context().add_class("toast")
+        self.toast.set_halign(Gtk.Align.CENTER)
+        self.toast.set_no_show_all(True)
+        self.toast_text = label("", "toasttext")
+        self.toast_text.show()
+        self.toast_btn = Gtk.Button()
+        self.toast_btn.show()
+        self.toast_btn.connect("clicked", self.toast_clicked)
+        self.toast.pack_start(self.toast_text, False, False, 0)
+        self.toast.pack_start(self.toast_btn, False, False, 0)
+        self.toast_fn, self.toast_serial = None, 0
+        box.pack_start(self.toast, False, False, 0)
         box.pack_start(self.make_bar(), False, False, 0)
         self.win.add(box)
         self.win.show_all()
@@ -600,13 +660,42 @@ class Video(Gtk.Application):
     def open_sub(self, sub, title):
         """A page over the tabs; the back button returns to the tab."""
         left, self.sub = self.sub, sub
-        self.header.set_title(title)
+        self.searching = sub["kind"] == "search"
+        self.show_top("search" if self.searching else "title", title)
         self.entry.set_placeholder_text("Найти видео")
         self.update_scope()
         self.update_back()
         self.left(left)
 
+    def show_top(self, mode, title="Видео"):
+        """What the one row on top shows: the tabs, a page's title or the search."""
+        self.top.set_visible_child_name(mode)
+        self.title.set_text(title)
+        self.find_btn.set_visible(mode != "search")
+
+    def open_search(self):
+        """The search takes the row; it is opened by a tap, so the keyboard may come."""
+        self.searching = True
+        self.entry.set_placeholder_text("Поиск в закладках" if self.on_page("bookmarks") else "Найти видео")
+        self.update_scope()
+        self.show_top("search")
+        self.update_back()
+        self.entry.grab_focus()
+
+    def close_search(self):
+        self.searching = False
+        self.entry.set_text("")
+        self.win.set_focus(None)  # the keyboard goes away
+        self.show_top("tabs")
+        self.update_back()
+        if self.on_page("bookmarks") and self.bookmark_query:
+            self.bookmark_query = ""
+            self.show_bookmarks()
+
     def go_back(self, *_args):
+        if self.searching and self.sub is None:
+            self.close_search()
+            return
         if self.sub and self.sub["kind"] == "playlist_editor":
             self.finish_playlist_editor(False)
             return
@@ -616,7 +705,7 @@ class Video(Gtk.Application):
         self.show_page(self.page if self.sub is not None else "home")
 
     def update_back(self):
-        enabled = self.sub is not None or self.page != "home"
+        enabled = self.sub is not None or self.page != "home" or self.searching
         self.back_action.set_enabled(enabled)
         self.back_btn.set_visible(enabled)
 
@@ -642,9 +731,31 @@ class Video(Gtk.Application):
                 and all(self.sub.get(k) is v or self.sub.get(k) == v for k, v in match.items()))
 
     # --- cards ------------------------------------------------------------
+    def columns(self):
+        """Three cards a row; two when the tablet stands upright, where three
+        no longer fit its width."""
+        return 2 if self.portrait else 3
+
+    def _resized(self, win, alloc):
+        portrait = alloc.height > alloc.width
+        if portrait == self.portrait:
+            return
+        self.portrait = portrait
+        cols = self.columns()
+
+        def walk(widget):
+            if isinstance(widget, Gtk.FlowBox):
+                widget.set_min_children_per_line(cols)
+                widget.set_max_children_per_line(cols)
+            elif isinstance(widget, Gtk.Container):
+                for child in widget.get_children():
+                    walk(child)
+        walk(self.body)
+
     def grid(self, videos, focus_video=None):
+        cols = self.columns()
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                           max_children_per_line=3, min_children_per_line=3,
+                           max_children_per_line=cols, min_children_per_line=cols,
                            row_spacing=16, column_spacing=16)
         flow.set_valign(Gtk.Align.START)
         sub = self.sub
@@ -728,7 +839,19 @@ class Video(Gtk.Application):
         image = Gtk.Image()
         image.set_size_request(THUMB_W, THUMB_H)
         picture = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        picture.pack_start(image, False, False, 0)
+        # ☆ and ⋮ sit on the picture's corner: a strip of its own under every
+        # card was a row of noise for each three cards.
+        over = Gtk.Overlay(halign=Gtk.Align.CENTER)  # the corner of the picture, not of the card
+        over.add(image)
+        corner = Gtk.Box(spacing=8, halign=Gtk.Align.END, valign=Gtk.Align.START, margin=8)
+        corner.pack_start(self.bookmark_button("video", video, "pic"), False, False, 0)
+        more = Gtk.Button(label="⋮")
+        more.get_style_context().add_class("pic")
+        more.set_tooltip_text("Действия")
+        more.connect("clicked", lambda b: self.card_menu(video, b))
+        corner.pack_start(more, False, False, 0)
+        over.add_overlay(corner)
+        picture.pack_start(over, False, False, 0)
         seen = self.library.progress(video)
         if seen:
             # How much of it was watched, along the bottom of the picture.
@@ -754,11 +877,15 @@ class Video(Gtk.Application):
         ev.add(box)
         self.thumbs.get(video["thumb"], image)
 
-        # A tap plays; a long press follows or unfollows the channel.
+        # A tap plays; a long press opens the same menu as ⋮.
         tap = Gtk.GestureMultiPress(widget=ev)
         hold = Gtk.GestureLongPress(widget=ev)
         hold.set_property("delay-factor", 1.2)
         ev._gestures = (tap, hold)  # keep them alive with the widget
+        # ...and let them go while it is still there: a gesture freed with
+        # the widget's last handlers disconnected from a finalized widget
+        # (GObject criticals on every page change).
+        ev.connect("destroy", lambda w: setattr(w, "_gestures", None))
         state = {"held": False}
 
         def pressed(*_a):
@@ -772,12 +899,11 @@ class Video(Gtk.Application):
         tap.connect("end", lambda *_a: ev.unset_state_flags(Gtk.StateFlags.ACTIVE))
         hold.connect("pressed", lambda *_a: (state.update(held=True),
                                              ev.unset_state_flags(Gtk.StateFlags.ACTIVE),
-                                             self.follow_menu(video)))
+                                             GLib.idle_add(lambda: self.card_menu(video, ev) and False)))
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         outer._video_key = (video["source"], video["id"])
         outer._entry_id = video.get("entry_id")
         outer.pack_start(ev, True, True, 0)
-        outer.pack_start(self.bookmark_button("video", video), False, False, 0)
         if self.on_sub("playlist") and self.sub["order"] == "lesson":
             task = Gtk.CheckButton(label="Выполнено")
             task.set_active(bool(video.get("task_done")))
@@ -805,13 +931,13 @@ class Video(Gtk.Application):
         self.page = key
         left, self.sub = self.sub, None
         self.left(left)
+        self.searching = key == "bookmarks" and bool(self.bookmark_query)
         self.update_back()
-        self.header.set_title("Видео")
+        self.show_top("search" if self.searching else "tabs")
         self.mark_tab(key)
         self.say("")
         self.entry.set_placeholder_text("Поиск в закладках" if key == "bookmarks" else "Найти видео")
-        if key == "bookmarks":
-            self.entry.set_text(self.bookmark_query)
+        self.entry.set_text(self.bookmark_query if key == "bookmarks" else "")
         self.update_scope()
         if key == "home":
             self.show_home()
@@ -840,9 +966,9 @@ class Video(Gtk.Application):
         more.connect("clicked", lambda *_a: self.show_page("feed"))
         self.section(box, "Новое в подписках", more if self.feed_shown() else None)
         if not self.library.channels():
-            box.pack_start(label("Найдите видео и подержите палец на нём, чтобы "
-                                 "подписаться на канал, или добавьте канал на "
-                                 "странице «Каналы».", "hint", wrap=True), False, False, 0)
+            box.pack_start(label("Чтобы подписаться на канал, нажмите ⋮ на его видео "
+                                 "или найдите канал на странице «Каналы».", "hint", wrap=True),
+                           False, False, 0)
         elif self.feed_shown():
             box.pack_start(self.grid(self.feed_shown()[:HOME_NEW]), False, False, 0)
         else:
@@ -861,7 +987,7 @@ class Video(Gtk.Application):
                                False, False, 0)
         self.set_content(box)
 
-    # Подписки -----------------------------------------------------------
+    # Новое --------------------------------------------------------------
     def feed_channels(self):
         return self.core.feed_channels()
 
@@ -872,8 +998,8 @@ class Video(Gtk.Application):
         if not self.library.channels():
             self.set_content(Gtk.Box())
             self.say("Здесь будут новые видео каналов, на которые вы подписаны. "
-                     "Найдите видео и подержите палец на нём, чтобы подписаться "
-                     "на канал, или добавьте канал на странице «Каналы».")
+                     "Чтобы подписаться на канал, нажмите ⋮ на его видео "
+                     "или найдите канал на странице «Каналы».")
             return
         videos = self.feed_shown()
         if not videos:
@@ -894,8 +1020,7 @@ class Video(Gtk.Application):
         for chan in self.library.channels():
             drop = Gtk.Button(label="✕")
             drop.get_style_context().add_class("drop")
-            drop.connect("clicked",
-                         lambda _b, c=chan: self.core.command("unfollow", {"entity": c}))
+            drop.connect("clicked", lambda _b, c=chan: self.unfollow(c))
             box.pack_start(self.channel_row(chan, drop), False, False, 0)
         if not self.library.channels():
             self.say("Подписок пока нет. Найдите канал по названию или "
@@ -1030,7 +1155,7 @@ class Video(Gtk.Application):
         sorting.set_tooltip_text("По номеру урока: номер по возрастанию, внутри одного номера — "
                                  "обратный порядок сервиса.")
         for oid, title in playlist_view.ORDERS:
-            sorting.append(oid, "Порядок сервиса" if oid == "vk" and playlist["source"] != "vk" else title)
+            sorting.append(oid, title)
         sorting.set_active_id(order)
         sub = self.sub
 
@@ -1041,32 +1166,28 @@ class Video(Gtk.Application):
                 self.redraw_after(combo, lambda: self.show_playlist(playlist, chan))
 
         sorting.connect("changed", changed)
-        sorting.set_halign(Gtk.Align.START)
+        # One row over the cards: the order, «Продолжить» and ⋮ for the rest.
+        # The resets and the editor are rare, so they wait in the menu.
         tools = Gtk.Box(spacing=12)
-        tools.pack_start(sorting, True, True, 0)
-        tools.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"])),
-                         False, False, 0)
-        box.pack_start(tools, False, False, 0)
-        edit = Gtk.Button(label="Изменить порядок")
-        edit.get_style_context().add_class("more")
-        edit.connect("clicked", lambda _b: self.show_playlist_editor(playlist, chan,
-                     "lesson" if order == "lesson" else "custom", return_order=order))
-        box.pack_start(edit, False, False, 0)
-        if order == "lesson":
-            box.pack_start(label("Выполнено %d из %d" % (result["tasks"]["done"], result["tasks"]["total"]),
-                                 "csub"), False, False, 0)
-        resets = Gtk.Box(spacing=12)
-        for title, action, shown in (("Сбросить выполнение", "reset_tasks", order == "lesson" and result["has_tasks"]),
-                                     ("Сбросить ручной порядок", "reset_order", result["has_manual"])):
-            if shown:
-                btn = Gtk.Button(label=title)
-                btn.get_style_context().add_class("more")
-                btn.connect("clicked", lambda _b, a=action: self.playlist_resume_action(sub, a))
-                resets.pack_start(btn, True, True, 0)
-        box.pack_start(resets, False, False, 0)
-        resume = self.playlist_resume_block(self.sub)
+        tools.pack_start(sorting, False, False, 0)
+        resume, note = self.playlist_resume(self.sub)
         if resume:
-            box.pack_start(resume, False, False, 0)
+            tools.pack_start(resume, True, True, 0)
+        else:
+            tools.pack_start(Gtk.Box(), True, True, 0)
+        more = Gtk.Button(label="⋮")
+        more.get_style_context().add_class("more")
+        more.set_tooltip_text("Ещё")
+        more.connect("clicked", lambda b: self.menu(b, self.playlist_actions(sub)))
+        tools.pack_start(more, False, False, 0)
+        box.pack_start(tools, False, False, 0)
+        bits = []
+        if order == "lesson":
+            bits.append("Выполнено %d из %d" % (result["tasks"]["done"], result["tasks"]["total"]))
+        if note:
+            bits.append(note)
+        if bits:
+            box.pack_start(label(" · ".join(bits), "hint", wrap=True), False, False, 0)
         if page is None:
             self.say("Не удалось загрузить плейлист: нет связи?" if failed else
                      ("Загружаю весь плейлист…" if order != "vk" else "Загружаю…"))
@@ -1217,63 +1338,77 @@ class Video(Gtk.Application):
         if self.on_sub("channel", key=key):
             self.show_channel(self.sub["chan"], again=True)
 
-    def playlist_resume_block(self, sub):
+    def playlist_resume(self, sub):
+        """The «Продолжить» button (None without a video to go on from) and
+        a note on where it goes on."""
         result = sub["result"]
         saved = result["resume"]
-        has_saved = bool(saved)
         if not saved and sub["order"] == "lesson" and result["continuation"] and result["continuation"]["video"]:
             saved = {"video": result["continuation"]["video"], "pos": None, "duration": None, "complete": False}
         if not saved:
-            return None
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.get_style_context().add_class("chan")
-        box.pack_start(label("Продолжить плейлист", "cname"), False, False, 0)
-        video = saved["video"]
-        title = label(video["title"], "ttl", wrap=True)
-        title.set_lines(2)
-        title.set_ellipsize(3)
-        box.pack_start(title, False, False, 0)
-        order_title = dict(playlist_view.ORDERS)[sub["order"]]
-        if sub["order"] == "vk" and sub["playlist"]["source"] != "vk":
-            order_title = "Порядок сервиса"
-        bits = [nice_duration(saved["pos"]), nice_duration(saved["duration"]), order_title]
-        box.pack_start(label(" · ".join(b for b in bits if b), "csub"), False, False, 0)
-        progress = self.library.progress(video)
-        if progress:
-            box.pack_start(Gtk.ProgressBar(fraction=progress), False, False, 0)
+            return None, ""
         status = result["continuation"]
-        note = {"missing": "Последнего видео нет среди доступных. Предлагаю первое доступное.",
-                "tasks_done": "Все задания выполнены.",
-                "task_next": "Следующее невыполненное задание: %s" % (status["video"]["title"] if status and status["video"] else ""),
-                "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео.",
-                "next": "Последнее видео досмотрено. Далее: %s" % (status["video"]["title"]
-                                                                            if status and status["video"] else "")}
-        if status and status["kind"] in note:
-            box.pack_start(label(note[status["kind"]], "csub", wrap=True), False, False, 0)
-        elif saved["complete"] and sub["order"] != "lesson":
-            box.pack_start(label("Последнее видео досмотрено. Продолжим со следующего в этом порядке.",
-                                 "csub", wrap=True), False, False, 0)
-        row = Gtk.Box(spacing=12)
+        notes = {"missing": "Последнего видео нет среди доступных, начнём с первого доступного.",
+                 "tasks_done": "Все задания выполнены.",
+                 "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео."}
+        note = notes.get(status["kind"], "") if status else ""
+        if not note and saved["complete"] and sub["order"] != "lesson":
+            note = "Последнее видео досмотрено, продолжим со следующего."
         caption = ("Смотреть сначала" if status and status["kind"] == "tasks_done" else
                    "Начать сначала" if status and status["kind"] == "finished" else
                    "Первое доступное видео" if status and status["kind"] == "missing" else "Продолжить")
-        start = Gtk.Button(label=caption, sensitive=not status or status["kind"] != "empty")
-        start.get_style_context().add_class("more")
-        start.connect("clicked", lambda _b: self.playlist_resume_action(sub,
-                      "first" if status and status["kind"] == "tasks_done" else "play"))
-        row.pack_start(start, True, True, 0)
-        locate = Gtk.Button(label="Показать в списке")
-        locate.get_style_context().add_class("more")
-        locate.connect("clicked", lambda _b: self.playlist_resume_action(sub, "locate"))
-        if has_saved:
-            row.pack_start(locate, True, True, 0)
-        reset = Gtk.Button(label="Сбросить прогресс")
-        reset.get_style_context().add_class("more")
-        reset.connect("clicked", lambda _b: self.playlist_resume_action(sub, "reset"))
-        if has_saved:
-            row.pack_start(reset, True, True, 0)
-        box.pack_start(row, False, False, 0)
-        return box
+        video = (status["video"] if status and status["kind"] in ("next", "task_next") and status["video"]
+                 else saved["video"])
+        bits = ["▶ " + caption, video["title"]]
+        if video is saved["video"] and saved["pos"]:
+            bits.append(nice_duration(saved["pos"]))
+        btn = Gtk.Button(sensitive=not status or status["kind"] != "empty")
+        text = Gtk.Label(label=" · ".join(bits), xalign=0)
+        text.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        btn.add(text)
+        btn.get_style_context().add_class("find")
+        btn._caption = caption
+        btn.connect("clicked", lambda _b: self.playlist_resume_action(sub,
+                    "first" if status and status["kind"] == "tasks_done" else "play"))
+        return btn, note
+
+    def playlist_actions(self, sub):
+        """What ⋮ on a playlist offers, as (title, fn)."""
+        result = sub["result"]
+        playlist, chan = sub["playlist"], sub["chan"]
+        actions = [("Изменить порядок", lambda: self.show_playlist_editor(
+            playlist, chan, "lesson" if sub["order"] == "lesson" else "custom", return_order=sub["order"]))]
+        if result["resume"]:
+            actions.append(("Показать в списке", lambda: self.playlist_resume_action(sub, "locate")))
+        obj = dict(playlist, owner_title=chan["title"])
+        saved = self.library.bookmarks.find("playlist", obj)
+        if saved:
+            actions.append(("Убрать из закладок", lambda: self.remove_bookmark(saved)))
+        else:
+            actions.append(("В закладки", lambda: (self.core.command("bookmark_add", {"kind": "playlist", "entity": obj}),
+                                                   self.bookmark_sync.refresh())))
+        if result["resume"]:
+            actions.append(("Сбросить прогресс", lambda: self.playlist_resume_action(sub, "reset")))
+        if sub["order"] == "lesson" and result["has_tasks"]:
+            actions.append(("Сбросить выполнение", lambda: self.playlist_resume_action(sub, "reset_tasks")))
+        if result["has_manual"]:
+            actions.append(("Сбросить ручной порядок", lambda: self.playlist_resume_action(sub, "reset_order")))
+        return actions
+
+    def menu(self, anchor, actions):
+        """A popover of buttons under anchor; each closes it and acts."""
+        pop = Gtk.Popover.new(anchor)
+        pop.connect("closed", lambda p: p.destroy())
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        for title, fn in actions:
+            btn = Gtk.Button(label=title)
+            btn.get_style_context().add_class("more")
+            btn.connect("clicked", lambda _b, f=fn: (pop.popdown(), f()))
+            box.pack_start(btn, False, False, 0)
+        pop.add(box)
+        pop.show_all()
+        pop.popup()
+        return pop
 
     def playlist_resume_action(self, sub, action):
         if self.sub is not sub:
@@ -1319,14 +1454,15 @@ class Video(Gtk.Application):
             self.say(str(exc))
 
     # --- bookmarks -------------------------------------------------------
-    def bookmark_button(self, kind, obj):
+    def bookmark_button(self, kind, obj, style="more"):
         btn = Gtk.Button()
-        btn.get_style_context().add_class("more")
+        btn.get_style_context().add_class(style)
         btn.set_valign(Gtk.Align.CENTER)
 
         def update():
             saved = self.library.bookmarks.find(kind, obj)
             btn.set_label("★" if saved else "☆")
+            (btn.get_style_context().add_class if saved else btn.get_style_context().remove_class)("saved")
             btn.set_tooltip_text("Действия с закладкой" if saved else "В закладки")
 
         def clicked(_btn):
@@ -1338,6 +1474,7 @@ class Video(Gtk.Application):
                 update()
                 self.bookmark_sync.refresh()
         update()
+        btn._refresh = update
         btn.connect("clicked", clicked)
         return btn
 
@@ -1354,16 +1491,8 @@ class Video(Gtk.Application):
             box.pack_start(btn, False, False, 0)
 
         def remove(local_only=False):
-            if saved["links"] and not dialogs.ask(
-                    self.win,
-                    "Закладка будет удалена из связанных аккаунтов сервиса" +
-                    (", но останется на устройстве." if local_only else " и из приложения."),
-                    "Оставить только на устройстве" if local_only else "Удалить закладку"):
-                return
-            self.core.command("bookmark_remove", {"key": ident, "local_only": local_only})
-            self.bookmark_sync.refresh()
-            if button.get_parent():
-                button.set_label("★" if local_only else "☆")
+            if self.remove_bookmark(saved, local_only) and button.get_parent():
+                getattr(button, "_refresh", lambda: button.set_label("★" if local_only else "☆"))()
 
         status = self.bookmark_status(saved)[1]
         box.pack_start(label(status, "hint", wrap=True), False, False, 0)
@@ -1384,6 +1513,28 @@ class Video(Gtk.Application):
         pop.show_all()
         pop.popup()
         return pop
+
+    def remove_bookmark(self, saved, local_only=False):
+        """Whether it was removed. One linked to an account always asks
+        first; others ask unless the person turned questions off, and then
+        a note offers it back."""
+        title = saved["object"].get("title") or "закладка"
+        if saved["links"]:
+            if not dialogs.ask(
+                    self.win,
+                    "Закладка будет удалена из связанных аккаунтов сервиса" +
+                    (", но останется на устройстве." if local_only else " и из приложения."),
+                    "Оставить только на устройстве" if local_only else "Удалить закладку"):
+                return False
+        elif self.library.confirm and not dialogs.ask(self.win, "«%s»" % title, "Удалить закладку"):
+            return False
+        self.core.command("bookmark_remove", {"key": saved["key"], "local_only": local_only})
+        self.bookmark_sync.refresh()
+        if not saved["links"] and not self.library.confirm:
+            self.notice("Закладка «%s» удалена" % title, "Вернуть", lambda: (
+                self.core.command("bookmark_add", {"kind": saved["kind"], "entity": saved["object"]}),
+                self.redraw_cards()))
+        return True
 
     def bookmark_status(self, saved):
         links = saved["links"]
@@ -1630,10 +1781,12 @@ class Video(Gtk.Application):
         query = (query or self.entry.get_text()).strip()
         if self.on_page("bookmarks"):
             self.bookmark_query = query
+            self.win.set_focus(None)
             self.show_bookmarks()
             return
         if not query:
             return
+        self.entry.set_text(query)
         self.entry.select_region(0, 0)
         self.win.set_focus(None)  # the keyboard goes away
         self.mark_tab(None)
@@ -1702,8 +1855,7 @@ class Video(Gtk.Application):
             btn = Gtk.Button(label="Отписаться")
             btn.get_style_context().add_class("drop")
             btn.get_style_context().add_class("wide")
-            btn.connect("clicked", lambda _b: (self.core.command("unfollow", {"entity": chan}),
-                                               self.redraw_sub(sub)))
+            btn.connect("clicked", lambda _b: (self.unfollow(chan), self.redraw_sub(sub)))
         else:
             btn = Gtk.Button(label="Подписаться")
             btn.get_style_context().add_class("add")
@@ -1724,21 +1876,47 @@ class Video(Gtk.Application):
                 sign.refresh()  # a token revoked since
         self.say("")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        self.section(box, "Источники")
+        self.section(box, "Сервисы")
         for src in self.ordered():
             box.pack_start(self.source_settings(src), False, False, 0)
-        box.pack_start(label("Поиск идёт во всех включённых источниках, первыми — "
-                             "результаты YouTube. Кнопка слева от поля поиска "
-                             "оставляет один источник.", "hint", wrap=True), False, False, 0)
+        box.pack_start(label("Поиск идёт во всех включённых сервисах, первыми — "
+                             "результаты YouTube. Кнопка рядом с полем поиска "
+                             "оставляет один сервис.", "hint", wrap=True), False, False, 0)
         self.section(box, "Видео")
         box.pack_start(self.shorts_setting(), False, False, 0)
+        box.pack_start(self.confirm_setting(), False, False, 0)
         if self.web:
-            self.section(box, "Доступ из локальной сети")
-            box.pack_start(self.web_settings(), False, False, 0)
+            # Made for a PC that serves a tablet's browser: folded away from
+            # whoever just watches.
+            dev = Gtk.Expander(label="Для разработчика")
+            dev.get_style_context().add_class("fold")
+            dev.set_expanded(self.web_open)
+            dev.connect("notify::expanded", lambda e, _p: setattr(self, "web_open", e.get_expanded()))
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            self.section(inner, "Доступ из локальной сети")
+            inner.pack_start(self.web_settings(), False, False, 0)
+            dev.add(inner)
+            box.pack_start(dev, False, False, 0)
         if again:
             keep_scroll(self.scroll, lambda: self.set_content(box))
         else:
             self.set_content(box)
+
+    def confirm_setting(self):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.get_style_context().add_class("chan")
+        top = Gtk.Box(spacing=12)
+        top.pack_start(label("Спрашивать перед удалением", "cname"), True, True, 0)
+        switch = Gtk.Switch(active=self.library.confirm)
+        switch.set_valign(Gtk.Align.CENTER)
+        switch.connect("notify::active", lambda sw, _p: self.core.command("confirm", {"on": sw.get_active()}))
+        top.pack_start(switch, False, False, 0)
+        card.pack_start(top, False, False, 0)
+        card.pack_start(label("Отписка от канала и удаление закладки. Если выключено, "
+                              "внизу на несколько секунд появится кнопка «Вернуть». "
+                              "Сброс прогресса и выход из аккаунта спрашивают всегда.",
+                              "cdesc", wrap=True), False, False, 0)
+        return card
 
     def shorts_setting(self):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -1920,7 +2098,24 @@ class Video(Gtk.Application):
             button("Открыть связку ключей", "add", sign.begin)
         else:
             if src.login == "cookies":
-                card.pack_start(label(src.login_hint, "cdesc", wrap=True), False, False, 0)
+                # Folded: a file path and a browser extension frighten more
+                # than they help someone who only wants to watch.
+                # The page is redrawn as the sign-in state changes: the
+                # unfolded hint is remembered, not the widget.
+                hint = label(src.login_hint, "cdesc", wrap=True)
+                hint.set_no_show_all(True)
+                hint.set_visible(src.id in self.hints_open)
+                how = Gtk.Button(label=("▾ " if src.id in self.hints_open else "▸ ") + "Как войти в %s?" % src.label)
+                how.get_style_context().add_class("more")
+                how.set_halign(Gtk.Align.START)
+
+                def fold(btn, sid=src.id, hint=hint, name=src.label):
+                    self.hints_open ^= {sid}
+                    hint.set_visible(sid in self.hints_open)
+                    btn.set_label(("▾ " if sid in self.hints_open else "▸ ") + "Как войти в %s?" % name)
+                how.connect("clicked", fold)
+                card.pack_start(how, False, False, 0)
+                card.pack_start(hint, False, False, 0)
             note = {"getting": "Получаю код…", "checking": "Проверяю…",
                     "submitting": "Проверяю код…", "confirming": "Завершаю вход…"}.get(
                 kind, state.get("note"))
@@ -1985,24 +2180,82 @@ class Video(Gtk.Application):
         elif what == "settings":
             self.update_scope()
 
-    def follow_menu(self, video):
-        if not video.get("channel_id"):
+    def card_menu(self, video, anchor):
+        """⋮ on a card, or a long press on it: the channel and the bookmark."""
+        pop = Gtk.Popover.new(anchor)
+        pop.connect("closed", lambda p: p.destroy())
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+
+        def action(title, fn):
+            btn = Gtk.Button(label=title)
+            btn.get_style_context().add_class("more")
+            btn.connect("clicked", lambda _b: (pop.popdown(), fn()))
+            box.pack_start(btn, False, False, 0)
+
+        if video.get("channel_id"):
+            chan = {"source": video["source"], "id": video["channel_id"],
+                    "title": video.get("channel") or "Канал"}
+            action("Открыть канал «%s»" % chan["title"], lambda: self.show_channel(chan))
+            if self.library.is_followed(chan["source"], chan["id"]):
+                action("Отписаться от канала", lambda: self.unfollow(chan))
+            else:
+                action("Подписаться на канал", lambda: (self.core.command("follow", {"entity": chan}),
+                                                        self.say("Вы подписались на «%s»." % chan["title"])))
+        saved = self.library.bookmarks.find("video", video)
+        if saved:
+            action("Убрать из закладок", lambda: self.remove_bookmark(saved) and self.redraw_cards())
+        else:
+            action("В закладки", lambda: (self.core.command("bookmark_add", {"kind": "video", "entity": video}),
+                                          self.bookmark_sync.refresh(), self.redraw_cards()))
+        pop.add(box)
+        pop.show_all()
+        pop.popup()
+        return pop
+
+    def redraw_cards(self):
+        """Stars on the cards follow a bookmark changed from a menu."""
+        if self.sub is None:
+            self.redraw(self.page)
+        elif self.sub["kind"] == "playlist":
+            keep_scroll(self.scroll, lambda: self.show_playlist(
+                self.sub["playlist"], self.sub["chan"], self.sub["key"][3], again=True,
+                previous=self.sub["previous"]))
+
+    def unfollow(self, chan):
+        """Asks first unless the person turned questions off; then a note
+        offers the channel back, at its place in the list, for a few seconds."""
+        chans = self.library.channels()
+        at = next((i for i, c in enumerate(chans)
+                   if c["source"] == chan["source"] and c["id"] == chan["id"]), None)
+        kept = chans[at] if at is not None else chan
+        title = kept.get("title") or "канал"
+        if self.library.confirm:
+            if dialogs.ask(self.win, "«%s»" % title, "Отписаться от канала"):
+                self.core.command("unfollow", {"entity": kept})
             return
-        name = video.get("channel") or "канал"
+        self.core.command("unfollow", {"entity": kept})
+        self.notice("Вы отписались от «%s»" % title, "Вернуть",
+                    lambda: self.core.command("follow", {"entity": kept, "at": at}))
 
-        source, cid = video["source"], video["channel_id"]
+    def notice(self, text, button, fn, seconds=5):
+        self.toast_text.set_text(text)
+        self.toast_btn.set_label(button)
+        self.toast_fn = fn
+        self.toast.show()
+        self.toast_serial += 1
+        serial = self.toast_serial
 
-        def question():
-            # After the long press is over: a dialog's own loop inside a
-            # gesture's handler would leave the gesture holding the touch.
-            if self.library.is_followed(source, cid):
-                if dialogs.ask(self.win, "«%s»" % name, "Отписаться от канала"):
-                    self.core.command("unfollow", {"entity": {"source": source, "id": cid}})
-            elif dialogs.ask(self.win, "«%s»" % name, "Подписаться на канал"):
-                self.core.command("follow", {"entity": {"source": source, "id": cid, "title": name}})
+        def hide():
+            if self.toast_serial == serial:
+                self.toast.hide()
             return False
+        GLib.timeout_add_seconds(seconds, hide)
 
-        GLib.idle_add(question)
+    def toast_clicked(self, *_a):
+        self.toast.hide()
+        fn, self.toast_fn = self.toast_fn, None
+        if fn:
+            fn()
 
     # --- playing ----------------------------------------------------------
     def play(self, video, start_over=False, start_at=None):

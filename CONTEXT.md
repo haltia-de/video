@@ -54,7 +54,7 @@ _Avoid_: favourite, subscription
 
 **Followed channel**:
 A Channel the person follows in this program. Following a Channel on an Account does not follow it here until the person brings the Account's Channels over.
-_Avoid_: subscription (except in UI copy, «Подписки»), favourite
+_Avoid_: subscription (except in UI copy, «Новое в подписках»), favourite
 
 **History**:
 The Videos the person played, most recent first, each once.
@@ -70,7 +70,7 @@ _Avoid_: filter, search source
 
 ### What the person sees
 
-**Feed** («Подписки»):
+**Feed** («Новое»):
 The newest Videos of all Followed channels together, newest first.
 _Avoid_: subscriptions page, timeline
 

@@ -566,7 +566,7 @@ class Application:
         elif name == "follow":
             obj = p["entity"]
             self._source(obj)
-            self.library.follow(obj)
+            self.library.follow(obj, p.get("at"))
         elif name == "unfollow":
             obj = p["entity"]
             self._source(obj)
@@ -594,6 +594,8 @@ class Application:
             self.bookmark_sync.refresh()
         elif name == "shorts":
             self.library.set_shorts(bool(p["on"]))
+        elif name == "confirm":
+            self.library.set_confirm(bool(p["on"]))
         elif name == "scope":
             if p["source"] not in self.sources and p["source"] != "all":
                 raise ValueError("Неизвестный источник.")
