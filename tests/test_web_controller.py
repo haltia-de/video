@@ -106,3 +106,19 @@ class ControllerTest(unittest.IsolatedAsyncioTestCase):
         self.server.state = "on"
         with self.assertRaises(ValueError):
             self.server.configure_proxy(False, "", "")
+
+    async def test_reconfigure_saves_and_restarts_a_running_server(self):
+        self.server.reconfigure(8800, True, "https://video.example/", "127.0.0.1")
+        again = Server(self.core, self.tmp.name, lambda: None)
+        self.assertEqual(again.pairing.data["port"], 8800)
+        self.assertTrue(again.snapshot()["proxy"]["enabled"])
+        self.assertEqual(self.server.state, "off")  # off stays off
+        with self.assertRaises(ValueError):
+            self.server.reconfigure(80, False, "", "")
+        self.server.state = "on"
+        self.server.loop = Mock()
+        self.server.application = Mock()
+        self.server._request_stop = Mock()
+        self.server.reconfigure(8801, False, "", "")
+        self.assertEqual(self.server.state, "stopping")
+        self.assertTrue(self.server.restart_requested)

@@ -96,9 +96,12 @@ QR_SIZE = 320
 # already on screen (some fifty cards take a second to make here).
 CARDS_AT_ONCE = 9
 CARDS_PER_IDLE = 6
-# Decoded pictures kept in memory: some eighty cards (the tablet has 1 GB;
-# the rest are decoded again from the disk cache, off the GTK thread).
-PIXBUFS_BYTES = 16 * 1024 * 1024
+# Decoded pictures kept in memory: some eighty cards of 352 px on the
+# B8000 (1 GB), some fifty of 600 px elsewhere; the rest are decoded again
+# from the disk cache, off the GTK thread.
+PIXBUFS_BYTES = (32 if sources.LARGE_PICTURES else 16) * 1024 * 1024
+# A card's picture fills the card's width, up to this (sources.LARGE_PICTURES).
+CARD_PICTURE_MAX = 720
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
@@ -175,6 +178,7 @@ switch { min-width: 96px; min-height: 48px; }
 expander.fold title { min-height: 52px; }
 expander.fold title label { font-size: 24px; color: #5e5c64; }
 .picked { background-color: #c4dcf7; }
+image.nocover { background-color: #deddda; color: #77767b; }
 button.step {
   background-image: none;
   background-color: #f2f2f0;
@@ -548,6 +552,8 @@ class Video(Gtk.Application):
         self.win = Gtk.ApplicationWindow(application=self, title="Видео")
         self.win.set_default_size(1160, 800)
         self.portrait = False
+        self.drawn_size = None  # the card pictures' size the page was drawn at
+        self.resize_pending = None
         self.win.connect("size-allocate", self._resized)
         # One row on top: the tabs (or a page's title, or the search) between
         # «←» and the search and gear buttons. Three rows of header, search
@@ -765,20 +771,31 @@ class Video(Gtk.Application):
         return 2 if self.portrait else 3
 
     def _resized(self, win, alloc):
-        portrait = alloc.height > alloc.width
-        if portrait == self.portrait:
+        """Upright, two cards a row; and the pictures follow the width: the
+        page is drawn again once the size has settled."""
+        self.portrait = alloc.height > alloc.width
+        size = (self.portrait, self.card_size())
+        if size == self.drawn_size:
             return
-        self.portrait = portrait
-        cols = self.columns()
+        self.drawn_size = size
+        if self.resize_pending:
+            GLib.source_remove(self.resize_pending)
+        self.resize_pending = GLib.timeout_add(300, self._redraw_resized)
 
-        def walk(widget):
-            if isinstance(widget, Gtk.FlowBox):
-                widget.set_min_children_per_line(cols)
-                widget.set_max_children_per_line(cols)
-            elif isinstance(widget, Gtk.Container):
-                for child in widget.get_children():
-                    walk(child)
-        walk(self.body)
+    def _redraw_resized(self):
+        self.resize_pending = None
+        if self.sub is None:
+            self.redraw(self.page)
+        elif self.sub["kind"] in ("playlist", "channel", "search", "source_home", "my_playlists"):
+            sub = self.sub
+            keep_scroll(self.scroll, lambda: {
+                "playlist": lambda: self.show_playlist(sub["playlist"], sub["chan"], sub["key"][3],
+                                                       again=True, previous=sub["previous"]),
+                "channel": lambda: self.show_channel(sub["chan"], again=True),
+                "search": lambda: self.show_results(sub),
+                "source_home": lambda: self.show_source_home(self.sources[sub["source"]]),
+                "my_playlists": self.show_my_playlists}[sub["kind"]]())
+        return False
 
     def grid(self, videos, focus_video=None):
         cols = self.columns()
@@ -787,9 +804,10 @@ class Video(Gtk.Application):
                            row_spacing=16, column_spacing=16)
         flow.set_valign(Gtk.Align.START)
         sub = self.sub
+        size = self.card_size()
 
         def add(video):
-            card = self.card(video)
+            card = self.card(video, size)
             flow.add(card)
             if focus_video and playlist_view.same_entry(video, focus_video):
                 card.get_style_context().add_class("located")
@@ -860,12 +878,29 @@ class Video(Gtk.Application):
         state["handler"] = adjustment.connect("changed", queue)
         queue()
 
-    def card(self, video):
+    def card_size(self):
+        """A card's picture: the card's whole width, so the space beside a
+        fixed 352 px one is used (on the B8000 that one stays)."""
+        if not sources.LARGE_PICTURES:
+            return THUMB_W, THUMB_H
+        width = self.scroll.get_allocated_width()
+        if width < 400:  # not laid out yet: the window less its border
+            width = (self.win.get_allocated_width() if self.win.get_allocated_width() > 400
+                     else self.win.get_default_size()[0]) - 32
+        cols = self.columns()
+        # 24: the scroll bar; 16 between cards; each card some 20 px of its
+        # own (the flow box's child padding and borders): a picture of the
+        # card's full width pushed the third card past the window's edge.
+        w = (width - 24 - 16 * (cols - 1)) // cols - 24
+        w = max(THUMB_W, min(w, CARD_PICTURE_MAX))
+        return w, w * 9 // 16
+
+    def card(self, video, size=(THUMB_W, THUMB_H)):
         ev = Gtk.EventBox()
         ev.get_style_context().add_class("card")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         image = Gtk.Image()
-        image.set_size_request(THUMB_W, THUMB_H)
+        image.set_size_request(*size)
         picture = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         # ☆ and ⋮ sit on the picture's corner: a strip of its own under every
         # card was a row of noise for each three cards.
@@ -884,14 +919,14 @@ class Video(Gtk.Application):
         if seen:
             # How much of it was watched, along the bottom of the picture.
             strip = Gtk.ProgressBar(fraction=seen)
-            strip.set_size_request(THUMB_W, -1)
+            strip.set_size_request(size[0], -1)
             strip.set_halign(Gtk.Align.CENTER)
             picture.pack_start(strip, False, False, 0)
         box.pack_start(picture, False, False, 0)
         title = label(video["title"], "ttl", wrap=True)
         title.set_lines(2)
         title.set_ellipsize(3)  # Pango.EllipsizeMode.END
-        title.set_max_width_chars(28)
+        title.set_max_width_chars(28 if size[0] <= THUMB_W else 50)
         title.set_margin_start(12)
         title.set_margin_end(12)
         box.pack_start(title, False, False, 0)
@@ -903,7 +938,7 @@ class Video(Gtk.Application):
         sub.set_margin_end(12)
         box.pack_start(sub, False, False, 0)
         ev.add(box)
-        self.thumbs.get(video["thumb"], image)
+        self.thumbs.get(video["thumb"], image, size)
 
         # A tap plays; a long press opens the same menu as ⋮.
         tap = Gtk.GestureMultiPress(widget=ev)
@@ -1069,40 +1104,85 @@ class Video(Gtk.Application):
         self.set_content(self.playlist_tiles(cursors))
 
     def playlist_tiles(self, cursors):
-        """A playlist begun: its name, where it stopped, and «Продолжить»."""
-        cols = self.columns()
-        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                           max_children_per_line=cols, min_children_per_line=cols,
-                           row_spacing=16, column_spacing=16)
-        flow.set_valign(Gtk.Align.START)
+        """Playlists begun: each with where it stopped and «Продолжить»."""
+        tiles = []
         for cursor in cursors:
             playlist, video = cursor["playlist"], cursor["video"]
             chan = {"source": playlist["source"], "id": str(playlist.get("owner_id", "")),
                     "title": playlist.get("owner_title") or video.get("channel") or "",
                     "from_tab": True}
-            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            tile.get_style_context().add_class("chan")
-            name = Gtk.Button()
-            name.get_style_context().add_class("open")
-            text = label(playlist.get("title") or "Плейлист", "cname")
-            text.set_ellipsize(3)  # Pango.EllipsizeMode.END
-            name.add(text)
-            name.connect("clicked", lambda _b, p=playlist, c=chan: self.show_playlist(p, c))
-            tile.pack_start(name, False, False, 0)
+            tiles.append(self.playlist_card(playlist, chan, cursor))
+        return self.flow(tiles)
+
+    def flow(self, children):
+        cols = self.columns()
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                           max_children_per_line=cols, min_children_per_line=cols,
+                           row_spacing=16, column_spacing=16)
+        flow.set_valign(Gtk.Align.START)
+        for child in children:
+            flow.add(child)
+        return flow
+
+    def playlist_card(self, playlist, chan, cursor=None):
+        """A playlist as a card: the service's cover (or, begun, the video it
+        stopped at), its name and size; a tap opens it. Begun, it also tells
+        where it stopped and offers «Продолжить»."""
+        size = self.card_size()
+        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        tile.get_style_context().add_class("card")
+        open_btn = Gtk.Button()
+        open_btn.get_style_context().add_class("open")
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        over = Gtk.Overlay(halign=Gtk.Align.CENTER)
+        image = Gtk.Image()
+        image.set_size_request(*size)
+        over.add(image)
+        thumb = playlist.get("thumb") or (cursor and cursor["video"].get("thumb"))
+        if thumb:
+            self.thumbs.get(thumb, image, size)
+        else:
+            image.get_style_context().add_class("nocover")
+            image.set_from_icon_name("view-list-symbolic", Gtk.IconSize.DIALOG)
+        corner = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.START, margin=8)
+        corner.pack_start(self.bookmark_button("playlist", dict(playlist, owner_title=chan["title"]), "pic"),
+                          False, False, 0)
+        over.add_overlay(corner)
+        inner.pack_start(over, False, False, 0)
+        name = label(playlist.get("title") or "Плейлист", "ttl", wrap=True)
+        name.set_lines(2)
+        name.set_ellipsize(3)  # Pango.EllipsizeMode.END
+        name.set_margin_start(12)
+        name.set_margin_end(12)
+        inner.pack_start(name, False, False, 0)
+        bits = []
+        if playlist.get("count"):
+            bits.append("%d видео" % playlist["count"])
+        if cursor:
+            video = cursor["video"]
             pos = self.library.position(video) or {}
-            where = label(" · ".join(b for b in (video.get("title"), nice_duration(pos.get("pos"))) if b),
-                          "csub")
-            where.set_ellipsize(3)
-            tile.pack_start(where, False, False, 0)
-            seen = self.library.progress(video)
+            bits.append(" ".join(b for b in (video.get("title"), nice_duration(pos.get("pos"))) if b))
+        if bits:
+            sub = label(" · ".join(bits), "sub")
+            sub.set_ellipsize(3)
+            sub.set_margin_start(12)
+            sub.set_margin_end(12)
+            inner.pack_start(sub, False, False, 0)
+        open_btn.add(inner)
+        open_btn.connect("clicked", lambda _b: self.show_playlist(playlist, chan))
+        tile.pack_start(open_btn, False, False, 0)
+        if cursor:
+            seen = self.library.progress(cursor["video"])
             if seen:
                 tile.pack_start(Gtk.ProgressBar(fraction=seen), False, False, 0)
             go = Gtk.Button(label="▶ Продолжить")
             go.get_style_context().add_class("find")
-            go.connect("clicked", lambda _b, p=playlist, c=chan: self.continue_playlist(p, c))
+            go.set_margin_start(12)
+            go.set_margin_end(12)
+            go.set_margin_bottom(4)
+            go.connect("clicked", lambda _b: self.continue_playlist(playlist, chan))
             tile.pack_start(go, False, False, 0)
-            flow.add(tile)
-        return flow
+        return tile
 
     def continue_playlist(self, playlist, chan):
         """«Продолжить» from Главная: the playlist opens, and goes on as its
@@ -1257,17 +1337,8 @@ class Video(Gtk.Application):
             if tab == "playlists":
                 self.say("")
                 if playlists:
-                    for playlist in playlists:
-                        btn = Gtk.Button(label=playlist["title"])
-                        btn.get_style_context().add_class("more")
-                        btn.get_child().set_line_wrap(True)
-                        btn.get_child().set_xalign(0)
-                        btn.connect("clicked", lambda _b, p=playlist: self.show_playlist(p, chan))
-                        row = Gtk.Box(spacing=12)
-                        row.pack_start(btn, True, True, 0)
-                        saved = dict(playlist, owner_title=chan["title"])
-                        row.pack_start(self.bookmark_button("playlist", saved), False, False, 0)
-                        box.pack_start(row, False, False, 0)
+                    box.pack_start(self.flow([self.playlist_card(p, chan) for p in playlists]),
+                                   False, False, 0)
                 else:
                     box.pack_start(label("Не удалось загрузить плейлисты." if self.playlists.has_failed(key)
                                          else "Загружаю плейлисты…" if playlists is None
@@ -2177,17 +2248,25 @@ class Video(Gtk.Application):
         box.pack_start(self.shorts_setting(), False, False, 0)
         box.pack_start(self.confirm_setting(), False, False, 0)
         if self.web:
-            # Made for a PC that serves a tablet's browser: folded away from
-            # whoever just watches.
-            dev = Gtk.Expander(label="Для разработчика")
-            dev.get_style_context().add_class("fold")
-            dev.set_expanded(self.web_open)
-            dev.connect("notify::expanded", lambda e, _p: setattr(self, "web_open", e.get_expanded()))
-            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-            self.section(inner, "Доступ из локальной сети")
-            inner.pack_start(self.web_settings(), False, False, 0)
-            dev.add(inner)
-            box.pack_start(dev, False, False, 0)
+            # Made for a PC that serves a tablet's browser: a page of its
+            # own, away from whoever just watches.
+            self.section(box, "Для разработчика")
+            state = self.web.snapshot()
+            row = Gtk.Box(spacing=12)
+            row.get_style_context().add_class("chan")
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            text.pack_start(label("Доступ из браузера", "cname"), False, False, 0)
+            text.pack_start(label({"on": "Включён", "starting": "Запускается…", "stopping": "Выключается…",
+                                   "failed": "Ошибка запуска"}.get(state["state"], "Выключен") +
+                                  " · Видео в браузере планшета или телефона в этой сети", "csub", wrap=True),
+                            False, False, 0)
+            row.pack_start(text, True, True, 0)
+            go = Gtk.Button(label="Открыть ›")
+            go.get_style_context().add_class("more")
+            go.set_valign(Gtk.Align.CENTER)
+            go.connect("clicked", lambda _b: self.show_web())
+            row.pack_start(go, False, False, 0)
+            box.pack_start(row, False, False, 0)
         if again:
             keep_scroll(self.scroll, lambda: self.set_content(box))
         else:
@@ -2276,103 +2355,180 @@ class Video(Gtk.Application):
             self.web_redraw_pending = False
             if self.win and self.on_sub("settings"):
                 self.show_settings()
+            elif self.win and self.on_sub("web"):
+                keep_scroll(self.scroll, lambda: self.show_web(again=True))
             return False
         GLib.idle_add(redraw)
 
-    def web_settings(self):
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        card.get_style_context().add_class("chan")
+    def show_web(self, again=False):
+        """Доступ из браузера: the server, connecting a device, the devices
+        connected, and (folded) the port and a proxy, which a running
+        server takes on by restarting itself."""
+        if not again:
+            self.open_sub({"kind": "web"}, "Доступ из браузера")
+        self.say("")
         state = self.web.snapshot()
+        on = state["state"] == "on"
+        urls = sorted(state["urls"], key=lambda url: "127.0.0.1" in url)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        def card():
+            c = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            c.get_style_context().add_class("chan")
+            box.pack_start(c, False, False, 0)
+            return c
+
+        self.section(box, "Сервер")
+        c = card()
         row = Gtk.Box(spacing=12)
-        row.pack_start(label("Открыть на планшете", "cname"), True, True, 0)
+        row.pack_start(label("Доступ из браузера", "cname"), True, True, 0)
         switch = Gtk.Switch(active=state["enabled"])
         switch.set_valign(Gtk.Align.CENTER)
-        switch.connect("notify::active", lambda sw, _p: self.web.enable(sw.get_active()))
+        switch.connect("notify::active", lambda sw, _p: self.web_enable(sw.get_active()))
         row.pack_start(switch, False, False, 0)
-        card.pack_start(row, False, False, 0)
-        card.pack_start(label(state["note"] or "Включите доступ и откройте адрес в браузере планшета. "
-                              "Сервер работает, пока открыто приложение. Трафик в локальной сети не шифруется.",
-                              "csub", wrap=True), False, False, 0)
-        if state["state"] == "on":
-            for url in sorted(state["urls"], key=lambda url: "127.0.0.1" in url):
-                card.pack_start(Gtk.LinkButton(uri=url, label=url), False, False, 0)
-            get = Gtk.Button(label="Получить код подключения")
-            get.get_style_context().add_class("more")
-            get.connect("clicked", lambda _b: self.web.issue())
-            card.pack_start(get, False, False, 0)
+        c.pack_start(row, False, False, 0)
+        if on:
+            c.pack_start(label("Работает. Адрес для браузера:", "csub"), False, False, 0)
+            for url in urls:
+                address = label(url, "cname")
+                address.set_selectable(True)
+                c.pack_start(address, False, False, 0)
+        else:
+            c.pack_start(label(state["note"] if state["state"] in ("starting", "stopping", "failed") and state["note"]
+                               else "Выключен. Включите, чтобы смотреть Видео в браузере планшета или "
+                                    "телефона в этой же сети.", "csub", wrap=True), False, False, 0)
+        c.pack_start(label("Сервер работает, пока открыто приложение на этом компьютере. "
+                           "Трафик в локальной сети не шифруется.", "cdesc", wrap=True), False, False, 0)
+
+        if on:
+            self.section(box, "Подключить устройство")
+            c = card()
             pending = self.web.pairing.pending
             if pending and pending["until"] > time.time():
-                card.pack_start(label(pending["code"], "code"), False, False, 0)
-                urls = sorted(state["urls"], key=lambda url: "127.0.0.1" in url)
+                steps = Gtk.Box(spacing=24)
                 url = urls[0] + "#pair=" + pending["secret"]
                 if not self.web_qr or self.web_qr[0] != url:
                     self.web_qr = (url, qr_pixbuf(url))
                 if self.web_qr[1]:
-                    card.pack_start(Gtk.Image.new_from_pixbuf(self.web_qr[1]), False, False, 0)
-                card.pack_start(label("Код одноразовый и действует 5 минут.", "csub"), False, False, 0)
-        else:
+                    steps.pack_start(Gtk.Image.new_from_pixbuf(self.web_qr[1]), False, False, 0)
+                text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+                text.set_valign(Gtk.Align.CENTER)
+                text.pack_start(label("1. Наведите камеру планшета или телефона на QR-код.", "ttl", wrap=True),
+                                False, False, 0)
+                text.pack_start(label("2. Или откройте в его браузере %s и введите код:" % urls[0], "ttl", wrap=True),
+                                False, False, 0)
+                text.pack_start(label(pending["code"], "code"), False, False, 0)
+                text.pack_start(label("Код одноразовый и действует до %s." %
+                                      time.strftime("%H:%M", time.localtime(pending["until"])), "csub"),
+                                False, False, 0)
+                steps.pack_start(text, True, True, 0)
+                c.pack_start(steps, False, False, 0)
+                again_btn = Gtk.Button(label="Новый код")
+                again_btn.get_style_context().add_class("more")
+                again_btn.set_halign(Gtk.Align.START)
+                again_btn.connect("clicked", lambda _b: self.web.issue())
+                c.pack_start(again_btn, False, False, 0)
+            else:
+                c.pack_start(label("Покажет QR-код и код для браузера на планшете или телефоне.", "csub", wrap=True),
+                             False, False, 0)
+                get = Gtk.Button(label="Подключить браузер")
+                get.get_style_context().add_class("add")
+                get.set_halign(Gtk.Align.START)
+                get.connect("clicked", lambda _b: self.web.issue())
+                c.pack_start(get, False, False, 0)
+
+        devices = state["devices"]
+        self.section(box, "Подключённые устройства" + (" · %d" % len(devices) if devices else ""))
+        c = card()
+        if not devices:
+            c.pack_start(label("Пока нет. Подключённое устройство открывает Видео без кода, "
+                               "пока вы его не отключите.", "csub", wrap=True), False, False, 0)
+        for device in devices:
             row = Gtk.Box(spacing=12)
-            port = Gtk.SpinButton.new_with_range(1024, 65535, 1)
-            port.set_value(state["port"])
-            port.set_sensitive(state["state"] in ("off", "failed"))
-            row.pack_start(label("Порт", "csub"), False, False, 0)
-            row.pack_start(port, True, True, 0)
-            save = Gtk.Button(label="Сохранить порт")
-            save.get_style_context().add_class("more")
-            save.set_sensitive(state["state"] in ("off", "failed"))
-            save.connect("clicked", lambda _b: self.web.enable(False, port.get_value_as_int()))
-            row.pack_start(save, False, False, 0)
-            card.pack_start(row, False, False, 0)
-        card.pack_start(self.proxy_settings(state), False, False, 0)
-        for device in state["devices"]:
-            row = Gtk.Box(spacing=12)
-            row.pack_start(label(device["name"], "csub"), True, True, 0)
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            text.pack_start(label(device["name"], "ttl"), False, False, 0)
+            if device.get("created"):
+                text.pack_start(label("подключено %s" % time.strftime("%d.%m.%Y", time.localtime(device["created"])),
+                                      "csub"), False, False, 0)
+            row.pack_start(text, True, True, 0)
             revoke = Gtk.Button(label="Отключить")
-            revoke.get_style_context().add_class("more")
+            revoke.get_style_context().add_class("drop")
+            revoke.get_style_context().add_class("wide")
 
             def disconnect(_b, device=device):
                 if dialogs.ask(self.win, "«%s»" % device["name"], "Отключить устройство"):
                     self.web.revoke(device["id"])
             revoke.connect("clicked", disconnect)
             row.pack_start(revoke, False, False, 0)
-            card.pack_start(row, False, False, 0)
-        return card
+            c.pack_start(row, False, False, 0)
 
-    def proxy_settings(self, state):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        more = Gtk.Expander(label="Дополнительно: порт и публикация через прокси")
+        more.get_style_context().add_class("fold")
+        more.set_expanded(self.web_open)
+        more.connect("notify::expanded", lambda e, _p: setattr(self, "web_open", e.get_expanded()))
+        more.add(self.web_advanced(state))
+        box.pack_start(more, False, False, 0)
+        self.set_content(box)
+
+    def web_enable(self, on):
+        try:
+            self.web.enable(on)
+        except ValueError as exc:
+            self.say(str(exc))
+
+    def web_advanced(self, state):
+        c = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        c.get_style_context().add_class("chan")
+        c.set_margin_top(8)
         proxy = state["proxy"]
-        editable = state["state"] in ("off", "failed")
-        enabled = Gtk.CheckButton(label="Публикация через прокси (nginx)")
-        enabled.set_active(proxy["enabled"])
-        enabled.set_sensitive(editable)
-        box.pack_start(enabled, False, False, 0)
-        box.pack_start(label("Внешний адрес", "csub"), False, False, 0)
+        row = Gtk.Box(spacing=12)
+        row.pack_start(label("Порт", "ttl"), False, False, 0)
+        port = Gtk.Entry(text=str(state["port"]), input_purpose=Gtk.InputPurpose.DIGITS)
+        port.get_style_context().add_class("search")
+        port.set_width_chars(6)
+        row.pack_start(port, False, False, 0)
+        c.pack_start(row, False, False, 0)
+        row = Gtk.Box(spacing=12)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        text.pack_start(label("Публикация через прокси (nginx)", "ttl"), False, False, 0)
+        text.pack_start(label("Внешний адрес вместо адреса в локальной сети, с TLS на прокси. "
+                              "Подключение по коду остаётся обязательным.", "csub", wrap=True), False, False, 0)
+        row.pack_start(text, True, True, 0)
+        use = Gtk.Switch(active=proxy["enabled"])
+        use.set_valign(Gtk.Align.CENTER)
+        row.pack_start(use, False, False, 0)
+        c.pack_start(row, False, False, 0)
+        fields = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        fields.pack_start(label("Внешний адрес", "csub"), False, False, 0)
         url = Gtk.Entry(placeholder_text="https://video.example.org", text=proxy["url"])
-        url.set_sensitive(editable)
-        box.pack_start(url, False, False, 0)
-        box.pack_start(label("IP-адреса прокси через запятую", "csub"), False, False, 0)
-        peers = Gtk.Entry(text=", ".join(proxy["peers"]))
-        peers.set_sensitive(editable)
-        box.pack_start(peers, False, False, 0)
-        box.pack_start(label("На этом же ПК: 127.0.0.1, ::1. На другом — IP прокси, "
-                              "с которого он соединяется с Видео. Настройте в nginx передачу "
-                              "исходного Host. Для изменения выключите веб-доступ.", "csub", wrap=True),
-                       False, False, 0)
+        url.get_style_context().add_class("search")
+        fields.pack_start(url, False, False, 0)
+        fields.pack_start(label("IP-адреса прокси через запятую: на этом же ПК — 127.0.0.1, ::1; на другом — "
+                                "адрес, с которого прокси соединяется с Видео. В nginx передайте исходный Host.",
+                                "csub", wrap=True), False, False, 0)
+        peers = Gtk.Entry(placeholder_text="127.0.0.1, ::1", text=", ".join(proxy["peers"]))
+        peers.get_style_context().add_class("search")
+        fields.pack_start(peers, False, False, 0)
+        fields.set_no_show_all(True)
+        fields.set_visible(proxy["enabled"])
+        for w in fields.get_children():
+            w.show()
+        use.connect("notify::active", lambda sw, _p: fields.set_visible(sw.get_active()))
+        c.pack_start(fields, False, False, 0)
         status = label("", "csub", wrap=True)
-        save = Gtk.Button(label="Сохранить публикацию")
-        save.get_style_context().add_class("more")
-        save.set_sensitive(editable)
+        save = Gtk.Button(label="Сохранить" + (" и перезапустить" if state["state"] == "on" else ""))
+        save.get_style_context().add_class("add")
+        save.set_halign(Gtk.Align.START)
 
         def apply(_button):
             try:
-                self.web.configure_proxy(enabled.get_active(), url.get_text(), peers.get_text())
+                self.web.reconfigure(port.get_text().strip(), use.get_active(), url.get_text(), peers.get_text())
             except ValueError as exc:
                 status.set_text(str(exc))
-
         save.connect("clicked", apply)
-        box.pack_start(save, False, False, 0)
-        box.pack_start(status, False, False, 0)
-        return box
+        c.pack_start(save, False, False, 0)
+        c.pack_start(status, False, False, 0)
+        return c
 
     def source_settings(self, src):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -2400,7 +2556,7 @@ class Video(Gtk.Application):
 
         if kind == "in":
             card.pack_start(label("Вход выполнен: %s" % state["name"], "csub"), False, False, 0)
-            button("Подписаться на каналы аккаунта", "add",
+            button("Синхронизировать подписки", "add",
                    lambda: self.import_subscriptions(src))
             button("Выйти", "drop wide", lambda: self.logout(src))
             note = self.account_notes.get(src.id)

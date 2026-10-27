@@ -44,6 +44,26 @@ class Server:
         self.pairing.save()
         self.changed()
 
+    def reconfigure(self, port, proxy_enabled, url, peers):
+        """The port and the publication at once; a running server restarts
+        on them by itself instead of asking to be switched off first."""
+        port = int(port)
+        if not 1024 <= port <= 65535:
+            raise ValueError("Порт должен быть от 1024 до 65535.")
+        settings = proxy_settings(proxy_enabled, url, peers)
+        running = self.state not in ("off", "failed")
+        self.pairing.data["port"] = port
+        self.pairing.data["proxy"] = settings
+        self.pairing.pending = None
+        self.pairing.save()
+        if running:
+            self.stop()
+            if self.state == "off":
+                self.start()
+            else:
+                self.restart_requested = True  # once it has stopped
+        self.changed()
+
     def issue(self):
         if self.state != "on":
             raise ValueError("Сначала включите доступ из локальной сети.")

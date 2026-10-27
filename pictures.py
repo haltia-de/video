@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 """Card pictures decoded into a GdkPixbuf without gdk-pixbuf's loaders.
 
-    decode(path, (w, h)) -> a Pixbuf fitting w x h (its shape kept), or None
+    decode(path, (w, h)) -> a Pixbuf fitting w x h (its shape kept; a
+    landscape picture fills a landscape box, its middle cut out), or None
 
 gdk-pixbuf 2.44 on Alpine has no loaders of its own: every JPEG goes to
 glycin, a loader process in a bwrap sandbox, and on the tablet one such
@@ -33,7 +34,7 @@ try:
 except ImportError:  # gdk-pixbuf then, one picture at a time
     Image = None
 
-MAX_PIXELS = 4 * 1000 * 1000  # cards are 320x180, avatars at most 900x900
+MAX_PIXELS = 4 * 1000 * 1000  # cards are up to 1280x720, avatars at most 900x900
 FORMATS = ("JPEG", "PNG", "WEBP")
 _one_at_a_time = threading.Lock()
 
@@ -55,8 +56,18 @@ def _with_pillow(path, size, max_pixels):
             return None
         im.draft("RGB", size)  # JPEG: decoded at 1/2, 1/4 or 1/8 when that is enough
         im = im.convert("RGB")
-        # Fitted to the box both ways, as gdk-pixbuf's at_scale did: a
-        # 320x180 picture fills a 352x198 card.
+        box = size[0] / size[1]
+        if box > 1 and im.width >= im.height and abs(im.width / im.height - box) > 0.01:
+            # A card's 16:9 box filled by a landscape picture: its middle
+            # (YouTube's 4:3 ones are 16:9 between black bars). An upright
+            # one is shown whole, narrower.
+            if im.width / im.height > box:
+                w = round(im.height * box)
+                im = im.crop(((im.width - w) // 2, 0, (im.width + w) // 2, im.height))
+            else:
+                h = round(im.width / box)
+                im = im.crop((0, (im.height - h) // 2, im.width, (im.height + h) // 2))
+        # Fitted to the box both ways, as gdk-pixbuf's at_scale did.
         k = min(size[0] / im.width, size[1] / im.height)
         w, h = max(1, round(im.width * k)), max(1, round(im.height * k))
         if (w, h) != im.size:

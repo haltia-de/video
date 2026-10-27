@@ -22,7 +22,7 @@ from datetime import datetime
 
 from haltia_kit.vault import Locked
 
-from . import CONFIG_DIR, load_json, net, save_json, stream_of, vault_in
+from . import CONFIG_DIR, LARGE_PICTURES, load_json, net, save_json, stream_of, vault_in
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
 # The feed tells no durations: the channel's «Видео» tab does, from YouTube's
@@ -51,9 +51,14 @@ CHANNELS_ONLY = "EgIQAg=="
 DESCRIPTION_MAX = 300
 
 
+# 320x180 on 32-bit ARM, a fraction of the larger ones; else 480x360,
+# letterboxed to 4:3, which the card crops back to 16:9 (sddefault and
+# maxresdefault are missing for many videos).
+THUMB_NAME = "hqdefault.jpg" if LARGE_PICTURES else "mqdefault.jpg"
+
+
 def _thumb(video_id):
-    # 320x180: enough for a card, a fraction of the larger ones.
-    return "https://i.ytimg.com/vi/%s/mqdefault.jpg" % video_id
+    return "https://i.ytimg.com/vi/%s/%s" % (video_id, THUMB_NAME)
 
 
 # Видео shows no subtitles. yt-dlp makes every automatic caption into ~157
