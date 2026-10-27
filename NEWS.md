@@ -1,5 +1,23 @@
 # Что нового · What's new
 
+## 2.8.0 (2026-10-27)
+
+### Русский
+
+Экран стал проще. Вкладки, поиск и настройки теперь в одной строке наверху, поиск открывается кнопкой с лупой, и под видео остаётся больше места. Вкладка «Подписки» называется «Новое», «Источники» — «Сервисы».
+
+На картинке каждого видео появились звёздочка для закладки и кнопка «⋮»: она, как и долгое нажатие, открывает канал, подписку и закладку. В плейлисте над видео одна строка — порядок и крупная кнопка «Продолжить»; изменение порядка и сбросы перенесены в «⋮».
+
+Отписка и удаление закладки спрашивают подтверждение; в настройках это можно выключить, тогда внизу появится кнопка «Вернуть». Подсказка о входе в YouTube свёрнута, доступ из локальной сети перенесён в раздел «Для разработчика». На вертикально повёрнутом планшете видео идут в две колонки.
+
+### English
+
+The screen is simpler. Tabs, search and settings now share one row at the top, search opens from the magnifier button, and the videos get more room. The «Подписки» tab is now «Новое», and «Источники» are «Сервисы».
+
+Every video picture now carries a bookmark star and a «⋮» button which, like a long press, offers the channel, following and the bookmark. A playlist has one row above its videos, the order and a large «Продолжить» button; editing the order and the resets moved into «⋮».
+
+Unfollowing a channel and removing a bookmark ask first; this can be turned off in Settings, and then a «Вернуть» button appears instead. The YouTube sign-in hint is folded, and LAN access moved into a «Для разработчика» section. On an upright tablet the videos show in two columns.
+
 ## 2.7.1 (2026-10-27)
 
 ### Русский

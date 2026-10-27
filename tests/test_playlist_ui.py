@@ -139,19 +139,27 @@ class PlaylistUITest(unittest.TestCase):
         self.pump()
         self.assertIsNone(sort.get_parent())
 
-    def test_reset_is_only_in_resume_actions(self):
+    def action(self, title):
+        return dict(self.view.playlist_actions(self.view.sub))[title]
+
+    def test_one_row_over_the_cards_and_the_rest_in_the_menu(self):
         self.open()
         with self.assertRaises(StopIteration):
             self.button("Сбросить прогресс")
+        self.assertNotIn("Сбросить прогресс", dict(self.view.playlist_actions(self.view.sub)))
         self.open(self.videos[58])
-        self.assertIs(self.button("Сбросить прогресс").get_parent(),
-                      self.button("Продолжить").get_parent())
-        self.assertIs(self.button("Сбросить прогресс").get_parent(),
-                      self.button("Показать в списке").get_parent())
+        resume = next(w for w in self.widgets() if getattr(w, "_caption", None) == "Продолжить")
+        sorting = next(w for w in self.widgets() if isinstance(w, self.Gtk.ComboBoxText))
+        self.assertIs(resume.get_parent(), sorting.get_parent())
+        with self.assertRaises(StopIteration):
+            self.button("Сбросить прогресс")
+        titles = [t for t, _fn in self.view.playlist_actions(self.view.sub)]
+        self.assertEqual(titles[:2], ["Изменить порядок", "Показать в списке"])
+        self.assertIn("Сбросить прогресс", titles)
 
     def assert_locates(self, order):
         self.open(self.videos[58], order)
-        self.button("Показать в списке").clicked()
+        self.action("Показать в списке")()
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
             self.pump()

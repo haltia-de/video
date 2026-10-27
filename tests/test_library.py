@@ -55,6 +55,21 @@ class LibraryTest(unittest.TestCase):
         # It survives a new start.
         self.assertTrue(Library(self.conf, self.data).is_followed("youtube", "UC1"))
 
+    def test_undone_unfollow_returns_to_its_place(self):
+        lib = Library(self.conf, self.data)
+        for cid in ("a", "b", "c"):
+            lib.follow({"source": "vk", "id": cid, "title": cid})
+        b = lib.channels()[1]
+        lib.unfollow("vk", "b")
+        lib.follow(b, at=1)
+        self.assertEqual([c["id"] for c in Library(self.conf, self.data).channels()], ["a", "b", "c"])
+
+    def test_questions_are_on_until_turned_off(self):
+        lib = Library(self.conf, self.data)
+        self.assertTrue(lib.confirm)
+        lib.set_confirm(False)
+        self.assertFalse(Library(self.conf, self.data).confirm)
+
     def test_follow_again_replaces_not_duplicates(self):
         lib = self.library()
         lib.follow(YT)

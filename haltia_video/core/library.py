@@ -93,11 +93,12 @@ class Library:
     def is_followed(self, source, cid):
         return any(_same(c, source, cid) for c in self._cfg["channels"])
 
-    def follow(self, chan):
-        """Follow a channel (again: its entry is replaced). True if new."""
-        return self.follow_all([chan]) == 1
+    def follow(self, chan, at=None):
+        """Follow a channel (again: its entry is replaced). True if new.
+        at puts it back at that place in the list (an unfollow undone)."""
+        return self.follow_all([chan], at=at) == 1
 
-    def follow_all(self, chans, now=None):
+    def follow_all(self, chans, now=None, at=None):
         """Follow several channels at once (an account's); the number that
         were not followed before."""
         now = now or time.time()
@@ -110,7 +111,10 @@ class Library:
             chan = dict(chan)
             if chan.get("thumb") or chan.get("subscribers") is not None:
                 chan["updated"] = now  # found with its details
-            kept.append(chan)
+            if at is None:
+                kept.append(chan)
+            else:
+                kept.insert(max(int(at), 0), chan)
         self._cfg["channels"] = kept
         if chans:
             self._changed("follow")
@@ -326,6 +330,17 @@ class Library:
     def shorts(self):
         """Whether Shorts are shown: not unless the person turns them on."""
         return self._cfg.get("shorts", False)
+
+    @property
+    def confirm(self):
+        """Whether an unfollow or a removed bookmark asks first; off, a note
+        offers it back instead."""
+        return self._cfg.get("confirm", True)
+
+    def set_confirm(self, on):
+        if bool(on) != self.confirm:
+            self._cfg["confirm"] = bool(on)
+            self._changed("settings")
 
     def set_shorts(self, on):
         if bool(on) != self.shorts:

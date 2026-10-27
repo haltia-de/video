@@ -24,13 +24,13 @@ def method(name):
 
 class NavigationTest(unittest.TestCase):
     def setUp(self):
-        self.app = SimpleNamespace(page="home", sub=None, bookmark_query="")
-        for name in ("header", "back_btn", "entry"):
+        self.app = SimpleNamespace(page="home", sub=None, bookmark_query="", searching=False)
+        for name in ("header", "back_btn", "entry", "win"):
             setattr(self.app, name, Mock())
         for name in ("left", "mark_tab", "say", "show_home", "show_feed",
-                     "show_channels", "show_history", "show_bookmarks", "update_scope"):
+                     "show_channels", "show_history", "show_bookmarks", "update_scope", "show_top"):
             setattr(self.app, name, Mock())
-        for name in ("go_back", "update_back", "show_page", "open_sub"):
+        for name in ("go_back", "update_back", "show_page", "open_sub", "close_search", "on_page"):
             setattr(self.app, name, method(name).__get__(self.app))
         self.actions = Gio.SimpleActionGroup()
         self.app.add_action = self.actions.add_action
@@ -74,6 +74,22 @@ class NavigationTest(unittest.TestCase):
                     self.assertIsNone(self.app.sub)
                     self.assertEqual(self.app.page, page)
                     self.assertEqual(self.actions.get_action_enabled("back"), page != "home")
+
+    def test_search_holds_the_row_until_back(self):
+        self.app.show_page("feed")
+        self.app.searching = True
+        self.app.update_back()
+        self.back()
+        self.assertFalse(self.app.searching)
+        self.app.show_top.assert_called_with("tabs")
+        self.assertEqual(self.app.page, "feed")
+        self.app.open_sub({"kind": "search"}, "Поиск")
+        self.app.show_top.assert_called_with("search", "Поиск")
+        self.back()
+        self.assertIsNone(self.app.sub)
+        self.assertFalse(self.app.searching)
+        self.app.open_sub({"kind": "channel"}, "Канал")
+        self.app.show_top.assert_called_with("title", "Канал")
 
     def test_header_reserves_corner_for_action_button(self):
         activate = ast.unparse(next(node for node in VIDEO.body

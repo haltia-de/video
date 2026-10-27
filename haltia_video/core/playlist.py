@@ -10,7 +10,7 @@ import secrets
 from collections import Counter
 from .bookmarks import key
 
-ORDERS = (("vk", "Порядок VK"), ("reverse", "Обратный порядок"),
+ORDERS = (("vk", "Порядок сервиса"), ("reverse", "Обратный порядок"),
           ("lesson", "По номеру урока"), ("custom", "Мой порядок"))
 NUMBER = r"[\s._:#№-]*(\d+)"
 LESSON = re.compile(r"\b(?:урок|день|занятие|лекция|выпуск|серия|часть|lesson|day|episode|lecture|part)" + NUMBER)
