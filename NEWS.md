@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.10.1 (2026-10-27)
+
+### Русский
+
+Порядок разделов Главной и видео в своём порядке плейлиста теперь меняется кнопками ↑ и ↓ в каждой строке, как порядок программ в Настройках. В плейлисте видео по-прежнему можно перенести далеко: нажмите его, затем то, перед которым его поставить.
+
+### English
+
+Главная's sections and the videos in a playlist's own order now move with ↑ and ↓ on each row, as programs do in Settings. A video can still go far in a playlist: tap it, then the one to put it before.
+
 ## 2.10.0 (2026-10-27)
 
 ### Русский
