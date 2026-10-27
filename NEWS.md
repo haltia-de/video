@@ -1,5 +1,27 @@
 # Что нового · What's new
 
+## 2.11.0 (2026-10-27)
+
+### Русский
+
+Картинки видео стали крупнее и занимают всю ширину карточки; у видео YouTube больше нет чёрных полос. На планшете Lenovo YOGA B8000 картинки остаются прежнего размера, чтобы не замедлять его.
+
+У плейлистов VK появились обложки: на странице канала плейлисты показаны карточками, обложки видны и в «Моих плейлистах».
+
+Подписки аккаунта теперь переносятся сами — при входе и затем раз в день. Каналы только добавляются; канал, от которого вы отписались в приложении, не вернётся. Кнопка «Синхронизировать подписки» делает то же сразу.
+
+Доступ из браузера переехал на отдельную страницу (Настройки → «Для разработчика»): переключатель с адресом, кнопка «Подключить браузер» с QR-кодом и пошаговой подсказкой, список подключённых устройств. Порт и прокси меняются без выключения сервера — он перезапускается сам.
+
+### English
+
+Video pictures are larger and fill the card's width; YouTube's lose their black bars. On the Lenovo YOGA B8000 tablet they keep their old size so as not to slow it down.
+
+VK playlists show their covers: a channel's playlists appear as cards, and the covers are in «Мои плейлисты» too.
+
+An account's subscriptions now come over by themselves, at sign-in and then once a day. Channels are only added; one you unfollowed in the program does not come back. «Синхронизировать подписки» does the same at once.
+
+Browser access moved to a page of its own (Settings → «Для разработчика»): a switch with the address, a «Подключить браузер» button with a QR code and steps, and the connected devices. The port and proxy change without switching the server off; it restarts by itself.
+
 ## 2.10.2 (2026-10-27)
 
 ### Русский

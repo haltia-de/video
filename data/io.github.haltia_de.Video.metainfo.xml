@@ -18,6 +18,18 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.11.0" date="2026-10-27">
+      <description>
+        <p>Video pictures are larger and fill the card's width; YouTube's lose their black bars. On the Lenovo YOGA B8000 tablet they keep their old size so as not to slow it down.</p>
+        <p>VK playlists show their covers: a channel's playlists appear as cards, and the covers are in «Мои плейлисты» too.</p>
+        <p>An account's subscriptions now come over by themselves, at sign-in and then once a day. Channels are only added; one you unfollowed in the program does not come back. «Синхронизировать подписки» does the same at once.</p>
+        <p>Browser access moved to a page of its own (Settings → «Для разработчика»): a switch with the address, a «Подключить браузер» button with a QR code and steps, and the connected devices. The port and proxy change without switching the server off; it restarts by itself.</p>
+        <p xml:lang="ru">Картинки видео стали крупнее и занимают всю ширину карточки; у видео YouTube больше нет чёрных полос. На планшете Lenovo YOGA B8000 картинки остаются прежнего размера, чтобы не замедлять его.</p>
+        <p xml:lang="ru">У плейлистов VK появились обложки: на странице канала плейлисты показаны карточками, обложки видны и в «Моих плейлистах».</p>
+        <p xml:lang="ru">Подписки аккаунта теперь переносятся сами — при входе и затем раз в день. Каналы только добавляются; канал, от которого вы отписались в приложении, не вернётся. Кнопка «Синхронизировать подписки» делает то же сразу.</p>
+        <p xml:lang="ru">Доступ из браузера переехал на отдельную страницу (Настройки → «Для разработчика»): переключатель с адресом, кнопка «Подключить браузер» с QR-кодом и пошаговой подсказкой, список подключённых устройств. Порт и прокси меняются без выключения сервера — он перезапускается сам.</p>
+      </description>
+    </release>
     <release version="2.10.2" date="2026-10-27">
       <description>
         <p>The Ubuntu and Debian packages build again; the program itself is unchanged since 2.10.1.</p>
