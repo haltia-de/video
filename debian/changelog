@@ -1,3 +1,10 @@
+haltia-video (2.7.1) unstable; urgency=medium
+
+  * Redraw a page only after its combo box's "changed" has returned, which
+    crashed the program on the tablet when a sort order or filter changed.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 09:30:00 +0300
+
 haltia-video (2.7.0) unstable; urgency=medium
 
   * Play tablet playlists as a queue in haltia-vplay with previous and next buttons.
