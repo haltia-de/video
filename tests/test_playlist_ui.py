@@ -121,6 +121,24 @@ class PlaylistUITest(unittest.TestCase):
         self.view.show_playlist(self.playlist, self.chan)
         self.pump()
 
+    def test_choices_redraw_after_the_combo_box_returns(self):
+        # GTK notifies "active" on the combo box after "changed": a page
+        # rebuilt inside the handler freed it first (a crash on the P11).
+        self.open()
+        sorting = next(w for w in self.widgets() if isinstance(w, self.Gtk.ComboBoxText))
+        sorting.set_active_id("reverse")
+        self.assertIsNotNone(sorting.get_parent())
+        self.pump()
+        self.assertEqual(self.view.sub["order"], "reverse")
+        self.assertIsNone(sorting.get_parent())
+        self.view.show_bookmarks()
+        self.pump()
+        sort = [w for w in self.widgets() if isinstance(w, self.Gtk.ComboBoxText)][-1]
+        sort.set_active_id(sort.get_model()[1][1])
+        self.assertIsNotNone(sort.get_parent())
+        self.pump()
+        self.assertIsNone(sort.get_parent())
+
     def test_reset_is_only_in_resume_actions(self):
         self.open()
         with self.assertRaises(StopIteration):
