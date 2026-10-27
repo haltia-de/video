@@ -233,9 +233,11 @@ class Player:
         threading.Thread(target=self._read, args=(run_no, ipc, self.proc), daemon=True).start()
 
     def open_playlist(self, videos, index, resolve, start_for=None, playlist=None, order="vk", start_at=None):
-        """A native desktop mpv playlist; resolve(video, fmt) runs per entry."""
-        if not self.player or os.path.basename(self.player) in VPLAY:
-            raise OSError("a desktop mpv is needed for playlist controls")
+        """A playlist in the player's own queue (haltia-queue.lua), whose
+        previous and next walk it in this order; resolve(video, fmt) runs
+        per entry."""
+        if not self.player:
+            raise OSError("neither haltia-vplay nor mpv is installed")
         videos = list(videos)
         if not 0 <= index < len(videos):
             raise ValueError("playlist index is out of range")
@@ -265,9 +267,13 @@ class Player:
             self.sock_dir = private_dir(self.runtime_dir)
         ipc = os.path.join(self.sock_dir, "queue-%s.sock" % secrets.token_hex(8))
         script = os.path.join(os.path.dirname(os.path.realpath(__file__)), "haltia-queue.lua")
+        if os.path.basename(self.player) in VPLAY:
+            cmd = [self.player, "--queue", "input-ipc-server=" + ipc, "scripts=" + script]
+        else:
+            cmd = [self.player, "--fs", "--idle=once", "--force-window=yes",
+                   "--input-ipc-server=" + ipc, "--script=" + script]
         try:
-            self.proc = self.spawn([self.player, "--fs", "--idle=once", "--force-window=yes",
-                                    "--input-ipc-server=" + ipc, "--script=" + script])
+            self.proc = self.spawn(cmd)
         except OSError:
             self._ended(self.run_no)
             raise
@@ -306,7 +312,7 @@ class Player:
 
             def resolving():
                 try:
-                    stream = resolver(video, DESKTOP_FORMAT)
+                    stream = resolver(video, self.stream_format or DESKTOP_FORMAT)
                 except Exception:
                     self.post(self._queue_failed, run_no, request)
                     return

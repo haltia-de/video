@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.7.0 (2026-10-27)
+
+### Русский
+
+На планшете плейлист теперь играет как очередь: в проигрывателе рядом с кнопками перемотки появились «предыдущее» и «следующее» видео, а после окончания ролика сразу начинается следующий в выбранном порядке. Заголовок меняется вместе с роликом, окно закрывается в конце плейлиста. Закрытые видео VK по-прежнему открываются через вход в аккаунт, без передачи токена проигрывателю.
+
+### English
+
+On the tablet a playlist now plays as a queue: the player shows previous and next video buttons beside the seek buttons, and the next video in the chosen order starts when one ends. The title follows each video, and the window closes at the end of the playlist. Private VK videos still open through the signed-in account without handing its token to the player.
+
 ## 2.6.0 (2026-10-26)
 
 ### Русский
