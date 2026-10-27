@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.10.2 (2026-10-27)
+
+### Русский
+
+Пакеты для Ubuntu и Debian снова собираются; в самой программе ничего не изменилось с 2.10.1.
+
+### English
+
+The Ubuntu and Debian packages build again; the program itself is unchanged since 2.10.1.
+
 ## 2.10.1 (2026-10-27)
 
 ### Русский

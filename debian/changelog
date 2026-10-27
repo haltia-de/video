@@ -1,9 +1,16 @@
+haltia-video (2.10.2) unstable; urgency=medium
+
+  * Give the changelog entries since 2.8.0 increasing dates: 2.10.1's was
+    older than 2.10.0's, and lintian failed its Debian packages.
+
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 13:35:00 +0300
+
 haltia-video (2.10.1) unstable; urgency=medium
 
   * Order Главная's sections and a playlist's own order with ↑ and ↓ on
     each row, as the shell's Settings orders the panel.
 
- -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 13:30:00 +0300
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 13:20:00 +0300
 
 haltia-video (2.10.0) unstable; urgency=medium
 
@@ -12,7 +19,7 @@ haltia-video (2.10.0) unstable; urgency=medium
   * Let haltia-vplay go to the whole screen and back with a button or a
     double tap, keeping the choice.
 
- -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 14:00:00 +0300
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 12:20:00 +0300
 
 haltia-video (2.9.0) unstable; urgency=medium
 
@@ -21,7 +28,7 @@ haltia-video (2.9.0) unstable; urgency=medium
   * Give a channel's page a header with following and a Видео / Плейлисты
     switch, and bookmarks kind chips with the rest in a menu.
 
- -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 13:00:00 +0300
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 12:15:00 +0300
 
 haltia-video (2.8.0) unstable; urgency=medium
 
@@ -32,7 +39,7 @@ haltia-video (2.8.0) unstable; urgency=medium
   * Release card gestures before their widget, which logged GObject
     criticals on every page change.
 
- -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 12:00:00 +0300
+ -- Haltia <rensomail@gmail.com>  Tue, 27 Oct 2026 12:10:00 +0300
 
 haltia-video (2.7.1) unstable; urgency=medium
 
