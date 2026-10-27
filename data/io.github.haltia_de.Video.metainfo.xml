@@ -18,6 +18,14 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.9.0" date="2026-10-27">
+      <description>
+        <p>Главная can now be arranged: in Settings, under «Главная», choose which sections to show and in what order. New sections are «Продолжить просмотр» with unfinished videos and «Мои плейлисты» with a «Продолжить» button, and «Закладки» can be turned on. Each section shows one row of videos and «Все →».</p>
+        <p>A channel's page has a «Подписаться» or «Отписаться» button, and its videos and playlists sit behind a «Видео | Плейлисты» switch, so the videos are no longer below a long list of playlists. Bookmarks show «Все · Видео · Плейлисты · Каналы» buttons instead of two rows of lists, with the rest in «⋮».</p>
+        <p xml:lang="ru">Главную можно настроить: в настройках, в разделе «Главная», выберите, какие разделы показывать и в каком порядке. Появились разделы «Продолжить просмотр» с недосмотренными видео и «Мои плейлисты» с кнопкой «Продолжить»; можно включить и «Закладки». В каждом разделе один ряд видео и кнопка «Все →».</p>
+        <p xml:lang="ru">На странице канала есть кнопка «Подписаться» или «Отписаться», а видео и плейлисты разделены переключателем «Видео | Плейлисты» — видео больше не прячутся под длинным списком плейлистов. В закладках вместо двух рядов списков — кнопки «Все · Видео · Плейлисты · Каналы», остальное в «⋮».</p>
+      </description>
+    </release>
     <release version="2.8.0" date="2026-10-27">
       <description>
         <p>The screen is simpler. Tabs, search and settings now share one row at the top, search opens from the magnifier button, and the videos get more room. The «Подписки» tab is now «Новое», and «Источники» are «Сервисы».</p>

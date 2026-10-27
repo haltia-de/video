@@ -1,5 +1,19 @@
 # Что нового · What's new
 
+## 2.9.0 (2026-10-27)
+
+### Русский
+
+Главную можно настроить: в настройках, в разделе «Главная», выберите, какие разделы показывать и в каком порядке. Появились разделы «Продолжить просмотр» с недосмотренными видео и «Мои плейлисты» с кнопкой «Продолжить»; можно включить и «Закладки». В каждом разделе один ряд видео и кнопка «Все →».
+
+На странице канала есть кнопка «Подписаться» или «Отписаться», а видео и плейлисты разделены переключателем «Видео | Плейлисты» — видео больше не прячутся под длинным списком плейлистов. В закладках вместо двух рядов списков — кнопки «Все · Видео · Плейлисты · Каналы», остальное в «⋮».
+
+### English
+
+Главная can now be arranged: in Settings, under «Главная», choose which sections to show and in what order. New sections are «Продолжить просмотр» with unfinished videos and «Мои плейлисты» with a «Продолжить» button, and «Закладки» can be turned on. Each section shows one row of videos and «Все →».
+
+A channel's page has a «Подписаться» or «Отписаться» button, and its videos and playlists sit behind a «Видео | Плейлисты» switch, so the videos are no longer below a long list of playlists. Bookmarks show «Все · Видео · Плейлисты · Каналы» buttons instead of two rows of lists, with the rest in «⋮».
+
 ## 2.8.0 (2026-10-27)
 
 ### Русский
