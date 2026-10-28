@@ -265,6 +265,17 @@ spinner { color: #3584e4; }
 .bar scale slider { min-width: 36px; min-height: 36px; border-radius: 18px; }
 .bar button.watch { background-color: #3584e4; color: #ffffff; }
 .bar button.close { background-color: #e6e6e4; color: #2e3436; min-width: 72px; padding: 0; }
+/* Lit while the finger is on it, as the cards are: the colours above are
+   set for every state, so the theme's own pressed look never showed and a
+   tap seemed to do nothing until the finger left. */
+button.tab:active, button.source:active, button.more:active, button.drop:active,
+button.step:active, button.chip:active, .bar button.close:active { background-color: #c4dcf7; }
+button.find:active, button.add:active, button.chip.on:active,
+.bar button.watch:active { background-color: #1c71d8; }
+button.pic:active { background-color: rgba(0, 0, 0, 0.8); }
+button.pic.saved:active { background-color: #c88800; }
+button.pic.done:active { background-color: #26a269; }
+.toast button:active { background-color: rgba(255, 255, 255, 0.15); }
 """
 
 

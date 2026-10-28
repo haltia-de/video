@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.13.1" date="2026-10-28">
+      <description>
+        <p>Buttons light up while the finger is on them: the tabs, «Все →», menus, «Подписаться», chips, ↑ and ↓, the buttons on pictures. Before, a tap showed only once the finger had left.</p>
+        <p xml:lang="ru">Кнопки подсвечиваются, пока палец на них: вкладки, «Все →», меню, «Подписаться», чипы, ↑ и ↓, кнопки на картинках. Раньше нажатие было видно только когда палец уже отпущен.</p>
+      </description>
+    </release>
     <release version="2.13.0" date="2026-10-28">
       <description>
         <ul>
