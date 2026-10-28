@@ -1,3 +1,10 @@
+haltia-video (2.15.0) unstable; urgency=medium
+
+  * Cards or a list on every screen, kept for each; one tile for videos,
+    playlists, channels and bookmarks.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 28 Oct 2026 18:42:56 +0300
+
 haltia-video (2.14.0) unstable; urgency=medium
 
   * Larger text, shorter cards in a playlist and on a channel, dates in

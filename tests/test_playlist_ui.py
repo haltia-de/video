@@ -142,7 +142,7 @@ class PlaylistUITest(unittest.TestCase):
         # The mark on the picture's corner; the card and the line over the
         # cards follow in place, the page is not drawn again.
         mark = next(w for w in self.widgets() if getattr(w, "_task", None) is not None)
-        self.assertEqual(mark.get_label(), "○")
+        self.assertEqual(mark.get_label(), "☐")
         page = self.view.body.get_children()[-1]
         mark.clicked()
         self.pump()
@@ -283,3 +283,16 @@ class PlaylistUITest(unittest.TestCase):
         self.pump()
         self.assertEqual(self.view.sub["kind"], "channel")
         self.assertIs(self.body_page(), page)
+
+    def test_a_screen_keeps_cards_or_rows(self):
+        self.open()
+        switch = next(w for w in self.widgets(self.view.body) if isinstance(w, self.Gtk.Button)
+                      and w.get_tooltip_text() == "Списком")  # on the page on show, not a kept tab
+        switch.clicked()
+        self.pump()
+        self.assertEqual(self.view.library.layout("playlist"), "list")
+        card = next(w for w in self.widgets(self.view.body) if getattr(w, "_video_key", None))
+        self.assertTrue(card.get_style_context().has_class("rowcard"))
+        self.assertEqual(self.view.library.layout("history"), "grid")  # each screen its own
+        self.assertEqual(self.view.library.layout("bookmarks", "list"), "list")
+

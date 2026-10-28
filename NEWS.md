@@ -1,5 +1,21 @@
 # Что нового · What's new
 
+## 2.15.0 (2026-10-28)
+
+### Русский
+
+- На каждом экране — Главная, Новое, Каналы, Закладки, История, канал, плейлист, поиск — можно выбрать вид: карточками или списком. Кнопка ▦/☰ справа над содержимым; выбор запоминается для каждого экрана отдельно, в приложении и в каждом браузере свой.
+- Видео, плейлисты, каналы и закладки теперь выглядят одинаково: в карточке — картинка со звёздочкой и меню ⋮ в углу, название и строка под ней; в списке — картинка слева, название и строка, затем звёздочка и ⋮. Долгое нажатие везде открывает то же меню, что ⋮.
+- Отписка от канала на странице «Каналы» — в меню ⋮, как и всё остальное, что можно сделать с каналом.
+- Отметка урока в плейлисте — квадратик ☐, выполненный — зелёная галочка ✓.
+
+### English
+
+- Every screen — Главная, Новое, Каналы, Закладки, История, a channel, a playlist, search — can show cards or a list. The ▦/☰ button sits at the top right of the content; the choice is kept for each screen, in the program and separately in each browser.
+- Videos, playlists, channels and bookmarks now look alike: a card has the picture with the star and the ⋮ menu on its corner, the title and a line under it; a list row has the picture on the left, the title and the line, then the star and ⋮. A long press anywhere opens the same menu as ⋮.
+- Unfollowing a channel on «Каналы» is in its ⋮ menu, with everything else a channel offers.
+- A lesson's mark in a playlist is a box ☐, a done one a green tick ✓.
+
 ## 2.14.0 (2026-10-28)
 
 ### Русский

@@ -59,7 +59,7 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
 
     async def open_playlist(self, page):
         await page.locator('#tabs button[data-page="bookmarks"]').click()
-        await page.locator(".pane:not([hidden]) .row .name", has_text="Курс").click()
+        await page.locator(".pane:not([hidden]) .card h3", has_text="Курс").click()
         await page.locator(".pane:not([hidden]) .card").first.wait_for()
 
     def pane(self, page):
@@ -123,15 +123,33 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         core.command("confirm", {"on": False})
         await page.locator("#back").click()  # from the playlist the set-up opened
         await page.locator('#tabs button[data-page="channels"]').click()
-        rows = page.locator(".pane:not([hidden]) .row")
+        rows = page.locator(".pane:not([hidden]) .card")
         await rows.nth(2).wait_for()
-        await rows.nth(1).get_by_role("button", name="Отписаться").click()
+        # Unfollowing is in ⋮, as everything else a channel offers.
+        await rows.nth(1).get_by_role("button", name="Действия").click()
+        await page.locator("#modal").get_by_role("button", name="Отписаться", exact=True).click()
         await page.locator("#toast").filter(has_text="Вы отписались от «Канал 1»").wait_for()
         await page.locator("#toast-button").click()
-        await page.wait_for_function("""() => Array.from(document.querySelectorAll('.pane:not([hidden]) .row .name'))
+        await page.wait_for_function("""() => Array.from(document.querySelectorAll('.pane:not([hidden]) .card h3'))
             .map(n => n.textContent).join('|') === 'Канал 0|Канал 1|Канал 2'""")  # back at its place
         kept = await page.locator(".pane:not([hidden])").evaluate("p => (p.dataset.mark = 'kept')")
         await page.locator('#tabs button[data-page="history"]').click()
         await page.locator('#tabs button[data-page="channels"]').click()
         self.assertEqual(await page.locator(".pane:not([hidden])").get_attribute("data-mark"), kept)
         self.assertEqual(self.errors, [])
+
+    async def test_each_screen_keeps_cards_or_rows(self):
+        page = self.page
+        pane = self.pane(page)
+        await pane.locator(".card").first.wait_for()
+        self.assertEqual(await pane.locator(".grid .card").count() > 0, True)  # a playlist: cards first
+        await pane.get_by_role("button", name="Списком").click()
+        await pane.locator(".rows .rowcard").first.wait_for()
+        await page.reload()
+        await self.open_playlist(page)
+        await self.pane(page).locator(".rows .rowcard").first.wait_for()  # kept in this browser
+        await page.locator("#back").click()
+        await page.locator('#tabs button[data-page="history"]').click()
+        self.assertEqual(await self.pane(page).get_by_role("button", name="Списком").count(), 1)  # its own choice
+        self.assertEqual(self.errors, [])
+

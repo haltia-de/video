@@ -370,28 +370,51 @@ function localList(ctx, items, make, container, batch = 60) {
   ctx.lists.push(list);
   return end;
 }
-function section(root, title, action) {
+function section(root, title, action, end) {
   const row = el('div', null, 'section');
   row.append(el('h2', title));
-  if (action) row.append(action);
+  [action, end].forEach(node => { if (node) row.append(node); });
   root.append(row);
 }
 
 // --- cards and rows ---------------------------------------------------------
-function star(kind, obj, saved) {
+// Each screen shows cards or rows, as last chosen for it in this browser (a
+// phone and a tablet may want them apart); Каналы and Закладки were lists.
+const layouts = load('haltia-layouts', {});
+const LISTED_FIRST = ['channels', 'found_channels', 'bookmarks'];
+function listed(screen) { return (layouts[screen] || (LISTED_FIRST.includes(screen) ? 'list' : 'grid')) === 'list'; }
+function layoutButton(screen) {
+  const rows = listed(screen);
+  const node = button(rows ? '▦' : '☰', () => {
+    layouts[screen] = rows ? 'grid' : 'list';
+    try { localStorage.setItem('haltia-layouts', JSON.stringify(layouts)); } catch { /* private mode */ }
+    draw(current, current.page, true);
+  }, 'layout');
+  node.setAttribute('aria-label', rows ? 'Карточками' : 'Списком');
+  return node;
+}
+// A row over a screen's content: what it starts with, the switch at its end.
+function layoutRow(screen, ...start) {
+  const row = el('div', null, 'tools');
+  start.forEach(node => row.append(node));
+  row.append(el('span', null, 'grow'), layoutButton(screen));
+  return row;
+}
+function listBox(screen) { return el('div', null, listed(screen) ? 'rows' : 'grid'); }
+function star(kind, obj, saved, cls = 'pic') {
   const node = button(saved ? '★' : '☆', () => {
     if (saved) bookmarkMenu({key: identity(kind, obj)});
     else command('bookmark_add', {kind, entity: obj});
-  }, 'pic' + (saved ? ' saved' : ''));
+  }, cls + (saved ? ' saved' : ''));
   node.setAttribute('aria-label', saved ? 'Действия с закладкой' : 'В закладки');
   return node;
 }
-// A tap plays; ⋮ and a long press open the same menu.
+// A tap; ⋮ and a long press open the same menu.
 function pressable(node, tap, hold) {
   let timer = null, held = false, x = 0, y = 0;
   const cancel = () => { clearTimeout(timer); timer = null; node.classList.remove('pressed'); };
   node.addEventListener('pointerdown', event => {
-    if (event.button) return;
+    if (event.button || event.target.closest('button')) return;
     held = false; x = event.clientX; y = event.clientY;
     node.classList.add('pressed');
     timer = setTimeout(() => { held = true; cancel(); hold(); }, 600);
@@ -402,91 +425,95 @@ function pressable(node, tap, hold) {
   node.addEventListener('click', () => { if (held) { held = false; return; } tap(); });
   node.addEventListener('keydown', event => { if (event.key === 'Enter') tap(); });
 }
-function card(item, lesson = null, hideChannel = false) {
-  const node = el('article', null, 'card');
-  node.tabIndex = 0; node.dataset.video = item.id;
-  if (item.entry_id) node.dataset.entry = item.entry_id;
-  const picture = el('div', null, 'picture' + (lesson && item.task_done ? ' done' : ''));
-  picture.append(image(item.thumb));
-  if (item.progress) {
+// What any screen lists — a video, a playlist, a channel, a bookmark — built
+// alike, as the window builds it: a card (its picture with ☆ and ⋮ on the
+// corner, a mark on the other; the title, a line and an action under them),
+// or, row, a row of a list (the picture on the left, the title and the line
+// beside it, then the action, ☆ and ⋮). A channel's square picture sits in
+// the same 16:9 place (square).
+function tile(row, o) {
+  const node = el('article', null, 'card' + (row ? ' rowcard' : ''));
+  node.tabIndex = 0;
+  const picture = el('div', null, 'picture' + (o.square ? ' square' : '') + (o.dim ? ' done' : ''));
+  picture.append(image(o.thumb));
+  if (o.progress) {
     const strip = el('div', null, 'strip'), bar = el('i');
-    bar.style.width = Math.round(item.progress * 100) + '%';
+    bar.style.width = Math.round(o.progress * 100) + '%';
     strip.append(bar); picture.append(strip);
   }
-  const corner = el('div', null, 'corner');
-  const more = button('⋮', () => videoMenu(item), 'pic');
+  const more = button('⋮', () => o.menu(), row ? 'star' : 'pic');
   more.setAttribute('aria-label', 'Действия');
-  corner.append(star('video', item, item.bookmarked), more);
-  picture.append(corner);
-  if (lesson) {
-    const done = !!item.task_done, left = el('div', null, 'corner left');
-    const mark = button(done ? '✓' : '○', () => command('playlist_task', {entity: lesson, video: item, on: !done}),
-                        'pic' + (done ? ' done' : ''));
-    mark.setAttribute('aria-label', done ? 'Выполнено: снять отметку' : 'Отметить выполненным');
-    left.append(mark); picture.append(left);
+  const ends = [o.star, more].filter(Boolean);
+  const text = el('div', null, 'text');
+  text.append(el('h3', o.title), el('div', o.line, 'meta'));
+  if (row) {
+    if (o.mark) node.append(o.mark);
+    node.append(picture, text);
+    if (o.action) node.append(o.action);
+    node.append(...ends);
+  } else {
+    const corner = el('div', null, 'corner');
+    corner.append(...ends);
+    picture.append(corner);
+    if (o.mark) { const left = el('div', null, 'corner left'); left.append(o.mark); picture.append(left); }
+    node.append(picture, text);
+    if (o.action) { o.action.classList.add('go'); node.append(o.action); }
   }
-  // On a channel's page its name, in a playlist its name in each title,
-  // are what the page says already.
-  node.append(picture, el('h3', item.label || item.title),
-              el('div', [hideChannel || item.hide_channel ? '' : item.channel, time(item.duration), age(item.published)]
-                .filter(Boolean).join(' · '), 'meta'));
-  pressable(node, () => play(item), () => videoMenu(item));
+  pressable(node, o.tap, o.menu);
   return node;
 }
-function videoMenu(item) { return actionMenu('video', item); }
-function grid(items, lesson) {
-  const box = el('div', null, 'grid');
-  items.forEach(item => box.append(card(item, lesson)));
+function card(item, row, lesson = null, hideChannel = false) {
+  let mark = null;
+  if (lesson) {
+    const done = !!item.task_done;
+    mark = button(done ? '✓' : '☐', () => command('playlist_task', {entity: lesson, video: item, on: !done}),
+                  'pic' + (done ? ' done' : ''));
+    mark.setAttribute('aria-label', done ? 'Выполнено: снять отметку' : 'Отметить выполненным');
+  }
+  // On a channel's page its name, in a playlist its name in each title, are
+  // what the page says already.
+  const node = tile(row, {title: item.label || item.title, thumb: item.thumb, progress: item.progress,
+    line: [hideChannel || item.hide_channel ? '' : item.channel, time(item.duration), age(item.published)].filter(Boolean).join(' · '),
+    tap: () => play(item), menu: () => actionMenu('video', item), star: star('video', item, item.bookmarked, row ? 'star' : 'pic'),
+    mark, dim: lesson && item.task_done});
+  node.dataset.video = item.id;
+  if (item.entry_id) node.dataset.entry = item.entry_id;
+  return node;
+}
+function grid(items, screen, lesson, hideChannel) {
+  const rows = listed(screen), box = listBox(screen);
+  items.forEach(item => box.append(card(item, rows, lesson, hideChannel)));
   return box;
 }
-// A playlist as a card: the service's cover (or, begun, the video it
-// stopped at), its name and size; begun, where it stopped and «Продолжить».
-function playlistCard(playlist, chan, cursor = null, saved = false) {
-  const node = el('article', null, 'card');
-  node.tabIndex = 0;
-  const thumb = playlist.thumb || (cursor && cursor.video.thumb);
-  const picture = el('div', null, 'picture' + (thumb ? '' : ' nocover'));
-  if (thumb) picture.append(image(thumb)); else picture.append(el('span', '☰'));
-  const corner = el('div', null, 'corner');
-  corner.append(star('playlist', Object.assign({}, playlist, {owner_title: chan.title}), saved));
-  picture.append(corner);
+// A playlist: the service's cover (or, begun, the video it stopped at), its
+// name and size; begun, where it stopped and «Продолжить».
+function playlistCard(playlist, chan, row, cursor = null, saved = false) {
+  const obj = Object.assign({}, playlist, {owner_title: chan.title});
   const bits = [];
   if (playlist.count) bits.push(playlist.count + ' видео');
   if (cursor) bits.push([cursor.video.label || cursor.video.title, time(cursor.video.pos)].filter(Boolean).join(' '));
-  if (cursor && cursor.video.progress) {
-    const strip = el('div', null, 'strip'), bar = el('i');
-    bar.style.width = Math.round(cursor.video.progress * 100) + '%';
-    strip.append(bar); picture.append(strip);
-  }
-  node.append(picture, el('h3', playlist.title || 'Плейлист'));
-  if (bits.length) node.append(el('div', bits.join(' · '), 'meta'));
-  if (cursor) node.append(button('▶ Продолжить', () => { openPlaylist(playlist, chan); play(null, true); }, 'primary go'));
-  pressable(node, () => openPlaylist(playlist, chan), () => {});
-  return node;
+  return tile(row, {title: playlist.title || 'Плейлист', line: bits.join(' · '),
+    thumb: playlist.thumb || (cursor && cursor.video.thumb), progress: cursor && cursor.video.progress,
+    tap: () => openPlaylist(playlist, chan), menu: () => actionMenu('playlist_item', obj),
+    star: star('playlist', obj, saved, row ? 'star' : 'pic'),
+    action: cursor ? button('▶ Продолжить', () => { openPlaylist(playlist, chan); play(null, true); }, 'primary') : null});
 }
-function tiles(cursors) {
-  const box = el('div', null, 'grid');
-  cursors.forEach(c => box.append(playlistCard(c.playlist, c.chan, c, c.bookmarked)));
+function tiles(cursors, screen) {
+  const rows = listed(screen), box = listBox(screen);
+  cursors.forEach(c => box.append(playlistCard(c.playlist, c.chan, rows, c, c.bookmarked)));
   return box;
 }
-function channelRow(chan, action) {
-  const row = el('div', null, 'row');
-  const open = button('', () => openChannel(chan), 'open');
-  const text = el('div', null, 'text');
-  text.append(el('div', chan.title, 'name'));
-  const bits = [state.sources.length > 1 ? sourceName(chan.source) : '', chan.handle || '',
-                subscribers(chan.subscribers), chan.latest ? 'новое видео ' + age(chan.latest) : ''].filter(Boolean);
-  if (bits.length) text.append(el('div', bits.join(' · '), 'sub'));
-  if (chan.description) text.append(el('div', withoutLinks(chan.description), 'desc'));
-  open.append(image(chan.thumb, 'avatar'), text);
-  row.append(open);
-  if (action) row.append(action);
-  const mark = star('channel', chan, chan.bookmarked);
-  mark.className = mark.className.replace('pic', 'star');
-  row.append(mark);
-  return row;
+function channelLine(chan) {
+  return [state.sources.length > 1 ? sourceName(chan.source) : '', chan.handle || '',
+          subscribers(chan.subscribers), chan.latest ? 'новое видео ' + age(chan.latest) : ''].filter(Boolean).join(' · ');
 }
-function unfollowButton(chan, title = '✕', cls = 'drop') {
+// A channel: its picture, name and what is known of it; ⋮ follows or unfollows it.
+function channelCard(chan, row, action = null) {
+  return tile(row, {title: chan.title, line: channelLine(chan), thumb: chan.thumb, square: true,
+    tap: () => openChannel(chan), menu: () => actionMenu('channel', chan),
+    star: star('channel', chan, chan.bookmarked, row ? 'star' : 'pic'), action});
+}
+function unfollowButton(chan, title = 'Отписаться', cls = 'drop') {
   const node = button(title, async () => {
     const actions = (await query('actions', {kind: 'channel', item: chan})).actions;
     const action = actions.find(a => a.id === 'unfollow');
@@ -496,8 +523,7 @@ function unfollowButton(chan, title = '✕', cls = 'drop') {
   return node;
 }
 function followButton(chan) {
-  return chan.followed ? unfollowButton(chan, 'Отписаться', 'drop')
-                       : button('Подписаться', () => command('follow', {entity: chan}), 'add');
+  return chan.followed ? unfollowButton(chan) : button('Подписаться', () => command('follow', {entity: chan}), 'add');
 }
 function bookmarkStatus(saved) {
   const links = Object.values(saved.links || {});
@@ -508,22 +534,15 @@ function bookmarkStatus(saved) {
   return [states.includes('error') ? '☁ !' : states.includes('pending') ? '☁ ↻' : '☁ ✓', notes.join('\n')];
 }
 function bookmarkMenu(saved) { return actionMenu('bookmark', {key: saved.key}, {}, {}, saved.links ? bookmarkStatus(saved)[1] : ''); }
-function bookmarkRow(saved) {
+// A bookmark, as what it keeps is shown elsewhere; ⋮ is its own menu.
+function bookmarkCard(saved, row) {
   const obj = saved.object, kind = saved.kind;
-  const row = el('div', null, 'row');
-  const open = button('', () => openBookmark(saved), 'open');
-  const text = el('div', null, 'text');
-  text.append(el('div', (saved.pin !== undefined ? '📌 ' : '') + obj.title, 'name'));
   const info = [{video: 'Видео', playlist: 'Плейлист', channel: 'Канал'}[kind], sourceName(obj.source),
                 obj.channel || obj.owner_title, bookmarkStatus(saved)[0]].filter(Boolean).join(' · ');
-  text.append(el('div', info, 'sub'));
-  if (obj.unavailable) text.append(el('div', obj.unavailable, 'desc'));
-  // Videos and playlists 16:9, channels square, as the service shows them.
-  open.append(image(obj.thumb, kind === 'channel' ? 'avatar' : 'avatar wide'), text);
-  const more = button('⋮', () => bookmarkMenu(saved), 'flat');
-  more.setAttribute('aria-label', 'Действия с закладкой');
-  row.append(open, more);
-  return row;
+  return tile(row, {title: (saved.pin !== undefined ? '📌 ' : '') + obj.title, line: obj.unavailable || info,
+    thumb: obj.thumb, square: kind === 'channel', progress: kind === 'video' ? obj.progress : null,
+    tap: () => openBookmark(saved), menu: () => bookmarkMenu(saved),
+    star: star(kind, obj, true, row ? 'star' : 'pic')});
 }
 function openBookmark(saved) {
   const obj = saved.object;
@@ -538,20 +557,22 @@ function openBookmark(saved) {
 const PAGES = {
   async home(ctx) {
     const root = el('div'), result = await query('home'), row = ctx.pane.columns = columns();
-    if (!result.sections.length) say(result.loading ? 'Загружаю…' : '', ctx.pane);
+    if (!result.sections.length) { say(result.loading ? 'Загружаю…' : '', ctx.pane); root.append(layoutRow('home')); }
     else say('', ctx.pane);
-    result.sections.forEach(s => {
+    result.sections.forEach((s, n) => {
       const more = s.more && (s.always || s.total > row) ? button('Все →', () => openMore(s.more)) : null;
-      section(root, s.title, more);
+      // The switch at the top right, as on every screen: in the first section's row.
+      section(root, s.title, more, n === 0 ? layoutButton('home') : null);
       if (s.hint) root.append(el('p', s.hint, 'hint'));
-      else if (s.kind === 'playlists') root.append(tiles(s.items.slice(0, row)));
-      else root.append(grid(s.items.slice(0, row)));
+      else if (s.kind === 'playlists') root.append(tiles(s.items.slice(0, row), 'home'));
+      else root.append(grid(s.items.slice(0, row), 'home'));
     });
     return root;
   },
   async feed(ctx) {
-    const root = el('div'), box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'feed', {}, item => card(item), box);
+    const root = el('div'), box = listBox('feed');
+    root.append(layoutRow('feed'));
+    const {first, end} = await lazyList(ctx, 'feed', {}, item => card(item, listed('feed')), box);
     say(!first.channels ? 'Здесь будут новые видео каналов, на которые вы подписаны. Чтобы подписаться на канал, ' +
         'нажмите ⋮ на его видео или найдите канал на странице «Каналы».' :
         first.items.length ? '' : first.loading ? 'Загружаю новые видео…' :
@@ -560,16 +581,19 @@ const PAGES = {
     return root;
   },
   async history(ctx) {
-    const root = el('div'), box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'history', {}, item => card(item), box);
+    const root = el('div'), box = listBox('history');
+    root.append(layoutRow('history'));
+    const {first, end} = await lazyList(ctx, 'history', {}, item => card(item, listed('history')), box);
     say(first.items.length ? '' : 'Здесь будут видео, которые вы смотрели.', ctx.pane);
     root.append(box, end);
     return root;
   },
   async channels(ctx) {
-    const root = el('div'), box = el('div', null, 'rows');
-    root.append(channelFinder(''));
-    const {first, end} = await lazyList(ctx, 'channels', {}, chan => channelRow(chan, unfollowButton(chan)), box);
+    const root = el('div'), box = listBox('channels'), finder = channelFinder('');
+    finder.append(layoutButton('channels'));
+    root.append(finder);
+    // Unfollowing is in ⋮, as everything else a channel offers.
+    const {first, end} = await lazyList(ctx, 'channels', {}, chan => channelCard(chan, listed('channels')), box);
     say(first.items.length ? '' : 'Подписок пока нет. Найдите канал по названию или вставьте ссылку на него.', ctx.pane);
     root.append(box, end);
     return root;
@@ -586,33 +610,37 @@ const PAGES = {
     ['source', 'state'].forEach(field => {
       if (f[field] !== 'all') chips.append(button((names[f[field]] || f[field]) + ' ✕', () => setBookmarkFilter(field, 'all'), 'chip on'));
     });
-    const more = button('⋮', () => actionMenu('bookmarks', {}, f, {filter: a => setBookmarkFilter(a.field, a.value)}), 'end');
+    const more = button('⋮', () => actionMenu('bookmarks', {}, f, {filter: a => setBookmarkFilter(a.field, a.value)}));
     more.setAttribute('aria-label', 'Ещё');
-    chips.append(more);
+    const layout = layoutButton('bookmarks');
+    layout.classList.add('end');
+    chips.append(layout, more);
     root.append(chips);
-    const box = el('div', null, 'rows');
-    const {first, end} = await lazyList(ctx, 'bookmarks', bookmarkParams(), bookmarkRow, box);
+    const box = listBox('bookmarks');
+    const {first, end} = await lazyList(ctx, 'bookmarks', bookmarkParams(), saved => bookmarkCard(saved, listed('bookmarks')), box);
     say(first.items.length ? '' : 'Закладок пока нет или они не подходят под фильтры.', ctx.pane);
     root.append(box, end);
     return root;
   },
   async my_playlists(ctx) {
-    const root = el('div'), box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'my_playlists', {}, c => playlistCard(c.playlist, c.chan, c, c.bookmarked), box);
+    const root = el('div'), box = listBox('my_playlists');
+    root.append(layoutRow('my_playlists'));
+    const {first, end} = await lazyList(ctx, 'my_playlists', {}, c => playlistCard(c.playlist, c.chan, listed('my_playlists'), c, c.bookmarked), box);
     say(first.items.length ? '' : 'Здесь будут плейлисты, которые вы начали смотреть.', ctx.pane);
     root.append(box, end);
     return root;
   },
   async source_home(ctx) {
-    const root = el('div'), box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'source_home', ctx.page.params, item => card(item), box);
+    const root = el('div'), box = listBox('source_home');
+    root.append(layoutRow('source_home'));
+    const {first, end} = await lazyList(ctx, 'source_home', ctx.page.params, item => card(item, listed('source_home')), box);
     say(first.items.length ? '' : first.loading ? 'Загружаю…' : '', ctx.pane);
     root.append(box, end);
     return root;
   },
   async search(ctx) {
     const p = ctx.page.params, root = el('div'), kind = p.kind === 'channels' ? 'channels' : 'search';
-    if (kind === 'channels') root.append(channelFinder(p.query));
+    if (kind === 'channels') { const finder = channelFinder(p.query); finder.append(layoutButton('found_channels')); root.append(finder); }
     const result = await query('search', {query: p.query, kind, source: state.scope || 'all', sort: state.sort});
     if (result.can_sort) {
       // The two orders side by side, the one on lit: one button named after
@@ -620,14 +648,14 @@ const PAGES = {
       const seg = el('div', null, 'seg');
       [['date', 'Сначала новые'], ['relevance', 'Сначала подходящие']].forEach(([value, title]) =>
         seg.append(button(title, () => { if (state.sort !== value) command('sort', {sort: value}); }, state.sort === value ? 'current' : '')));
-      root.append(seg);
-    }
+      root.append(layoutRow('search', seg));
+    } else if (kind === 'search') root.append(layoutRow('search'));
     result.sections.forEach(s => {
       if (s.label) section(root, s.label);
-      if (kind === 'search') root.append(grid(s.items));
+      if (kind === 'search') root.append(grid(s.items, 'search'));
       else {
-        const rows = el('div', null, 'rows');
-        s.items.forEach(chan => rows.append(channelRow(chan, followButton(chan))));
+        const rows = listBox('found_channels'), listedNow = listed('found_channels');
+        s.items.forEach(chan => rows.append(channelCard(chan, listedNow, followButton(chan))));
         root.append(rows);
       }
     });
@@ -637,8 +665,8 @@ const PAGES = {
   async channel(ctx) {
     const page = ctx.page, chan = page.params.entity, root = el('div');
     const view = page.params.tab || 'videos';
-    const box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'channel', {entity: chan}, item => card(item, null, true), box);
+    const box = listBox('channel');
+    const {first, end} = await lazyList(ctx, 'channel', {entity: chan}, item => card(item, listed('channel'), null, true), box);
     const known = first.known || chan;
     const head = el('div', null, 'head'), text = el('div', null, 'text');
     text.append(el('div', known.title, 'name'));
@@ -657,15 +685,15 @@ const PAGES = {
       [['videos', 'Видео'], ['playlists', 'Плейлисты' + (first.playlists.length ? ' · ' + first.playlists.length : '')]].forEach(([k, title]) =>
         seg.append(button(title, () => { if (k !== view) { page.params.tab = k; draw(ctx.pane, page, false); } },
                           k === view ? 'current' : '')));
-      root.append(seg);
+      root.append(layoutRow(view === 'playlists' ? 'channel_playlists' : 'channel', seg));
       if (view === 'playlists') {
         say(first.playlists.length ? '' : first.loading ? 'Загружаю плейлисты…' : 'У канала нет плейлистов.', ctx.pane);
-        const albums = el('div', null, 'grid');
-        first.playlists.forEach(a => albums.append(playlistCard(a, chan, null, a.bookmarked)));
+        const albums = listBox('channel_playlists'), rows = listed('channel_playlists');
+        first.playlists.forEach(a => albums.append(playlistCard(a, chan, rows, null, a.bookmarked)));
         root.append(albums);
         return root;
       }
-    }
+    } else root.append(layoutRow('channel'));
     say(first.items.length ? '' : first.failure || (first.loading ? 'Загружаю…' : 'У канала пока нет видео.'), ctx.pane);
     root.append(box, end);
     return root;
@@ -693,7 +721,7 @@ const PAGES = {
     const more = button('⋮', () => actionMenu('playlist', Object.assign({}, p.entity, {owner_title: (p.chan || {}).title}),
                                                {order: result.order}, playlistHandlers(page)));
     more.setAttribute('aria-label', 'Ещё');
-    tools.append(more);
+    tools.append(layoutButton('playlist'), more);
     root.append(tools);
     const bits = [];
     if (result.order === 'lesson') bits.push('Выполнено ' + result.tasks.done + ' из ' + result.tasks.total);
@@ -701,7 +729,7 @@ const PAGES = {
     if (bits.length) root.append(el('p', bits.join(' · '), 'hint'));
     if (!result.ready) say(result.failure || (result.order !== 'vk' ? 'Загружаю весь плейлист…' : 'Загружаю…'), ctx.pane);
     else say(result.items.length ? '' : 'На этой странице нет доступных видео.', ctx.pane);
-    root.append(grid(result.items || [], result.order === 'lesson' ? p.entity : null));
+    root.append(grid(result.items || [], 'playlist', result.order === 'lesson' ? p.entity : null));
     const nav = el('div', null, 'pager'), previous = p.previous || [];
     if (previous.length) nav.append(button('← Предыдущие', () => {
       p.offset = previous[previous.length - 1]; p.previous = previous.slice(0, -1); draw(ctx.pane, page, false);
