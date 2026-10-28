@@ -9,6 +9,7 @@
 - Полоска просмотра, звёздочка закладки и отметки уроков меняются на месте, страница не перерисовывается целиком — например, после возврата из проигрывателя.
 - Отметка «Выполнено» в плейлисте по номеру урока переехала в левый верхний угол картинки: кружок ○, а у пройденного урока — зелёная галочка ✓ и приглушённая картинка.
 - Картинки грузятся в первую очередь для того, что на экране, и больше их остаётся в памяти.
+- Пока страница загружается или дополняется внизу, рядом крутится индикатор — видно, что программа работает, а не зависла.
 
 ### English
 
@@ -17,6 +18,7 @@
 - The watched strip, a bookmark's star and lesson marks change in place instead of the whole page being drawn again — after coming back from the player, for one.
 - In a playlist by lesson number the «done» mark moved to the picture's top left corner: a circle ○, and for a lesson done a green tick ✓ with the picture dimmed.
 - Pictures load first for what is on screen, and more of them stay in memory.
+- While a page loads, or fills in at its bottom, a spinner turns beside it: the program is at work, not stuck.
 
 ## 2.11.2 (2026-10-28)
 

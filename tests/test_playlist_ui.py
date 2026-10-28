@@ -225,7 +225,7 @@ class PlaylistUITest(unittest.TestCase):
         self.view.set_content(self.view.grid(many))
         self.settle(lambda: self.body_page().get_children())
         self.pump()
-        flow = self.body_page()
+        flow = self.body_page().get_children()[0]  # under it, the spinner
         made = len(flow.get_children())
         self.assertLess(made, 40)  # a screen and a half, not 300
         adjustment = self.view.scroll.get_vadjustment()

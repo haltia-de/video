@@ -2,8 +2,10 @@
 """A list of cards or rows built as it is scrolled to.
 
     LazyList(items, make, cols=None, spacing=12, at_least=0)
-        .widget        what goes into the page: a flow box of cols cards a
-                       row, or a column of rows (cols None)
+        .widget        what goes into the page: the list and, under it, a
+                       spinner while the scroll waits at its end for more
+        .box           the list: a flow box of cols cards a row, or a
+                       column of rows (cols None)
         .built         how many items have their widget yet
         .locate(match) build up to the first item match(item) is true for,
                        then focus its widget and scroll it into the window
@@ -54,14 +56,23 @@ class LazyList:
         self.serial = next(LazyList.serials)  # the order lists were made in
         self.cols = cols
         if cols:
-            self.widget = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                                      max_children_per_line=cols, min_children_per_line=cols,
-                                      row_spacing=16, column_spacing=16)
+            self.box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                                   max_children_per_line=cols, min_children_per_line=cols,
+                                   row_spacing=16, column_spacing=16)
             first, self.batch = cols * 3, cols
         else:
-            self.widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
+            self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
             first, self.batch = ROWS_AT_ONCE, ROWS_PER_IDLE
+        self.box.set_valign(Gtk.Align.START)
+        self.widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
         self.widget.set_valign(Gtk.Align.START)
+        self.widget.pack_start(self.box, False, False, 0)
+        # Turns only while the end is in the window and more is to come: a
+        # turning spinner asks for every frame.
+        self.spinner = Gtk.Spinner(margin=16)
+        self.spinner.set_size_request(48, 48)
+        self.spinner.set_no_show_all(True)
+        self.widget.pack_start(self.spinner, False, False, 0)
         self.made = []  # the widgets, in the items' order
         self.held = {}  # index: whether its pictures are asked for
         self.alive = True
@@ -111,8 +122,8 @@ class LazyList:
         for item in self.items[start:start + n]:
             widget = self.make(item)
             self.made.append(widget)
-            self.widget.add(widget)
-            if self.widget.get_visible():
+            self.box.add(widget)
+            if self.box.get_visible():
                 widget.show_all()
 
     def _attach(self, *_args):
@@ -174,7 +185,12 @@ class LazyList:
         if self.want is not None:
             self._reveal()
         bottom = top + self.widget.get_allocated_height()
-        if len(self.made) < len(self.items) and bottom < adj.get_value() + page * (1 + AHEAD):
+        more = len(self.made) < len(self.items)
+        waiting = more and bottom <= adj.get_value() + page
+        if waiting != self.spinner.get_visible():
+            self.spinner.set_visible(waiting)
+            (self.spinner.start if waiting else self.spinner.stop)()
+        if more and bottom < adj.get_value() + page * (1 + AHEAD):
             self._add(self.batch)
             return False
         self._pictures_soon()

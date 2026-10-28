@@ -235,6 +235,7 @@ button.pic {
 }
 button.pic.saved { background-color: #e5a50a; color: #000000; }
 button.pic.done { background-color: #2ec27e; color: #ffffff; }
+spinner { color: #3584e4; }
 .toast { background-color: #303030; border-radius: 16px; padding: 8px 8px 8px 20px; }
 .toast label { font-size: 22px; color: #ffffff; }
 .toast button {
@@ -791,11 +792,21 @@ class Video(Gtk.Application):
                 pass
 
     def say(self, text):
+        """The line over a page's content. A spinner turns beside one that
+        tells of something on its way («Загружаю…», «Ищу…»): a page that
+        only waits looked stuck."""
+        pane = self.pane
         if text:
-            self.note.set_text(text)
-            self.note.show()
+            pane.note_text.set_text(text)
+            pane.note.show()
+            if text.endswith("…"):
+                pane.spinner.show()
+                pane.spinner.start()
+                return
         else:
-            self.note.hide()
+            pane.note.hide()
+        pane.spinner.stop()  # a turning one asks for every frame
+        pane.spinner.hide()
 
     # --- panes ------------------------------------------------------------
     def make_pane(self, title=None):
@@ -806,15 +817,22 @@ class Video(Gtk.Application):
         # The note and the cards scroll together: a wrapped label outside
         # the scrolled part made the window taller than the room the
         # on-screen keyboard leaves, and the window covered its top row.
-        note = label("", "note", wrap=True)
+        note = Gtk.Box(spacing=16)
         note.set_no_show_all(True)
         note.set_margin_top(12)
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(32, 32)
+        spinner.set_no_show_all(True)
+        note.pack_start(spinner, False, False, 0)
+        text = label("", "note", wrap=True)
+        text.show()
+        note.pack_start(text, True, True, 0)
         body.pack_start(note, False, False, 0)
         scroll.add(body)
         scroll.show_all()
         self.stack.add(scroll)
-        return SimpleNamespace(scroll=scroll, body=body, note=note, made=time.monotonic(),
-                               stale=False, sub=None, title=title)
+        return SimpleNamespace(scroll=scroll, body=body, note=note, note_text=text, spinner=spinner,
+                               made=time.monotonic(), stale=False, sub=None, title=title)
 
     def use_pane(self, pane):
         self.pane = pane
