@@ -4,20 +4,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#e6e6e4">
+  <meta name="theme-color" content="#dedddb">
   <title>Видео</title>
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" type="module"></script>
 </head>
-<body>
-  <header>
-    <button id="back" aria-label="Назад">←</button><h1>Видео</h1>
-    <button id="fullscreen" aria-label="На весь экран">⛶</button>
-    <button id="settings" aria-label="Настройки">⚙</button>
+<body class="mode-tabs">
+  <header id="bar">
+    <button id="back" class="flat" aria-label="Назад" hidden>←</button>
+    <div id="top">
+      <nav id="tabs" aria-label="Разделы">
+        <button data-page="home">Главная</button><button data-page="feed">Новое</button><button data-page="channels">Каналы</button><button data-page="bookmarks">Закладки</button><button data-page="history">История</button>
+      </nav>
+      <h1 id="title">Видео</h1>
+      <form id="search-form">
+        <input id="query" type="search" placeholder="Найти видео" aria-label="Поиск" maxlength="256" enterkeyhint="search">
+        <button id="scope" type="button" class="source" hidden>Все сервисы</button>
+        <button type="submit" class="primary">Найти</button>
+      </form>
+    </div>
+    <button id="find" class="flat" aria-label="Поиск">🔍</button>
+    <button id="fullscreen" class="flat" aria-label="На весь экран">⛶</button>
+    <button id="settings" class="flat" aria-label="Настройки">⚙</button>
   </header>
   <section id="pair" hidden>
     <h2>Подключение к ПК</h2>
-    <p>Включите «Доступ из локальной сети» в настройках «Видео» на ПК и получите код.</p>
+    <p>Откройте на ПК «Видео» → Настройки → «Доступ из браузера» и введите показанный там код или наведите камеру на QR-код.</p>
     <form id="pair-form">
       <label>Название устройства<input id="device-name" maxlength="80" value="Планшет"></label>
       <label>Код с ПК<input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="100"></label>
@@ -25,21 +37,9 @@
     </form>
     <p id="pair-note" role="status"></p>
   </section>
-  <div id="app" hidden>
-    <form id="search-form" class="tools">
-      <select id="scope" aria-label="Источник поиска"><option value="all">Все сервисы</option></select>
-      <input id="query" type="search" placeholder="Найти видео" aria-label="Поиск" maxlength="256">
-      <button type="submit" class="primary">Найти</button>
-    </form>
-    <nav id="tabs" aria-label="Разделы">
-      <button data-page="home">Главная</button><button data-page="feed">Подписки</button>
-      <button data-page="channels">Каналы</button><button data-page="bookmarks">Закладки</button>
-      <button data-page="history">История</button>
-    </nav>
-    <main><p id="note" role="status"></p><div id="content"></div></main>
-  </div>
   <section id="player" hidden aria-label="Проигрыватель">
-    <div class="tools"><strong id="playing-title"></strong><button id="close-player" aria-label="Закрыть проигрыватель">✕</button></div>
+    <div class="tools"><strong id="playing-title"></strong>
+      <button id="player-full" aria-label="На весь экран">⛶</button><button id="close-player" aria-label="Закрыть проигрыватель">✕</button></div>
     <video id="video" playsinline controls preload="metadata"></video>
     <div class="tools">
       <button id="previous" aria-label="Предыдущее видео">⏮</button>
@@ -50,6 +50,8 @@
     </div>
     <p id="player-note" role="status"></p><a id="service-link" target="_blank" rel="noopener noreferrer">Открыть в сервисе</a>
   </section>
+  <main id="panes" hidden></main>
+  <div id="toast" hidden role="status"><span id="toast-text"></span><button id="toast-button">Вернуть</button></div>
   <div id="modal" hidden role="dialog" aria-modal="true" aria-label="Действие">
     <div id="modal-body"></div>
   </div>

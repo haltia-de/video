@@ -48,6 +48,90 @@ class ApplicationTest(unittest.TestCase):
         self.pump()
         self.assertEqual(len(asked), 1)  # synced less than a day ago
 
+    def test_home_follows_the_persons_sections_with_where_all_goes(self):
+        self.library.played(VIDEO)
+        self.library.note_position(VIDEO, 120, 600)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        home = self.core.query("home")["sections"]
+        self.assertEqual([s["id"] for s in home], ["continue", "playlists", "feed"])
+        cont, playlists, feed = home
+        self.assertEqual(cont["items"][0]["id"], VIDEO["id"])
+        self.assertEqual((cont["more"], cont["always"], cont["total"]), ({"view": "history"}, True, 1))
+        cursor = playlists["items"][0]
+        self.assertEqual((cursor["playlist"]["id"], cursor["video"]["pos"], cursor["chan"]["id"]), ("7", 120, "-7"))
+        self.assertIn("подписаться", feed["hint"])  # no channels followed yet
+        self.core.command("home_sections", {"sections": [{"id": "bookmarks", "on": True},
+                                                         {"id": "continue", "on": False}]})
+        self.core.command("bookmark_add", {"kind": "video", "entity": cont["items"][0]})
+        home = self.core.query("home")["sections"]
+        self.assertEqual([s["id"] for s in home], ["bookmarks", "playlists", "feed"])
+        self.assertEqual([e["id"] for e in self.core.query("state")["home_sections"]][:2], ["bookmarks", "continue"])
+
+    def test_what_a_page_showed_comes_back_plain(self):
+        shown = self.core.views._videos([VIDEO])[0]
+        self.assertIn("progress", shown)
+        self.core.command("bookmark_add", {"kind": "video", "entity": dict(shown, task_done=True)})
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-1", "title": "One",
+                                                "followed": False, "bookmarked": True}})
+        saved = self.library.bookmarks.view()[0]["object"]
+        self.assertEqual(saved, VIDEO)
+        self.assertNotIn("bookmarked", self.library.channels()[0])
+
+    def test_a_cards_menu_is_the_cores_with_what_it_asks(self):
+        video = dict(VIDEO, channel_id="-1", channel="One")
+        ids = lambda acts: [a["id"] for a in acts]
+        self.assertEqual(ids(self.core.actions("video", video)), ["channel", "follow", "bookmark_add"])
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-2", "title": "Two"}})
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-1", "title": "One"}})
+        self.core.command("bookmark_add", {"kind": "video", "entity": video})
+        acts = {a["id"]: a for a in self.core.actions("video", video)}
+        self.assertEqual(acts["unfollow"]["confirm"]["button"], "Отписаться от канала")
+        self.assertEqual(acts["remove"]["confirm"], {"text": "«Video»", "button": "Удалить закладку"})
+        self.core.command("confirm", {"on": False})
+        acts = {a["id"]: a for a in self.core.actions("video", video)}
+        undo = acts["unfollow"]["undo"]
+        self.assertEqual((undo["command"], undo["params"]["at"]), ("follow", 1))  # back at its place
+        self.assertEqual(acts["remove"]["undo"]["command"], "bookmark_add")
+        self.core.command(acts["unfollow"]["command"], acts["unfollow"]["params"])
+        self.core.command(undo["command"], undo["params"])
+        self.assertEqual([c["id"] for c in self.library.channels()], ["-2", "-1"])
+
+    def test_a_playlists_menu_follows_its_progress_order_and_tasks(self):
+        ids = lambda **ctx: [a["id"] + a.get("what", "") for a in self.core.actions("playlist", PLAYLIST, ctx)]
+        self.assertEqual(ids(order="vk"), ["edit_order", "bookmark_add"])
+        self.library.played(VIDEO)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        self.assertEqual(ids(order="vk"), ["edit_order", "locate", "bookmark_add", "resetprogress"])
+        bookmarks = [a["title"] for a in self.core.actions("bookmarks", {}, {"sort": "title", "reverse": True})]
+        self.assertIn("✓ Сортировать: название", bookmarks)
+        self.assertEqual(bookmarks[-2:], ["Добавить по ссылке", "Обновить"])
+
+    def test_continue_says_where_a_playlist_goes_on(self):
+        self.library.played(VIDEO)
+        self.library.note_position(VIDEO, 90, 600)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "reverse"})
+        self.pump()
+        play = self.core.query("playlist", {"entity": PLAYLIST, "order": "reverse"})["play"]
+        self.assertEqual((play["caption"], play["title"], play["pos"], play["action"]),
+                         ("Продолжить", "Video", 90, "play"))
+
+    def test_a_refused_playlist_says_so_not_no_network(self):
+        from haltia_video.core.kept import Denied
+
+        def closed(p, offset=0):
+            raise Denied("private")
+        self.source.playlist_videos = closed
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.pump()
+        result = self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.assertIn("Нет доступа к плейлисту", result["failure"])
+        self.source.playlist_videos = lambda p, offset=0: (_ for _ in ()).throw(OSError("down"))
+        self.core.reset_channel_data()
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.pump()
+        self.assertIn("нет связи?", self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})["failure"])
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:

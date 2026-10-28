@@ -12,6 +12,7 @@ import time
 
 from haltia_kit.vault import Locked
 
+from . import Denied as SourceDenied
 from . import (CACHE_DIR, CONFIG_DIR, LARGE_PICTURES, browser_stream_of, load_json, net, save_json,
                stream_of, vault_in)
 
@@ -39,6 +40,16 @@ class ApiError(Exception):
     def __init__(self, code, text):
         super().__init__("VK %s: %s" % (code, text))
         self.code = code
+
+
+# VK's answers that refuse what was asked rather than fail: access denied
+# (15), to a private profile (30), an album (200, 204), a group's videos
+# (203), videos at all (201).
+DENIED = (15, 30, 200, 201, 203, 204)
+
+
+class Denied(ApiError, SourceDenied):
+    pass
 
 
 def _skip_subtitles():
@@ -231,7 +242,8 @@ class VKVideo:
             if not err:
                 return resp["response"]
             if err.get("error_code") != 5 or fresh:  # 5: the token went stale
-                raise ApiError(err.get("error_code"), err.get("error_msg"))
+                raise (Denied if err.get("error_code") in DENIED else ApiError)(
+                    err.get("error_code"), err.get("error_msg"))
             if user:
                 # The person's token was revoked: carry on as a guest.
                 if self.user is not user:

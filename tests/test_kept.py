@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from kept import Kept
+from haltia_video.core.kept import Denied
 from haltia_video.core.kept import footprint
 
 
@@ -48,6 +49,17 @@ class KeptTest(unittest.TestCase):
         k = Kept(self.fetch, ttl=60, run=self.run, clock=self.clock, **kw)
         k.watch(lambda key, error: self.told.append((key, error)))
         return k
+
+    def test_a_refusal_is_told_from_a_failure(self):
+        k = self.kept()
+        k.get("a")
+        self.run.finish(fail=Denied("private"))
+        self.assertTrue(k.has_failed("a") and k.denied("a"))
+        self.clock.now += 200
+        k.get("a")
+        self.run.finish(fail=OSError("no network"))
+        self.assertTrue(k.has_failed("a"))
+        self.assertFalse(k.denied("a"))
 
     def test_first_get_fetches_and_tells(self):
         k = self.kept()

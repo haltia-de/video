@@ -8,7 +8,6 @@ import copy
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import time
-import secrets
 
 from .bookmark_sync import Sync
 from .bookmarks import key
@@ -17,10 +16,18 @@ from . import playlist as ordering
 from .signin import SignIn
 from .playback import Sessions
 from .playlist_editor import Editor
+from .views import Views
 
 # An account's channels are brought here when it signs in, and then at
 # most once a day (at the program's start).
 SUBSCRIPTIONS_SYNC_SEC = 86400
+# What queries add to an entity for showing it, not kept when it comes
+# back in a command (a bookmark or a follow of what a page showed).
+VIEW_FIELDS = ("progress", "bookmarked", "followed", "pos", "task_done")
+
+
+def plain(entity):
+    return {k: v for k, v in entity.items() if k not in VIEW_FIELDS} if isinstance(entity, dict) else entity
 
 
 class RecentInputs(OrderedDict):
@@ -97,6 +104,7 @@ class Application:
         self.confirmations = RecentInputs()
         self.play_requests = RecentInputs()
         self.editor = Editor(library)
+        self.views = Views(self)
         self.library.watch(self._library_changed)
 
     def watch(self, fn):
@@ -337,16 +345,6 @@ class Application:
         for ident in list(self.sessions.sessions):
             self.sessions.stop(ident)
 
-    # All returned data crosses an adapter boundary as a copy.
-    def _videos(self, videos):
-        out = []
-        for video in videos:
-            item = copy.deepcopy(video)
-            item["progress"] = self.library.progress(video)
-            item["bookmarked"] = bool(self.library.bookmarks.find("video", video))
-            out.append(item)
-        return out
-
     def _source(self, entity):
         if not isinstance(entity, dict) or entity.get("source") not in self.sources:
             raise ValueError("Неизвестный источник.")
@@ -356,197 +354,14 @@ class Application:
             raise ValueError("Слишком длинное название.")
         return self.sources[entity["source"]]
 
-    def _page(self, items, offset, count=30):
-        return {"items": copy.deepcopy(items[offset:offset + count]),
-                "offset": offset, "next": offset + count if offset + count < len(items) else None}
-
     def query(self, view, params=None, device="gtk"):
-        params = params or {}
-        offset = max(0, min(int(params.get("offset", 0)), 100000))
-        result = self._query(view, params, device, offset)
-        result["revision"] = self.revision
-        return copy.deepcopy(result)
+        return self.views.query(view, params, device)
 
-    def _query(self, view, p, device, offset):
-        if view == "state":
-            sources = []
-            for src in self.ordered():
-                sign = self.signins.get(src.id)
-                sources.append({"id": src.id, "label": src.label,
-                                "enabled": self.is_enabled(src.id),
-                                "account": copy.deepcopy(sign.state) if sign else None,
-                                "login": getattr(src, "login", None),
-                                "hint": getattr(src, "login_hint", ""),
-                                "browsers": list(src.browsers()) if hasattr(src, "browsers") else [],
-                                "note": self.account_notes.get(src.id),
-                                "sync": self._sync_state(src.id)})
-            return {"sources": sources, "shorts": self.library.shorts,
-                    "scope": self.library.scope, "sort": self.library.sort,
-                    "device": device}
-        if view == "channels":
-            self.refresh_channels()
-            query = str(p.get("query", "")).casefold()
-            items = [c for c in self.library.channels() if query in c["title"].casefold()]
-            return self._page(items, offset)
-        if view == "history":
-            return self._page(self._videos(self.library.history()), offset)
-        if view == "feed":
-            result = self._page(self._videos(self.feed_shown()), offset)
-            result.update(loading=self.feed.is_loading("feed"), failed=self.feed.has_failed("feed"))
-            return result
-        if view == "home":
-            sections = [{"title": "Новое в подписках", "items": self._videos(self.feed_shown()[:6])}]
-            loading = self.feed.is_loading("feed")
-            for src in self.enabled():
-                if not hasattr(src, "home"):
-                    continue
-                got = self.home.get(src.id)
-                loading = loading or self.home.is_loading(src.id)
-                if got:
-                    sections.append({"title": got["title"], "items": self._videos(self.wanted(got["videos"])[:12])})
-            return {"sections": sections, "loading": loading}
-        if view == "bookmarks":
-            items = self.library.bookmarks.view(
-                query=str(p.get("query", ""))[:256], kind=p.get("kind", "all"),
-                source=p.get("source", "all"), state=p.get("state", "all"),
-                sort=p.get("sort", "added"), reverse=bool(p.get("reverse", True)))
-            return self._page(items, offset)
-        if view == "search":
-            from .search import view as search_view
-            query = str(p.get("query", "")).strip()[:256]
-            if not query:
-                return {"sections": [], "loading": False}
-            kind = "channels" if p.get("kind") == "channels" else "search"
-            scope = p.get("source", "all")
-            srcs = [s for s in self.enabled() if scope == "all" or s.id == scope]
-            if kind == "channels":
-                direct = [s for s in srcs if getattr(s, "owns", lambda q: False)(query)]
-                srcs = direct or srcs
-            keys = {s.id: (kind, s.id, query) for s in srcs}
-            found = {sid: self.searches.get(k) for sid, k in keys.items()}
-            if kind == "search":
-                found = {sid: self.wanted(v) if v is not None else None for sid, v in found.items()}
-            loading = {sid for sid, k in keys.items() if self.searches.is_loading(k)}
-            result = search_view(kind, query, [(s.id, s.label) for s in srcs], found,
-                                 loading, {sid for sid, k in keys.items() if self.searches.has_failed(k)},
-                                 p.get("sort", "date"))
-            for section in result["sections"]:
-                if kind == "search":
-                    section["items"] = self._videos(section["items"])
-                section["items"] = section["items"][:60]
-            result.update(loading=bool(loading), kind=kind)
-            return result
-        if view == "channel":
-            chan = p["entity"]
-            src = self._source(chan)
-            k = (chan["source"], chan["id"])
-            self.channel_wanted[k] = copy.deepcopy(chan)
-            videos = self.channel_videos.get(k)
-            albums = self.playlists.get(k) if hasattr(src, "playlists") else []
-            for album in albums or []:
-                album.setdefault("owner_title", chan["title"])
-            result = self._page(self._videos(self.wanted(videos or [])), offset)
-            result.update(entity=chan, playlists=albums or [],
-                          followed=self.library.is_followed(chan["source"], chan["id"]),
-                          loading=self.channel_videos.is_loading(k) or self.playlists.is_loading(k),
-                          failed=self.channel_videos.has_failed(k))
-            return result
-        if view in ("playlist", "locate", "reset_preview", "playlist_editor"):
-            playlist = p["entity"]
-            src = self._source(playlist)
-            if not hasattr(src, "playlist_videos"):
-                raise ValueError("Источник не поддерживает плейлисты.")
-            k = (playlist["source"], str(playlist.get("owner_id", "")), playlist["id"])
-            self.playlist_wanted[k] = copy.deepcopy(playlist)
-            order = p.get("order") or self.library.playlist_order(playlist, device)
-            if order not in dict(ordering.ORDERS):
-                raise ValueError("Неизвестный порядок плейлиста.")
-            self.library.set_playlist_order(playlist, order, device)
-            full = self.playlist_all.peek(k)
-            if order != "vk" or view != "playlist":
-                full = self.playlist_all.get(k)
-            saved = self.library.playlist_resume(playlist)
-            if view == "playlist_editor":
-                if order not in ("lesson", "custom"):
-                    raise ValueError("Для редактирования выберите «Мой порядок» или номера уроков.")
-                if full is None:
-                    return {"loading": self.playlist_all.is_loading(k), "failed": self.playlist_all.has_failed(k)}
-                token = p.get("token") or self.editor.begin(device, playlist, order, full,
-                                                            self.wanted(self.playlist_ordered(playlist, full, order)), self.epoch)
-                draft = self.editor.get(token, device, full, self.epoch)
-                if key("playlist", draft["playlist"]) != key("playlist", playlist) or order != draft["order"]:
-                    raise ValueError("Черновик другого плейлиста.")
-                entries = full["_entries"]
-                ids = draft["ids"]
-                # The editor shows the whole playlist (it builds the rows lazily).
-                result = self._page([entries[i] for i in ids], offset,
-                                    max(1, min(int(p.get("count", 30)), 2000)))
-                result.update(token=token, order=order, total=len(ids))
-                for i, video in enumerate(result["items"], offset):
-                    video.update(position=i, minimum=0, maximum=len(ids) - 1)
-                    if order == "lesson":
-                        lo, hi = draft["bounds"][i]
-                        video.update(minimum=lo, maximum=hi)
-                return result
-            if view != "playlist":
-                if full is None:
-                    return {"loading": self.playlist_all.is_loading(k),
-                            "failed": self.playlist_all.has_failed(k)}
-                videos = self.wanted(self.playlist_ordered(playlist, full, order))
-                if view == "reset_preview":
-                    token = secrets.token_urlsafe(24)
-                    self.confirmations[token] = {"device": device, "epoch": self.epoch,
-                                                  "until": time.monotonic() + 120,
-                                                  "playlist": copy.deepcopy(playlist),
-                                                  "what": p.get("what", "progress"),
-                                                  "key": k, "time": self.playlist_all.entries[k]["time"]}
-                    return {"token": token, "count": len(full["vk"])}
-                if not saved or not videos:
-                    return {"missing": True}
-                target = next((v for v in videos if ordering.same_entry(v, saved["video"])), videos[0])
-                if order == "vk":
-                    pos, previous = full["_entry_locations"][target["entry_id"]]
-                else:
-                    pos = (videos.index(target) // 30) * 30
-                    previous = tuple(range(0, pos, 30))
-                return {"offset": pos, "target": target["id"], "video": target,
-                        "entry_id": target["entry_id"],
-                        "previous": previous, "missing": key("video", target) != key("video", saved["video"])}
-            if order == "vk":
-                page = (full or {}).get("_pages", {}).get(offset)
-                if page is None:
-                    page = self.playlist_pages.get(k + (offset,))
-                    if page is not None:
-                        page = {"videos": [dict(v, source_offset=offset + i) for i, v in enumerate(page["videos"])],
-                                "next": page["next"]}
-                loading = self.playlist_pages.is_loading(k + (offset,))
-                failed = self.playlist_pages.has_failed(k + (offset,))
-            else:
-                page = ordering.page(self.wanted(self.playlist_ordered(playlist, full, order)), offset) if full else None
-                loading = self.playlist_all.is_loading(k)
-                failed = self.playlist_all.has_failed(k)
-            videos = self.wanted(self.playlist_ordered(playlist, full, order)) if full else []
-            done = self.library.task_done(playlist)
-            continuation = (ordering.task_continuation(videos, saved, done) if order == "lesson" and full else
-                            ordering.continuation(videos, saved) if full and saved else None)
-            items = self._videos(self.wanted((page or {}).get("videos", [])))
-            if order == "lesson":
-                for video in items:
-                    video["task_done"] = key("video", video) in done
-            tasks = {key("video", v) for v in videos}
-            return {"entity": playlist, "order": order, "offset": offset,
-                    "items": items, "tasks": {"done": len(tasks & done), "total": len(tasks)},
-                    "has_tasks": bool(done), "has_manual": bool(self.library.manual_order(playlist, "custom") or
-                                                                self.library.manual_order(playlist, "lesson")),
-                    "next": (page or {}).get("next"), "loading": loading,
-                    "failed": failed, "ready": page is not None, "resume": saved, "continuation": continuation}
-        raise ValueError("Неизвестный запрос.")
+    def home_sections(self):
+        return self.views.home_sections()
 
-    def _sync_state(self, sid):
-        s = self.bookmark_sync.sessions.get(sid)
-        if not s:
-            return None
-        return {"note": s["note"], "kinds": s["kinds"], "enabled": self.library.bookmarks.enabled(s["aid"])}
+    def actions(self, kind, item, context=None):
+        return self.views.actions(kind, item, context)
 
     def command(self, name, p=None, device="gtk"):
         p = p or {}
@@ -579,7 +394,7 @@ class Application:
                         self.update_playlist_queues(playlist, full)
                     self.editor.drafts.pop(p["token"], None)
         elif name == "follow":
-            obj = p["entity"]
+            obj = plain(p["entity"])
             self._source(obj)
             self.library.follow(obj, p.get("at"))
         elif name == "unfollow":
@@ -587,7 +402,7 @@ class Application:
             self._source(obj)
             self.library.unfollow(obj["source"], obj["id"])
         elif name == "bookmark_add":
-            obj, kind = p["entity"], p["kind"]
+            obj, kind = plain(p["entity"]), p["kind"]
             self._source(obj)
             if kind not in ("video", "playlist", "channel"):
                 raise ValueError("Неизвестный тип закладки.")
@@ -644,7 +459,12 @@ class Application:
                 raise ValueError("Неизвестное действие входа.")
         elif name == "refresh":
             self.bookmark_sync.refresh_accounts()
-            self.bookmark_sync.refresh()
+            for sid, session in list(self.bookmark_sync.sessions.items()):
+                # An account not asked yet what it keeps is asked first.
+                if not session["kinds"]:
+                    self.bookmark_sync.probe(sid)
+                else:
+                    self.bookmark_sync.refresh(sid)
             self.feed.invalidate()
         elif name == "sync_enabled":
             self.bookmark_sync.enable(p["source"], bool(p["on"]))

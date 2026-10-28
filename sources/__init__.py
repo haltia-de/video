@@ -86,7 +86,9 @@ unlock(), which may block (the desktop's prompt) and leaves locked set
 when refused once more.
 
 A source may block (network): Видео calls it from worker threads, more
-than one at a time.
+than one at a time. What the service refuses to this account (or to a
+guest) — a private playlist, videos for subscribers only — it raises as
+Denied, so that the page says so rather than «нет связи?».
 """
 import importlib
 import os
@@ -95,6 +97,7 @@ import platform
 import sys
 
 from haltia_video.adapters.storage.json_store import load_json, save_json
+from haltia_video.core.kept import Denied  # noqa: F401  (raised by the sources)
 from haltia_video.adapters.platform.paths import defaults
 
 

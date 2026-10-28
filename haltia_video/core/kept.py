@@ -44,6 +44,12 @@ def footprint(value):
     return size
 
 
+
+class Denied(Exception):
+    """A service refused what was asked to this account, or to a guest: a
+    private playlist, videos for subscribers only. Sources raise it (the
+    sources package names it); a page then says so, not «нет связи?»."""
+
 class Kept:
     def __init__(self, fetch, ttl, run, path=None, prepare=None, clock=time.time,
                  retry=RETRY_SEC, max_entries=64, load=None, save=None,
@@ -65,6 +71,7 @@ class Kept:
         self.loading = set()
         self.stale = set()  # invalidated while being fetched: old on arrival
         self.failed = {}  # key: when the last fetch failed
+        self.errors = {}  # key: what the last fetch failed with
         self.watchers = []
         if path:
             kept = self.load(path) or {}
@@ -110,6 +117,10 @@ class Kept:
         """The last fetch of key failed (what is kept, if any, is older)."""
         return key in self.failed
 
+    def denied(self, key):
+        """The last fetch of key failed because the service refused it."""
+        return isinstance(self.errors.get(key), Denied)
+
     def invalidate(self, key=None):
         """Old now: the next get fetches again (and may retry at once). A
         fetch already under way may have started before what made it old,
@@ -122,12 +133,14 @@ class Kept:
                 self.stale.add(k)
         for k in ([key] if key is not None else list(self.failed)):
             self.failed.pop(k, None)
+            self.errors.pop(k, None)
 
     def forget(self, key=None):
         """Drop what is kept for key, or all (not the account's any more)."""
         for k in ([key] if key is not None else list(self.entries) + list(self.failed)):
             self.entries.pop(k, None)
             self.failed.pop(k, None)
+            self.errors.pop(k, None)
 
     def _start(self, key):
         self.loading.add(key)
@@ -149,8 +162,10 @@ class Kept:
             error = ValueError("collection exceeds cache budget")
         if error is not None:
             self.failed[key] = self.clock()
+            self.errors[key] = error
         else:
             self.failed.pop(key, None)
+            self.errors.pop(key, None)
             when = 0 if stale else self.clock()
             self.entries[key] = {"value": value, "time": when, "bytes": size}
             self._trim(keep=key)
