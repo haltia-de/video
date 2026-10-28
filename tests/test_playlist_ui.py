@@ -237,12 +237,15 @@ class PlaylistUITest(unittest.TestCase):
             self.pump()
         self.assertGreater(len(flow.get_children()), made)
 
-    def test_tabs_are_kept_where_they_were_scrolled_to(self):
-        # The window's size settled first: a new size makes the kept tabs stale.
+    def settle_size(self):
+        # The window's size settled first: a new size makes the kept pages stale.
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
             self.pump()
             time.sleep(.01)
+
+    def test_tabs_are_kept_where_they_were_scrolled_to(self):
+        self.settle_size()
         for video in self.videos[:40]:
             self.view.library.played(video)
         self.view.show_page("history")
@@ -270,6 +273,7 @@ class PlaylistUITest(unittest.TestCase):
         self.assertEqual(self.view.scroll.get_vadjustment().get_value(), 0)
 
     def test_back_from_a_playlist_finds_its_channel_as_left(self):
+        self.settle_size()
         self.view.show_channel(self.chan)
         self.pump()
         page = self.body_page()

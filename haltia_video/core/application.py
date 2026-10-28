@@ -12,6 +12,7 @@ import time
 from .bookmark_sync import Sync
 from .bookmarks import key
 from .kept import Kept
+from .library import plain
 from . import playlist as ordering
 from .signin import SignIn
 from .playback import Sessions
@@ -21,13 +22,6 @@ from .views import Views
 # An account's channels are brought here when it signs in, and then at
 # most once a day (at the program's start).
 SUBSCRIPTIONS_SYNC_SEC = 86400
-# What queries add to an entity for showing it, not kept when it comes
-# back in a command (a bookmark or a follow of what a page showed).
-VIEW_FIELDS = ("progress", "bookmarked", "followed", "pos", "task_done")
-
-
-def plain(entity):
-    return {k: v for k, v in entity.items() if k not in VIEW_FIELDS} if isinstance(entity, dict) else entity
 
 
 class RecentInputs(OrderedDict):

@@ -1,5 +1,29 @@
 # Что нового · What's new
 
+## 2.14.0 (2026-10-28)
+
+### Русский
+
+- Текст крупнее: названия видео, подписи под карточками, описания каналов и подсказки легче читать на планшете.
+- В плейлисте у карточек больше не повторяется название плейлиста («День 3» вместо «Fire HIIT 1.0 День 3»), а на странице канала — имя канала.
+- Даты по-русски: «вчера», «3 дня назад», «2 недели назад»; пустая дата сервиса («01.01.0001») больше не показывается.
+- Кнопка «Назад» — значок того же размера, что поиск и настройки; звёздочки закладок в списках крупные и золотые, как на карточках.
+- В поиске порядок выбирается переключателем «Сначала новые | Сначала подходящие».
+- Закладки: картинки видео и плейлистов в своих пропорциях, без строки об аккаунте сверху — она осталась в настройках.
+- Пока картинка загружается, на её месте серое поле; у плитки плейлиста на Главной нет лишней рамки.
+- На странице «Добавить закладку» есть кнопка «Вставить»; описания каналов без длинных ссылок; у кнопок ✕, ↑ и ↓ есть подписи для экранного диктора.
+
+### English
+
+- Larger text: video titles, the lines under cards, channel descriptions and hints read more easily on a tablet.
+- In a playlist the cards no longer repeat the playlist's name («День 3» rather than «Fire HIIT 1.0 День 3»), nor on a channel's page the channel's name.
+- Dates in proper Russian: «вчера», «3 дня назад», «2 недели назад»; a service's empty date («01.01.0001») is no longer shown.
+- «Back» is an icon as large as search and settings; bookmark stars in lists are large and gold, as on the cards.
+- Search order is chosen with a «Сначала новые | Сначала подходящие» switch.
+- Bookmarks: video and playlist pictures in their own proportions, without the account line on top, which stays in settings.
+- While a picture loads its place is grey; the playlist tile on Главная has no extra frame.
+- «Добавить закладку» has a «Вставить» (paste) button; channel descriptions drop long links; the ✕, ↑ and ↓ buttons are named for a screen reader.
+
 ## 2.13.1 (2026-10-28)
 
 ### Русский

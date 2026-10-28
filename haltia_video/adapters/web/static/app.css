@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /* The window's look (haltia-video's CSS), at the browser's scale: a
    tablet's browser counts some 1.5 device pixels a CSS pixel. */
-:root{font:18px system-ui,sans-serif;color:#2e3436;background:#e6e6e4;color-scheme:light;
+:root{font:19px system-ui,sans-serif;color:#2e3436;background:#e6e6e4;color-scheme:light;
   --accent:#3584e4;--card:#f2f2f0;--lit:#c4dcf7;--dim:#5e5c64;--gap:14px}
 *{box-sizing:border-box}
 body{margin:0;overflow-wrap:anywhere;-webkit-tap-highlight-color:transparent}
@@ -40,7 +40,7 @@ main{padding:12px 16px 24px}
 @keyframes turn{to{transform:rotate(360deg)}}
 .section{display:flex;align-items:center;gap:12px;margin:18px 0 10px}
 .section h2{flex:1;margin:0;font-size:22px}
-.hint{color:var(--dim);font-size:16px}
+.hint{color:var(--dim);font-size:18px}
 .tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
 .tools .grow{flex:1 1 240px;min-width:0}
 .tools button.grow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -63,8 +63,8 @@ main{padding:12px 16px 24px}
 button.pic{min-width:46px;min-height:46px;padding:0;border-radius:23px;font-size:22px;background:rgba(0,0,0,.55);color:#fff}
 button.pic.saved{background:#e5a50a;color:#000}
 button.pic.done{background:#2ec27e;color:#fff}
-.card h3{font-size:17px;font-weight:normal;margin:8px 12px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.card .meta{margin:2px 12px;color:var(--dim);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card h3{font-size:20px;font-weight:normal;margin:8px 12px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .meta{margin:2px 12px;color:var(--dim);font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .go{margin:8px 12px 0;width:calc(100% - 24px)}
 .nocover{display:flex;align-items:center;justify-content:center;font-size:44px;color:#77767b}
 
@@ -74,10 +74,10 @@ button.pic.done{background:#2ec27e;color:#fff}
 .row .open{flex:1;min-width:0;display:flex;align-items:center;gap:14px;background:transparent;padding:6px;text-align:left;border-radius:14px}
 .row .avatar{flex:none;width:72px;height:72px;border-radius:12px;object-fit:cover;background:#deddda}
 .row .text{flex:1;min-width:0}
-.row .name{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .name{font-size:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .name.wrap{white-space:normal}
-.row .sub{font-size:15px;color:var(--dim)}
-.row .desc{font-size:14px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row .sub{font-size:17px;color:var(--dim)}
+.row .desc{font-size:16px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .row.picked{background:var(--lit)}
 .row .num{flex:none;width:3.2em;text-align:right;color:var(--dim)}
 .row .mini{flex:none;width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#deddda}
@@ -98,7 +98,10 @@ button.chip.on{background:var(--accent);color:#fff}
 .switch:checked{background:var(--accent)}.switch:checked::after{left:31px}
 .setting{background:var(--card);border-radius:16px;padding:12px 16px;margin:10px 0;display:grid;gap:8px}
 .setting .top{display:flex;align-items:center;gap:12px}.setting .top .name{flex:1;font-size:20px}
-.setting .desc{color:var(--dim);font-size:15px}
+.setting .desc{color:var(--dim);font-size:17px}
+button.star{background:transparent;min-width:52px;padding:0;font-size:28px;color:#2e3436}
+button.star.saved{color:#c88800}
+.row .avatar.wide{width:128px;height:72px}
 .qr{width:220px;height:220px;image-rendering:pixelated}
 
 .pager{display:flex;justify-content:space-between;gap:12px;margin:18px 0}

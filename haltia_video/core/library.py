@@ -41,6 +41,16 @@ def _done(pos, duration):
     return bool(duration) and pos > 0 and duration - pos <= DONE_TAIL
 
 
+
+# What the core's views add to an entity for showing it (core/views.py),
+# never kept with it: a history entry, a bookmark or a follow made from
+# what a page showed takes the entity as the service gave it.
+VIEW_FIELDS = ("progress", "bookmarked", "followed", "pos", "task_done", "label", "hide_channel")
+
+
+def plain(entity):
+    return {k: v for k, v in entity.items() if k not in VIEW_FIELDS} if isinstance(entity, dict) else entity
+
 class Library:
     def __init__(self, store):
         self.store = store
@@ -187,9 +197,7 @@ class Library:
         """Put a video first in the history, once (keeping how far it was
         watched)."""
         old = self.position(video)
-        entry = dict(video)
-        entry.pop("progress", None)
-        entry.pop("bookmarked", None)
+        entry = plain(video)
         for key in ("pos", "duration", "ended"):
             if old and key in old:
                 entry[key] = old[key]
@@ -251,7 +259,7 @@ class Library:
         old = self._playback["playlists"].get(ident)
         if (not old or not _same(old["video"], video["source"], video["id"]) or
                 old["video"].get("entry_id") != video.get("entry_id")):
-            self._playback["playlists"][ident] = {"playlist": dict(playlist), "video": dict(video),
+            self._playback["playlists"][ident] = {"playlist": plain(playlist), "video": plain(video),
                                                   "at": time.time()}
             self._changed("playlist_progress")
 

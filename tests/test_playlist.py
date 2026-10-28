@@ -2,6 +2,7 @@
 import unittest
 
 from playlist import collect, lesson_key, page
+from haltia_video.core.playlist import short_title
 
 
 class PlaylistTest(unittest.TestCase):
@@ -80,3 +81,12 @@ class PlaylistTest(unittest.TestCase):
 
         with self.assertRaises(OSError):
             collect(failed, {})
+
+
+class ShortTitleTest(unittest.TestCase):
+    def test_the_playlists_name_is_not_repeated(self):
+        self.assertEqual(short_title("Fire HIIT 💥 - 1.0 День 3 Утренняя", "Fire HIIT 💥 - 1.0"), "День 3 Утренняя")
+        self.assertEqual(short_title("Курс: урок 2", "Курс"), "урок 2")
+        self.assertEqual(short_title("Курс", "Курс"), "Курс")  # nothing else to show
+        self.assertEqual(short_title("Другое видео", "Курс"), "Другое видео")
+
