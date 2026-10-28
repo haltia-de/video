@@ -353,6 +353,8 @@ class Application:
             item = copy.deepcopy(video)
             item["progress"] = self.library.progress(video)
             item["bookmarked"] = bool(self.library.bookmarks.find("video", video))
+            if video.get("channel_id"):
+                item["followed"] = self.library.is_followed(video["source"], video["channel_id"])
             out.append(item)
         return out
 
@@ -447,6 +449,9 @@ class Application:
         return copy.deepcopy(result)
 
     def _query(self, view, p, device, offset):
+        # A page of a list, or (a browser drawing a list again as far as it
+        # had scrolled) more of it at once.
+        count = max(1, min(int(p.get("count", 30)), 1000))
         if view == "state":
             sources = []
             for src in self.ordered():
@@ -468,24 +473,23 @@ class Application:
             query = str(p.get("query", "")).casefold()
             items = [dict(c, bookmarked=bool(self.library.bookmarks.find("channel", c)))
                      for c in self.library.channels() if query in c["title"].casefold()]
-            return self._page(items, offset)
+            return self._page(items, offset, count)
         if view == "history":
-            return self._page(self._videos(self.library.history()), offset)
+            return self._page(self._videos(self.library.history()), offset, count)
         if view == "feed":
-            result = self._page(self._videos(self.feed_shown()), offset)
+            result = self._page(self._videos(self.feed_shown()), offset, count)
             result.update(loading=self.feed.is_loading("feed"), failed=self.feed.has_failed("feed"))
             return result
         if view == "home":
             return self._home()
         if view == "my_playlists":
-            return self._page([self._cursor(c) for c in self.library.playlists_in_progress()], offset,
-                              max(1, min(int(p.get("count", 30)), 1000)))
+            return self._page([self._cursor(c) for c in self.library.playlists_in_progress()], offset, count)
         if view == "source_home":
             src = self.sources.get(p.get("source"))
             if src is None or not hasattr(src, "home"):
                 raise ValueError("Неизвестный источник.")
             got = self.home.get(src.id) or {}
-            result = self._page(self._videos(self.wanted(got.get("videos") or [])), offset)
+            result = self._page(self._videos(self.wanted(got.get("videos") or [])), offset, count)
             result.update(title=got.get("title") or src.label, loading=self.home.is_loading(src.id))
             return result
         if view == "bookmarks":
@@ -493,7 +497,7 @@ class Application:
                 query=str(p.get("query", ""))[:256], kind=p.get("kind", "all"),
                 source=p.get("source", "all"), state=p.get("state", "all"),
                 sort=p.get("sort", "added"), reverse=bool(p.get("reverse", True)))
-            return self._page(items, offset)
+            return self._page(items, offset, count)
         if view == "search":
             from .search import view as search_view
             query = str(p.get("query", "")).strip()[:256]
@@ -532,7 +536,7 @@ class Application:
             albums = self.playlists.get(k) if hasattr(src, "playlists") else []
             for album in albums or []:
                 album.setdefault("owner_title", chan["title"])
-            result = self._page(self._videos(self.wanted(videos or [])), offset)
+            result = self._page(self._videos(self.wanted(videos or [])), offset, count)
             # What is known of a followed channel (its avatar, subscribers…).
             known = next((c for c in self.library.channels()
                           if c["source"] == chan["source"] and c["id"] == chan["id"]), chan)
