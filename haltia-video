@@ -31,6 +31,7 @@ import collections
 import hashlib
 import os
 import platform
+import re
 import sys
 import threading
 import time
@@ -92,6 +93,7 @@ THUMB_W, THUMB_H = 352, 198
 # The order editor's rows: a picture small enough for a long list.
 EDITOR_THUMB = (112, 63)
 AVATAR = 96
+ROW_THUMB = (160, 90)  # a video's or a playlist's picture in a row
 QR_SIZE = 320
 
 
@@ -150,8 +152,8 @@ button.find, button.tab, button.add, button.source, button.more {
 button.find, button.add { background-color: #3584e4; color: #ffffff; }
 button.tab, button.source, button.more { background-color: #f2f2f0; color: #2e3436; }
 button.tab.current { background-color: #c4dcf7; }
-button.more { min-height: 52px; font-size: 20px; }
-combobox.choice button { min-height: 52px; font-size: 20px; }
+button.more { min-height: 60px; font-size: 24px; }
+combobox.choice button { min-height: 64px; font-size: 24px; }
 .card {
   background-color: #f2f2f0;
   border-radius: 16px;
@@ -159,13 +161,13 @@ combobox.choice button { min-height: 52px; font-size: 20px; }
 }
 .card:active { background-color: #c4dcf7; }
 .located { outline: 3px solid #3584e4; outline-offset: -3px; border-radius: 16px; }
-.card label.ttl { font-size: 20px; color: #2e3436; }
-.card label.sub { font-size: 17px; color: #5e5c64; }
+.card label.ttl { font-size: 24px; color: #2e3436; }
+.card label.sub { font-size: 22px; color: #5e5c64; }
 .card progressbar trough { min-height: 6px; border-radius: 0; background-color: #c0bfbc; }
 .card progressbar progress { min-height: 6px; border-radius: 0; background-color: #3584e4; }
-label.note { font-size: 24px; color: #5e5c64; }
-label.section { font-size: 28px; font-weight: bold; color: #2e3436; }
-label.hint { font-size: 20px; color: #5e5c64; }
+label.note { font-size: 26px; color: #5e5c64; }
+label.section { font-size: 30px; font-weight: bold; color: #2e3436; }
+label.hint { font-size: 24px; color: #5e5c64; }
 .chan { background-color: #f2f2f0; border-radius: 16px; padding: 12px 20px; }
 .chan button.open {
   background-image: none;
@@ -176,10 +178,36 @@ label.hint { font-size: 20px; color: #5e5c64; }
   padding: 0;
 }
 .chan button.open:active { background-color: #c4dcf7; }
-.chan label.cname { font-size: 26px; color: #2e3436; }
-.chan label.csub { font-size: 19px; color: #5e5c64; }
-.chan label.cdesc { font-size: 18px; color: #5e5c64; }
-.chan label.ttl { font-size: 22px; color: #2e3436; }
+/* A playlist tile's cover and name: the card's, without a button's frame. */
+.card button.open {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+.card button.open:active { background-color: #c4dcf7; }
+/* The star in a row or a channel's header: as large as the cards' ones, gold
+   when kept, as on the cards. */
+button.star {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  min-width: 64px;
+  min-height: 64px;
+  padding: 0;
+  font-size: 34px;
+  color: #2e3436;
+}
+button.star.saved { color: #c88800; }
+button.star:active { background-color: #c4dcf7; }
+/* A picture still on its way: a place for it, not an empty card. */
+image.thumb { background-color: #deddda; border-radius: 10px; }
+.chan label.cname { font-size: 28px; color: #2e3436; }
+.chan label.csub { font-size: 23px; color: #5e5c64; }
+.chan label.cdesc { font-size: 22px; color: #5e5c64; }
+.chan label.ttl { font-size: 24px; color: #2e3436; }
 label.code { font-size: 40px; font-weight: bold; color: #2e3436; }
 button.drop {
   background-image: none;
@@ -195,6 +223,7 @@ button.drop.wide { font-size: 24px; padding: 0 24px; }
 switch { min-width: 96px; min-height: 48px; }
 expander.fold title { min-height: 52px; }
 expander.fold title label { font-size: 24px; color: #5e5c64; }
+expander.fold title arrow { min-width: 28px; min-height: 28px; }
 .picked { background-color: #c4dcf7; }
 image.nocover { background-color: #deddda; color: #77767b; }
 button.step {
@@ -237,7 +266,7 @@ button.pic.saved { background-color: #e5a50a; color: #000000; }
 button.pic.done { background-color: #2ec27e; color: #ffffff; }
 spinner { color: #3584e4; }
 .toast { background-color: #303030; border-radius: 16px; padding: 8px 8px 8px 20px; }
-.toast label { font-size: 22px; color: #ffffff; }
+.toast label { font-size: 24px; color: #ffffff; }
 .toast button {
   background-image: none;
   background-color: transparent;
@@ -250,8 +279,8 @@ spinner { color: #3584e4; }
   padding: 0 20px;
 }
 .bar { background-color: #f2f2f0; border-radius: 16px; padding: 12px 16px; }
-.bar label.ttl { font-size: 22px; color: #2e3436; }
-.bar label.sub { font-size: 18px; color: #5e5c64; }
+.bar label.ttl { font-size: 24px; color: #2e3436; }
+.bar label.sub { font-size: 22px; color: #5e5c64; }
 .bar button.watch, .bar button.close {
   background-image: none;
   border: none;
@@ -306,16 +335,32 @@ def nice_subscribers(n):
     return "%d %s" % (n, plural(n, "подписчик", "подписчика", "подписчиков"))
 
 
+# A service's empty date (0001-01-01, 1970) is no date: shown, it read
+# «новое видео 01.01.0001».
+OLDEST_DATE = 1104537600  # 2005-01-01, before which no video here was made
+
+
 def nice_age(ts):
-    if not ts:
+    if not ts or ts < OLDEST_DATE:
         return ""
     days = int((time.time() - ts) // 86400)
     if days <= 0:
         hours = max(1, int((time.time() - ts) // 3600))
         return "%d ч назад" % hours
+    if days == 1:
+        return "вчера"
+    if days < 7:
+        return "%d %s назад" % (days, plural(days, "день", "дня", "дней"))
     if days < 30:
-        return "%d дн назад" % days
+        weeks = days // 7
+        return "%d %s назад" % (weeks, plural(weeks, "неделю", "недели", "недель"))
     return time.strftime("%d.%m.%Y", time.localtime(ts))
+
+
+def without_links(text):
+    """A channel's description without its links (a line of addresses
+    and registration numbers told nothing in two lines)."""
+    return " ".join(re.sub(r"(https?://|www\.)\S+", "", text or "").split())
 
 
 def label(text, cls, wrap=False, xalign=0):
@@ -403,7 +448,12 @@ class Picture(Gtk.DrawingArea):
         w, h = self.get_allocated_width(), self.get_allocated_height()
         pw, ph = (self.surface.get_width(), self.surface.get_height()) if self.surface else (w, h)
         x, y = (w - pw) // 2, (h - ph) // 2
-        if self.surface:
+        if not self.surface:
+            # A place for the picture while it comes, not an empty card.
+            cr.set_source_rgb(0xde / 255, 0xdd / 255, 0xda / 255)
+            cr.rectangle(x, y, pw, ph)
+            cr.fill()
+        else:
             cr.set_source_surface(self._on_screen(), x, y)
             if self.dim:
                 cr.paint_with_alpha(0.4)
@@ -701,7 +751,10 @@ class Video(Gtk.Application):
         # The Haltia shell closes windows with its own button; any other desktop
         # gets the usual window buttons in the header.
         header.set_show_close_button(not ON_HALTIA)
-        self.back_btn = Gtk.Button(label="←")
+        # An icon as large as the search's and the gear's: «←» in text was a
+        # third of their size.
+        self.back_btn = Gtk.Button.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.DIALOG)
+        self.back_btn.set_tooltip_text("Назад")
         self.back_btn.get_style_context().add_class("back")
         self.back_btn.set_action_name("app.back")
         self.back_btn.set_no_show_all(True)
@@ -1067,9 +1120,9 @@ class Video(Gtk.Application):
             at_least = max(at_least, self.keep_counts.pop(0))
         return LazyList(items, make, cols, spacing, at_least)
 
-    def grid(self, videos, focus_video=None):
+    def grid(self, videos, focus_video=None, hide_channel=False):
         size = self.card_size()
-        cards = self.lazy(videos, lambda video: self.card(video, size), self.columns())
+        cards = self.lazy(videos, lambda video: self.card(video, size, hide_channel), self.columns())
         if focus_video:
             cards.locate(lambda video: playlist_view.same_entry(video, focus_video),
                          lambda card: card.get_style_context().add_class("located"))
@@ -1092,7 +1145,7 @@ class Video(Gtk.Application):
         w = max(THUMB_W, min(w, CARD_PICTURE_MAX))
         return w, w * 9 // 16
 
-    def card(self, video, size=(THUMB_W, THUMB_H)):
+    def card(self, video, size=(THUMB_W, THUMB_H), hide_channel=False):
         # Few widgets: GTK's cost of a page is that of its widgets, a dozen
         # a card made a page of them slow on the tablet.
         ev = Gtk.EventBox()
@@ -1130,15 +1183,17 @@ class Video(Gtk.Application):
             task.connect("clicked", toggle)
             over.add_overlay(task)
         box.pack_start(over, False, False, 0)
-        title = label(video["title"], "ttl", wrap=True)
+        # On a channel's page its name, in a playlist its name in each
+        # title, are what the page says already.
+        title = label(video.get("label") or video["title"], "ttl", wrap=True)
         title.set_lines(2)
         title.set_ellipsize(3)  # Pango.EllipsizeMode.END
         title.set_max_width_chars(28 if size[0] <= THUMB_W else 50)
         title.set_margin_start(12)
         title.set_margin_end(12)
         box.pack_start(title, False, False, 0)
-        bits = [video.get("channel") or "", nice_duration(video.get("duration")),
-                nice_age(video.get("published"))]
+        bits = ["" if hide_channel or video.get("hide_channel") else video.get("channel") or "",
+                nice_duration(video.get("duration")), nice_age(video.get("published"))]
         sub = label(" · ".join(b for b in bits if b), "sub")
         sub.set_ellipsize(3)
         sub.set_margin_start(12)
@@ -1333,7 +1388,7 @@ class Video(Gtk.Application):
         if cursor:
             video = cursor["video"]
             pos = self.library.position(video) or {}
-            bits.append(" ".join(b for b in (video.get("title"), nice_duration(pos.get("pos"))) if b))
+            bits.append(" ".join(b for b in (video.get("label") or video.get("title"), nice_duration(pos.get("pos"))) if b))
         if bits:
             sub = label(" · ".join(bits), "sub")
             sub.set_ellipsize(3)
@@ -1394,6 +1449,7 @@ class Video(Gtk.Application):
         box.pack_start(self.channel_finder(), False, False, 0)
         def row(chan):
             drop = Gtk.Button(label="✕")
+            drop.set_tooltip_text("Отписаться")  # what a screen reader says for «✕» too
             drop.get_style_context().add_class("drop")
             drop.connect("clicked", lambda _b: self.unfollow(chan))
             return self.channel_row(chan, drop)
@@ -1436,6 +1492,7 @@ class Video(Gtk.Application):
             shown.update(chan=chan)
             inner = Gtk.Box(spacing=16)
             avatar = shown["avatar"] = Gtk.Image()
+            avatar.get_style_context().add_class("thumb")
             avatar.set_size_request(AVATAR, AVATAR)
             avatar.set_valign(Gtk.Align.START)
             if shown.get("asked"):
@@ -1457,7 +1514,7 @@ class Video(Gtk.Application):
                 sub.set_ellipsize(3)
                 text.pack_start(sub, False, False, 0)
             if chan.get("description"):
-                desc = label(chan["description"], "cdesc", wrap=True)
+                desc = label(without_links(chan["description"]), "cdesc", wrap=True)
                 desc.set_lines(2)
                 desc.set_ellipsize(3)
                 desc.set_max_width_chars(60)
@@ -1550,7 +1607,7 @@ class Video(Gtk.Application):
                                          else "У канала нет плейлистов.", "hint", wrap=True), False, False, 0)
                 self.set_content(box)
                 return
-        box.pack_start(self.grid(videos or []), False, False, 0)
+        box.pack_start(self.grid(videos or [], hide_channel=True), False, False, 0)
         self.set_content(box)
 
     def channel_header(self, chan):
@@ -1560,6 +1617,7 @@ class Video(Gtk.Application):
         row = Gtk.Box(spacing=16)
         row.get_style_context().add_class("chan")
         avatar = Gtk.Image()
+        avatar.get_style_context().add_class("thumb")
         avatar.set_size_request(AVATAR, AVATAR)
         self.thumbs.get(known.get("thumb"), avatar, (AVATAR, AVATAR))
         row.pack_start(avatar, False, False, 0)
@@ -1767,6 +1825,7 @@ class Video(Gtk.Application):
             for text, step, can in (("↑", -1, item["position"] > item["minimum"]),
                                     ("↓", 1, item["position"] < item["maximum"])):
                 btn = Gtk.Button(label=text, sensitive=can)
+                btn.set_tooltip_text("Выше" if step < 0 else "Ниже")
                 btn.get_style_context().add_class("step")
                 btn.set_valign(Gtk.Align.CENTER)
                 btn.connect("clicked", lambda _b, v=item, d=step: self.editor_step(v, d))
@@ -1980,7 +2039,7 @@ class Video(Gtk.Application):
             self.say(str(exc))
 
     # --- bookmarks -------------------------------------------------------
-    def bookmark_button(self, kind, obj, style="more"):
+    def bookmark_button(self, kind, obj, style="star"):
         btn = Gtk.Button()
         btn.get_style_context().add_class(style)
         btn.set_valign(Gtk.Align.CENTER)
@@ -2035,8 +2094,12 @@ class Video(Gtk.Application):
         obj, kind = saved["object"], saved["kind"]
         row = Gtk.Box(spacing=12)
         row.get_style_context().add_class("chan")
+        # Videos and playlists 16:9, channels square, as the service shows them.
+        size = (AVATAR, AVATAR) if kind == "channel" else ROW_THUMB
         thumb = Gtk.Image()
-        thumb.set_size_request(AVATAR, AVATAR)
+        thumb.get_style_context().add_class("thumb")
+        thumb.set_size_request(*size)
+        thumb.set_valign(Gtk.Align.CENTER)
         row.pack_start(thumb, False, False, 0)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         title = label(("📌 " if "pin" in saved else "") + obj["title"], "cname", wrap=True)
@@ -2069,7 +2132,7 @@ class Video(Gtk.Application):
         menu.connect("clicked", lambda btn: self.bookmark_menu(btn, saved))
         row.pack_start(menu, False, False, 0)
         # Its list asks for the picture (channel_row tells why).
-        row._pictures = lambda on: (self.thumbs.get(obj.get("thumb"), thumb, (AVATAR, AVATAR))
+        row._pictures = lambda on: (self.thumbs.get(obj.get("thumb"), thumb, size)
                                     if on else self.thumbs.drop(thumb))
         return row
 
@@ -2117,8 +2180,6 @@ class Video(Gtk.Application):
         more.connect("clicked", lambda b: self.menu(b, self.core_actions("bookmarks", {}, self.bookmark_filters)))
         row.pack_end(more, False, False, 0)
         box.pack_start(row, False, False, 0)
-        for sid in self.bookmark_sync.sessions:
-            box.pack_start(self.bookmark_account(sid), False, False, 0)
         found = self.library.bookmarks.view(self.bookmark_query, **self.bookmark_filters)
         box.pack_start(self.lazy(found, self.bookmark_row).widget, False, False, 0)
         self.say(self.bookmark_note or ("" if found else "Закладок пока нет или они не подходят под фильтры."))
@@ -2150,15 +2211,15 @@ class Video(Gtk.Application):
         if not s:
             box.pack_start(label("Для синхронизации закладок войдите в аккаунт.", "csub"), False, False, 0)
             return box
+        # Under «Вход выполнен: …», which names the account already.
         row = Gtk.Box(spacing=12)
-        row.pack_start(label("VK · %s" % s["client"].name, "csub"), True, True, 0)
+        row.pack_start(label(s["note"], "csub", wrap=True), True, True, 0)
         if s["kinds"] or self.library.bookmarks.enabled(s["aid"]):
             switch = Gtk.Switch(active=self.library.bookmarks.enabled(s["aid"]))
             switch.set_tooltip_text("Синхронизировать закладки этого аккаунта")
             switch.connect("notify::active", lambda sw, _p: self.bookmark_sync.enable(sid, sw.get_active()))
             row.pack_start(switch, False, False, 0)
         box.pack_start(row, False, False, 0)
-        box.pack_start(label(s["note"], "csub", wrap=True), False, False, 0)
         return box
 
     def bookmark_tick(self):
@@ -2179,7 +2240,16 @@ class Video(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         entry = Gtk.Entry(placeholder_text="Ссылка на видео, плейлист или канал")
         entry.get_style_context().add_class("search")
-        box.pack_start(entry, False, False, 0)
+        # «Вставить»: on the tablet a link comes from the clipboard, and the
+        # on-screen keyboard's way to paste is a long press and a menu.
+        paste = Gtk.Button(label="Вставить")
+        paste.get_style_context().add_class("more")
+        paste.connect("clicked", lambda _b: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).request_text(
+            lambda _c, text: text and entry.set_text(text.strip())))
+        row = Gtk.Box(spacing=12)
+        row.pack_start(entry, True, True, 0)
+        row.pack_start(paste, False, False, 0)
+        box.pack_start(row, False, False, 0)
         note = label("", "hint", wrap=True)
         add = Gtk.Button(label="Добавить")
         add.get_style_context().add_class("add")
@@ -2281,12 +2351,19 @@ class Video(Gtk.Application):
             {sid for sid, key in keys.items() if self.searches.has_failed(key)},
             self.library.sort)
         if shown["can_sort"]:
-            newest = self.library.sort == "date"
-            order = Gtk.Button(label="Сначала новые" if newest else "Сначала подходящие")
-            order.get_style_context().add_class("more")
-            order.set_halign(Gtk.Align.START)
-            order.connect("clicked", lambda _b: self.toggle_sort(sub))
-            box.pack_start(order, False, False, 0)
+            # The two orders side by side, the one on lit: a single button
+            # named after the order on did not tell whether it was a state
+            # or what a tap would do.
+            seg = Gtk.Box(spacing=0, halign=Gtk.Align.START)
+            seg.get_style_context().add_class("seg")
+            for value, title in (("date", "Сначала новые"), ("relevance", "Сначала подходящие")):
+                btn = Gtk.Button(label=title)
+                btn.get_style_context().add_class("tab")
+                if self.library.sort == value:
+                    btn.get_style_context().add_class("current")
+                btn.connect("clicked", lambda _b, v=value: self.library.sort != v and self.toggle_sort(sub))
+                seg.pack_start(btn, False, False, 0)
+            box.pack_start(seg, False, False, 0)
         for section in shown["sections"]:
             if section["label"]:
                 self.section(box, section["label"])
@@ -2382,6 +2459,7 @@ class Video(Gtk.Application):
             row.pack_start(name, True, True, 0)
             for text, step, can in (("↑", -1, n > 0), ("↓", 1, n < len(sections) - 1)):
                 btn = Gtk.Button(label=text, sensitive=can)
+                btn.set_tooltip_text("Выше" if step < 0 else "Ниже")
                 btn.get_style_context().add_class("step")
                 btn.connect("clicked", lambda _b, k=sid, d=step: self.home_step(k, d))
                 row.pack_start(btn, False, False, 0)
@@ -2707,10 +2785,13 @@ class Video(Gtk.Application):
                 kind, state.get("note"))
             if kind in ("out", "failed"):
                 # Off Flatpak, yt-dlp takes the cookies from the browser itself.
-                for bid, name in (src.browsers() if hasattr(src, "browsers") else []):
+                browsers = list(src.browsers()) if hasattr(src, "browsers") else []
+                for bid, name in browsers:
                     button("Войти через %s" % name, "add", lambda bid=bid: sign.begin(bid))
-                button("Войти по QR-коду" if src.login == "code" else "Проверить файл", "add",
-                       sign.begin)
+                # One main action: with a browser to sign in through, the file
+                # is the other way.
+                button("Войти по QR-коду" if src.login == "code" else "Проверить файл",
+                       "drop wide" if browsers else "add", sign.begin)
         if note:
             card.pack_start(label(note, "csub", wrap=True), False, False, 0)
         if buttons.get_children():
@@ -2933,6 +3014,7 @@ class Video(Gtk.Application):
         self.bar_watch.connect("clicked", lambda *_a: self.watch_on())
         bar.pack_start(self.bar_watch, False, False, 0)
         close = Gtk.Button(label="✕")
+        close.set_tooltip_text("Остановить")
         close.get_style_context().add_class("close")
         close.set_valign(Gtk.Align.CENTER)
         close.connect("clicked", lambda *_a: self.stop_playback())

@@ -18,6 +18,30 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.14.0" date="2026-10-28">
+      <description>
+        <ul>
+          <li>Larger text: video titles, the lines under cards, channel descriptions and hints read more easily on a tablet.</li>
+          <li>In a playlist the cards no longer repeat the playlist's name («День 3» rather than «Fire HIIT 1.0 День 3»), nor on a channel's page the channel's name.</li>
+          <li>Dates in proper Russian: «вчера», «3 дня назад», «2 недели назад»; a service's empty date («01.01.0001») is no longer shown.</li>
+          <li>«Back» is an icon as large as search and settings; bookmark stars in lists are large and gold, as on the cards.</li>
+          <li>Search order is chosen with a «Сначала новые | Сначала подходящие» switch.</li>
+          <li>Bookmarks: video and playlist pictures in their own proportions, without the account line on top, which stays in settings.</li>
+          <li>While a picture loads its place is grey; the playlist tile on Главная has no extra frame.</li>
+          <li>«Добавить закладку» has a «Вставить» (paste) button; channel descriptions drop long links; the ✕, ↑ and ↓ buttons are named for a screen reader.</li>
+        </ul>
+        <ul>
+          <li xml:lang="ru">Текст крупнее: названия видео, подписи под карточками, описания каналов и подсказки легче читать на планшете.</li>
+          <li xml:lang="ru">В плейлисте у карточек больше не повторяется название плейлиста («День 3» вместо «Fire HIIT 1.0 День 3»), а на странице канала — имя канала.</li>
+          <li xml:lang="ru">Даты по-русски: «вчера», «3 дня назад», «2 недели назад»; пустая дата сервиса («01.01.0001») больше не показывается.</li>
+          <li xml:lang="ru">Кнопка «Назад» — значок того же размера, что поиск и настройки; звёздочки закладок в списках крупные и золотые, как на карточках.</li>
+          <li xml:lang="ru">В поиске порядок выбирается переключателем «Сначала новые | Сначала подходящие».</li>
+          <li xml:lang="ru">Закладки: картинки видео и плейлистов в своих пропорциях, без строки об аккаунте сверху — она осталась в настройках.</li>
+          <li xml:lang="ru">Пока картинка загружается, на её месте серое поле; у плитки плейлиста на Главной нет лишней рамки.</li>
+          <li xml:lang="ru">На странице «Добавить закладку» есть кнопка «Вставить»; описания каналов без длинных ссылок; у кнопок ✕, ↑ и ↓ есть подписи для экранного диктора.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.13.1" date="2026-10-28">
       <description>
         <p>Buttons light up while the finger is on them: the tabs, «Все →», menus, «Подписаться», chips, ↑ and ↓, the buttons on pictures. Before, a tap showed only once the finger had left.</p>

@@ -132,6 +132,20 @@ class ApplicationTest(unittest.TestCase):
         self.pump()
         self.assertIn("нет связи?", self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})["failure"])
 
+    def test_a_playlists_cards_say_less_and_the_history_keeps_it_whole(self):
+        video = dict(VIDEO, title="Course День 1", channel_id="-7")
+        self.source.playlist_videos = lambda p, offset=0: {"videos": [video], "next": None}
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.pump()
+        item = self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})["items"][0]
+        self.assertEqual((item["label"], item["hide_channel"]), ("День 1", True))
+        self.library.played(item)
+        self.library.note_playlist(PLAYLIST, item)
+        kept = self.library.history()[0]
+        self.assertEqual(kept["title"], "Course День 1")
+        self.assertNotIn("label", kept)
+        self.assertNotIn("hide_channel", self.library.playlists_in_progress()[0]["video"])
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:

@@ -108,7 +108,7 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         await self.pane(other).get_by_label("Порядок плейлиста").select_option("custom")
         await self.menu(other, "Изменить порядок")
         await other.locator(".pane:not([hidden]) .row[data-entry]").first.wait_for()
-        await page.locator(".pane:not([hidden]) .row[data-entry]").nth(0).get_by_role("button", name="↓").click()
+        await page.locator(".pane:not([hidden]) .row[data-entry]").nth(0).get_by_role("button", name="Ниже").click()
         await page.get_by_role("button", name="↶ Отменить", exact=True).wait_for()
         # Told as the change arrives, before it moves anything.
         await other.locator(".pane:not([hidden]) .note").filter(has_text="Порядок уже изменён").wait_for()
@@ -125,7 +125,7 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         await page.locator('#tabs button[data-page="channels"]').click()
         rows = page.locator(".pane:not([hidden]) .row")
         await rows.nth(2).wait_for()
-        await rows.nth(1).get_by_role("button", name="✕").click()
+        await rows.nth(1).get_by_role("button", name="Отписаться").click()
         await page.locator("#toast").filter(has_text="Вы отписались от «Канал 1»").wait_for()
         await page.locator("#toast-button").click()
         await page.wait_for_function("""() => Array.from(document.querySelectorAll('.pane:not([hidden]) .row .name'))

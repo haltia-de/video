@@ -52,6 +52,7 @@ class Views:
         playlist, video = cursor["playlist"], cursor["video"]
         item = self._videos([video])[0]
         item["pos"] = (self.app.library.position(video) or {}).get("pos")
+        item["label"] = ordering.short_title(video["title"], playlist.get("title", ""))
         chan = {"source": playlist["source"], "id": str(playlist.get("owner_id", "")),
                 "title": playlist.get("owner_title") or video.get("channel") or "", "from_tab": True}
         return {"playlist": playlist, "video": item, "chan": chan,
@@ -314,6 +315,11 @@ class Views:
             continuation = (ordering.task_continuation(videos, saved, done) if order == "lesson" and full else
                             ordering.continuation(videos, saved) if full and saved else None)
             items = self._videos(self.app.wanted((page or {}).get("videos", [])))
+            # What the page says over the cards is not repeated on each:
+            # the playlist's name in a title, its own channel.
+            for video in items:
+                video["label"] = ordering.short_title(video["title"], playlist.get("title", ""))
+                video["hide_channel"] = video.get("channel_id") == str(playlist.get("owner_id", ""))
             if order == "lesson":
                 for video in items:
                     video["task_done"] = key("video", video) in done
@@ -490,7 +496,7 @@ class Views:
         caption = {"tasks_done": "Смотреть сначала", "finished": "Начать сначала",
                    "missing": "Первое доступное видео"}.get(kind, "Продолжить")
         video = status["video"] if kind in ("next", "task_next") and status["video"] else saved["video"]
-        return {"caption": caption, "title": video["title"],
+        return {"caption": caption, "title": ordering.short_title(video["title"], result["entity"].get("title", "")),
                 "pos": saved["pos"] if video is saved["video"] else None,
                 "action": "first" if kind == "tasks_done" else "play",
                 "enabled": kind != "empty", "note": note}

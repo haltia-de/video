@@ -60,13 +60,19 @@ function time(seconds) {
   const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
   return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
 }
+// A service's empty date (0001-01-01, 1970) is no date.
+const OLDEST_DATE = 1104537600;  // 2005-01-01
 function age(ts) {
-  if (!ts) return '';
+  if (!ts || ts < OLDEST_DATE) return '';
   const days = Math.floor((Date.now() / 1000 - ts) / 86400);
   if (days <= 0) return Math.max(1, Math.floor((Date.now() / 1000 - ts) / 3600)) + ' ч назад';
-  if (days < 30) return days + ' дн назад';
+  if (days === 1) return 'вчера';
+  if (days < 7) return days + ' ' + plural(days, 'день', 'дня', 'дней') + ' назад';
+  if (days < 30) { const w = Math.floor(days / 7); return w + ' ' + plural(w, 'неделю', 'недели', 'недель') + ' назад'; }
   return new Date(ts * 1000).toLocaleDateString('ru-RU');
 }
+// A channel's description without its links.
+const withoutLinks = text => (text || '').replace(/(https?:\/\/|www\.)\S+/g, '').replace(/\s+/g, ' ').trim();
 function plural(n, one, few, many) {
   const d = n % 10, t = n % 100;
   return d === 1 && t !== 11 ? one : d >= 2 && d <= 4 && (t < 12 || t > 14) ? few : many;
@@ -396,7 +402,7 @@ function pressable(node, tap, hold) {
   node.addEventListener('click', () => { if (held) { held = false; return; } tap(); });
   node.addEventListener('keydown', event => { if (event.key === 'Enter') tap(); });
 }
-function card(item, lesson = null) {
+function card(item, lesson = null, hideChannel = false) {
   const node = el('article', null, 'card');
   node.tabIndex = 0; node.dataset.video = item.id;
   if (item.entry_id) node.dataset.entry = item.entry_id;
@@ -419,8 +425,11 @@ function card(item, lesson = null) {
     mark.setAttribute('aria-label', done ? 'Выполнено: снять отметку' : 'Отметить выполненным');
     left.append(mark); picture.append(left);
   }
-  node.append(picture, el('h3', item.title),
-              el('div', [item.channel, time(item.duration), age(item.published)].filter(Boolean).join(' · '), 'meta'));
+  // On a channel's page its name, in a playlist its name in each title,
+  // are what the page says already.
+  node.append(picture, el('h3', item.label || item.title),
+              el('div', [hideChannel || item.hide_channel ? '' : item.channel, time(item.duration), age(item.published)]
+                .filter(Boolean).join(' · '), 'meta'));
   pressable(node, () => play(item), () => videoMenu(item));
   return node;
 }
@@ -443,7 +452,7 @@ function playlistCard(playlist, chan, cursor = null, saved = false) {
   picture.append(corner);
   const bits = [];
   if (playlist.count) bits.push(playlist.count + ' видео');
-  if (cursor) bits.push([cursor.video.title, time(cursor.video.pos)].filter(Boolean).join(' '));
+  if (cursor) bits.push([cursor.video.label || cursor.video.title, time(cursor.video.pos)].filter(Boolean).join(' '));
   if (cursor && cursor.video.progress) {
     const strip = el('div', null, 'strip'), bar = el('i');
     bar.style.width = Math.round(cursor.video.progress * 100) + '%';
@@ -468,21 +477,23 @@ function channelRow(chan, action) {
   const bits = [state.sources.length > 1 ? sourceName(chan.source) : '', chan.handle || '',
                 subscribers(chan.subscribers), chan.latest ? 'новое видео ' + age(chan.latest) : ''].filter(Boolean);
   if (bits.length) text.append(el('div', bits.join(' · '), 'sub'));
-  if (chan.description) text.append(el('div', chan.description, 'desc'));
+  if (chan.description) text.append(el('div', withoutLinks(chan.description), 'desc'));
   open.append(image(chan.thumb, 'avatar'), text);
   row.append(open);
   if (action) row.append(action);
   const mark = star('channel', chan, chan.bookmarked);
-  mark.className = mark.className.replace('pic', 'flat');
+  mark.className = mark.className.replace('pic', 'star');
   row.append(mark);
   return row;
 }
 function unfollowButton(chan, title = '✕', cls = 'drop') {
-  return button(title, async () => {
+  const node = button(title, async () => {
     const actions = (await query('actions', {kind: 'channel', item: chan})).actions;
     const action = actions.find(a => a.id === 'unfollow');
     if (action) await runAction(action);
   }, cls);
+  node.setAttribute('aria-label', 'Отписаться');
+  return node;
 }
 function followButton(chan) {
   return chan.followed ? unfollowButton(chan, 'Отписаться', 'drop')
@@ -507,7 +518,8 @@ function bookmarkRow(saved) {
                 obj.channel || obj.owner_title, bookmarkStatus(saved)[0]].filter(Boolean).join(' · ');
   text.append(el('div', info, 'sub'));
   if (obj.unavailable) text.append(el('div', obj.unavailable, 'desc'));
-  open.append(image(obj.thumb, 'avatar'), text);
+  // Videos and playlists 16:9, channels square, as the service shows them.
+  open.append(image(obj.thumb, kind === 'channel' ? 'avatar' : 'avatar wide'), text);
   const more = button('⋮', () => bookmarkMenu(saved), 'flat');
   more.setAttribute('aria-label', 'Действия с закладкой');
   row.append(open, more);
@@ -578,7 +590,6 @@ const PAGES = {
     more.setAttribute('aria-label', 'Ещё');
     chips.append(more);
     root.append(chips);
-    state.sources.filter(s => s.sync).forEach(s => root.append(syncRow(s)));
     const box = el('div', null, 'rows');
     const {first, end} = await lazyList(ctx, 'bookmarks', bookmarkParams(), bookmarkRow, box);
     say(first.items.length ? '' : 'Закладок пока нет или они не подходят под фильтры.', ctx.pane);
@@ -604,9 +615,12 @@ const PAGES = {
     if (kind === 'channels') root.append(channelFinder(p.query));
     const result = await query('search', {query: p.query, kind, source: state.scope || 'all', sort: state.sort});
     if (result.can_sort) {
-      root.append(button(state.sort === 'date' ? 'Сначала новые' : 'Сначала подходящие', async () => {
-        await command('sort', {sort: state.sort === 'date' ? 'relevance' : 'date'});
-      }));
+      // The two orders side by side, the one on lit: one button named after
+      // the order on did not tell a state from what a tap would do.
+      const seg = el('div', null, 'seg');
+      [['date', 'Сначала новые'], ['relevance', 'Сначала подходящие']].forEach(([value, title]) =>
+        seg.append(button(title, () => { if (state.sort !== value) command('sort', {sort: value}); }, state.sort === value ? 'current' : '')));
+      root.append(seg);
     }
     result.sections.forEach(s => {
       if (s.label) section(root, s.label);
@@ -624,7 +638,7 @@ const PAGES = {
     const page = ctx.page, chan = page.params.entity, root = el('div');
     const view = page.params.tab || 'videos';
     const box = el('div', null, 'grid');
-    const {first, end} = await lazyList(ctx, 'channel', {entity: chan}, item => card(item), box);
+    const {first, end} = await lazyList(ctx, 'channel', {entity: chan}, item => card(item, null, true), box);
     const known = first.known || chan;
     const head = el('div', null, 'head'), text = el('div', null, 'text');
     text.append(el('div', known.title, 'name'));
@@ -632,7 +646,7 @@ const PAGES = {
                   subscribers(known.subscribers), known.latest ? 'новое видео ' + age(known.latest) : ''].filter(Boolean);
     if (bits.length) text.append(el('div', bits.join(' · '), 'sub'));
     const mark = star('channel', known, first.bookmarked);
-    mark.className = mark.className.replace('pic', 'flat');
+    mark.className = mark.className.replace('pic', 'star');
     head.append(image(known.thumb, 'avatar'), text,
                 first.followed ? unfollowButton(known, 'Отписаться') : button('Подписаться', () => command('follow', {entity: known}), 'add'),
                 mark);
@@ -744,6 +758,7 @@ const PAGES = {
       const open = button('', () => editorTap(page, item), 'open');
       open.append(el('span', item.position + 1, 'num'), image(item.thumb, 'mini'), el('span', item.title, 'name text'));
       const up = button('↑\uFE0E', () => editorStep(page, item, -1), 'step'), down = button('↓\uFE0E', () => editorStep(page, item, 1), 'step');
+      up.setAttribute('aria-label', 'Выше'); down.setAttribute('aria-label', 'Ниже');
       up.disabled = item.position <= item.minimum; down.disabled = item.position >= item.maximum;
       row.append(open, up, down);
       return row;
@@ -766,6 +781,7 @@ const PAGES = {
       const row = el('div', null, 'row');
       row.append(el('div', s.title, 'name text wrap'));
       const up = button('↑\uFE0E', () => homeStep(n, -1), 'step'), down = button('↓\uFE0E', () => homeStep(n, 1), 'step');
+      up.setAttribute('aria-label', 'Выше'); down.setAttribute('aria-label', 'Ниже');
       up.disabled = n === 0; down.disabled = n === sections.length - 1;
       row.append(up, down, toggle(s.on, on => command('home_sections', {sections: sections.map(e => ({id: e.id, on: e.id === s.id ? on : e.on}))}), s.title));
       root.append(row);
@@ -805,11 +821,11 @@ function setBookmarkFilter(field, value) {
   savePreferences();
   showTab('bookmarks', true);
 }
+// Under «Вход выполнен: …», which names the account already.
 function syncRow(src) {
-  const row = el('div', null, 'setting'), top = el('div', null, 'top');
-  top.append(el('div', src.label + ' · ' + (src.account && src.account.name || ''), 'name'));
-  if (src.sync.kinds && src.sync.kinds.length) top.append(toggle(src.sync.enabled, on => command('sync_enabled', {source: src.id, on}), 'Синхронизировать закладки'));
-  row.append(top, el('div', src.sync.note, 'desc'));
+  const row = el('div', null, 'top');
+  row.append(el('div', src.sync.note, 'desc grow'));
+  if (src.sync.kinds && src.sync.kinds.length) row.append(toggle(src.sync.enabled, on => command('sync_enabled', {source: src.id, on}), 'Синхронизировать закладки'));
   return row;
 }
 function setting(title, text, on, change) {
@@ -881,8 +897,10 @@ function sourceSettings(src) {
     }
     note = {getting: 'Получаю код…', checking: 'Проверяю…', submitting: 'Проверяю код…', confirming: 'Завершаю вход…'}[kind] || account.note;
     if (kind === 'out' || kind === 'failed') {
-      (src.browsers || []).forEach(([id, name]) => buttons.append(button('Войти через ' + name + ' на ПК', () => command('signin', {source: src.id, browser: id}), 'add')));
-      buttons.append(button(src.login === 'code' ? 'Войти по QR-коду' : 'Проверить файл', () => sign('begin'), 'add'));
+      const browsers = src.browsers || [];
+      browsers.forEach(([id, name]) => buttons.append(button('Войти через ' + name + ' на ПК', () => command('signin', {source: src.id, browser: id}), 'add')));
+      // One main action: with a browser to sign in through, the file is the other way.
+      buttons.append(button(src.login === 'code' ? 'Войти по QR-коду' : 'Проверить файл', () => sign('begin'), browsers.length ? 'drop' : 'add'));
     }
   }
   if (note) box.append(el('div', note, 'desc'));

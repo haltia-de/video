@@ -145,3 +145,14 @@ def same_entry(a, b):
     if a.get("entry_id") and b.get("entry_id"):
         return a["entry_id"] == b["entry_id"]
     return (a.get("source"), a.get("id")) == (b.get("source"), b.get("id"))
+
+
+def short_title(title, playlist_title):
+    """A video's title without the playlist's name it starts with: in
+    «Fire HIIT 1.0» the lesson «Fire HIIT 1.0 День 3» is «День 3» (each
+    card repeated the name the page shows over them)."""
+    if playlist_title and title.startswith(playlist_title):
+        rest = title[len(playlist_title):].lstrip(" -\u2013\u2014:|.,\u00b7")
+        if rest:
+            return rest
+    return title
