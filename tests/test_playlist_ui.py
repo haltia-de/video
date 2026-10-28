@@ -138,10 +138,18 @@ class PlaylistUITest(unittest.TestCase):
         self.view.playlist_order[k] = "lesson"
         self.view.show_playlist(self.playlist, self.chan)
         self.pump()
-        check = next(w for w in self.widgets() if isinstance(w, self.Gtk.CheckButton) and w.get_label() == "Выполнено")
-        check.set_active(True)
+        # The mark on the picture's corner; the card and the line over the
+        # cards follow in place, the page is not drawn again.
+        mark = next(w for w in self.widgets() if getattr(w, "_task", None) is not None)
+        self.assertEqual(mark.get_label(), "○")
+        page = self.view.body.get_children()[-1]
+        mark.clicked()
         self.pump()
         self.assertEqual(self.view.sub["result"]["tasks"]["done"], 1)
+        self.assertEqual(mark.get_label(), "✓")
+        self.assertIs(self.view.body.get_children()[-1], page)
+        self.assertTrue(any(isinstance(w, self.Gtk.Label) and w.get_text().startswith("Выполнено 1 из")
+                            for w in self.widgets()))
         self.assertIsNone(self.view.player.state)
 
     def open(self, video=None, order="vk"):

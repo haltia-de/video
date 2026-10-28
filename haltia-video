@@ -211,6 +211,7 @@ button.pic {
   font-size: 26px;
 }
 button.pic.saved { background-color: #e5a50a; color: #000000; }
+button.pic.done { background-color: #2ec27e; color: #ffffff; }
 .toast { background-color: #303030; border-radius: 16px; padding: 8px 8px 8px 20px; }
 .toast label { font-size: 22px; color: #ffffff; }
 .toast button {
@@ -314,6 +315,56 @@ def qr_pixbuf(text):
                                            side, side, side * 3)
 
 
+class Picture(Gtk.DrawingArea):
+    """A card's picture with the strip of how much was watched along its
+    bottom, dimmed once done: one widget drawn here, where an image, a box
+    and a progress bar were three for GTK to style and measure on every
+    card. A new picture only draws it again (an image laid the page out)."""
+
+    STRIP = 6
+
+    def __init__(self, size):
+        super().__init__()
+        self.set_size_request(*size)
+        self.pix = None
+        self.fraction = None
+        self.dim = False
+        self.connect("draw", self._draw)
+
+    def set_from_pixbuf(self, pix):
+        self.pix = pix
+        self.queue_draw()
+
+    def set_progress(self, fraction):
+        if fraction != self.fraction:
+            self.fraction = fraction
+            self.queue_draw()
+
+    def set_dim(self, dim):
+        if dim != self.dim:
+            self.dim = dim
+            self.queue_draw()
+
+    def _draw(self, _widget, cr):
+        w, h = self.get_allocated_width(), self.get_allocated_height()
+        pw, ph = (self.pix.get_width(), self.pix.get_height()) if self.pix else (w, h)
+        x, y = (w - pw) // 2, (h - ph) // 2
+        if self.pix:
+            Gdk.cairo_set_source_pixbuf(cr, self.pix, x, y)
+            if self.dim:
+                cr.paint_with_alpha(0.4)
+            else:
+                cr.paint()
+        if self.fraction:
+            cr.set_source_rgb(0xc0 / 255, 0xbf / 255, 0xbc / 255)
+            cr.rectangle(x, y + ph - self.STRIP, pw, self.STRIP)
+            cr.fill()
+            cr.set_source_rgb(0x35 / 255, 0x84 / 255, 0xe4 / 255)
+            cr.rectangle(x, y + ph - self.STRIP, round(pw * self.fraction), self.STRIP)
+            cr.fill()
+        return False
+
+
 class Thumbs:
     """Card pictures: fetched and decoded by a few workers (decoding a JPEG
     on the GTK side stalls the page here), kept on disk, and the decoded
@@ -331,8 +382,11 @@ class Thumbs:
         if not url:
             return
         key = (url, size)
-        alive = [True]  # read by the workers: no GTK call off its thread
-        image.connect("destroy", lambda *_a: alive.__setitem__(0, False))
+        image._thumb = key  # what it is to show: drop() or another get() changes it
+        alive = getattr(image, "_alive", None)
+        if alive is None:
+            alive = image._alive = [True]  # read by the workers: no GTK call off its thread
+            image.connect("destroy", lambda *_a: alive.__setitem__(0, False))
         with self.lock:
             pix = self.kept.get(key)
             if pix is None:
@@ -346,9 +400,16 @@ class Thumbs:
             return
         self.pool.submit(self._load, key)
 
+    @staticmethod
+    def drop(image):
+        """Its picture let go (far from the window, or on a page hidden);
+        get() takes it back, from memory if it is still there."""
+        image._thumb = None
+        image.set_from_pixbuf(None)
+
     def _load(self, key):
         with self.lock:
-            if not any(alive[0] for _image, alive in self.waiting[key]):
+            if not any(alive[0] and image._thumb == key for image, alive in self.waiting[key]):
                 del self.waiting[key]  # its page is gone
                 return
         url, size = key
@@ -370,12 +431,13 @@ class Thumbs:
             if pix is not None:
                 self.kept.put(key, pix)
         if pix is not None:
-            GLib.idle_add(self._show, [image for image, alive in images if alive[0]], pix)
+            GLib.idle_add(self._show, images, key, pix)
 
     @staticmethod
-    def _show(images, pix):
-        for image in images:
-            image.set_from_pixbuf(pix)
+    def _show(images, key, pix):
+        for image, alive in images:
+            if alive[0] and image._thumb == key:
+                image.set_from_pixbuf(pix)
         return False
 
     @staticmethod
@@ -430,6 +492,7 @@ class Video(Gtk.Application):
         self.page = "home"
         self.sub = None  # a page over the tabs: search, a channel, settings
         self.keep_counts = None  # while a page is drawn again: how far its lists were made
+        self.stars = set()  # the bookmark buttons on show
         self.refreshing = False  # followed channels' details being fetched
         self.refresh_tried = set()
         self.win = None
@@ -832,16 +895,19 @@ class Video(Gtk.Application):
         return w, w * 9 // 16
 
     def card(self, video, size=(THUMB_W, THUMB_H)):
+        # Few widgets: GTK's cost of a page is that of its widgets, a dozen
+        # a card made a page of them slow on the tablet.
         ev = Gtk.EventBox()
         ev.get_style_context().add_class("card")
+        ev._video_key = (video["source"], video["id"])
+        ev._entry_id = video.get("entry_id")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        image = Gtk.Image()
-        image.set_size_request(*size)
-        picture = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        # ☆ and ⋮ sit on the picture's corner: a strip of its own under every
-        # card was a row of noise for each three cards.
+        picture = Picture(size)
+        # ☆ and ⋮ sit on the picture's corner, and in a playlist by lessons
+        # the mark of a lesson done on the other: a strip of its own under
+        # every card was a row of noise for each three cards.
         over = Gtk.Overlay(halign=Gtk.Align.CENTER)  # the corner of the picture, not of the card
-        over.add(image)
+        over.add(picture)
         corner = Gtk.Box(spacing=8, halign=Gtk.Align.END, valign=Gtk.Align.START, margin=8)
         corner.pack_start(self.bookmark_button("video", video, "pic"), False, False, 0)
         more = Gtk.Button(label="⋮")
@@ -850,15 +916,22 @@ class Video(Gtk.Application):
         more.connect("clicked", lambda b: self.card_menu(video, b))
         corner.pack_start(more, False, False, 0)
         over.add_overlay(corner)
-        picture.pack_start(over, False, False, 0)
-        seen = self.library.progress(video)
-        if seen:
-            # How much of it was watched, along the bottom of the picture.
-            strip = Gtk.ProgressBar(fraction=seen)
-            strip.set_size_request(size[0], -1)
-            strip.set_halign(Gtk.Align.CENTER)
-            picture.pack_start(strip, False, False, 0)
-        box.pack_start(picture, False, False, 0)
+        task = None
+        if self.on_sub("playlist") and self.sub["order"] == "lesson":
+            playlist = self.sub["playlist"]
+            task = Gtk.Button(halign=Gtk.Align.START, valign=Gtk.Align.START, margin=8)
+            task.get_style_context().add_class("pic")
+            task._task = video
+
+            def toggle(_btn):
+                try:
+                    self.core.command("playlist_task", {"entity": playlist, "video": video,
+                                                         "on": not task._done})
+                except ValueError as exc:
+                    self.say(str(exc))
+            task.connect("clicked", toggle)
+            over.add_overlay(task)
+        box.pack_start(over, False, False, 0)
         title = label(video["title"], "ttl", wrap=True)
         title.set_lines(2)
         title.set_ellipsize(3)  # Pango.EllipsizeMode.END
@@ -874,7 +947,27 @@ class Video(Gtk.Application):
         sub.set_margin_end(12)
         box.pack_start(sub, False, False, 0)
         ev.add(box)
-        self.thumbs.get(video["thumb"], image, size)
+
+        def refresh():
+            # What changes without the page: how much was watched, a lesson done.
+            picture.set_progress(self.library.progress(video))
+            if task is not None:
+                done = bookmark_view.key("video", video) in self.library.task_done(playlist)
+                task._done = done
+                task.set_label("✓" if done else "○")
+                (task.get_style_context().add_class if done else task.get_style_context().remove_class)("done")
+                task.set_tooltip_text("Выполнено: снять отметку" if done else "Отметить выполненным")
+                picture.set_dim(done)
+        refresh()
+        ev._refresh = refresh
+
+        def pictures(on):
+            if on:
+                self.thumbs.get(video["thumb"], picture, size)
+            else:
+                self.thumbs.drop(picture)
+        pictures(True)
+        ev._pictures = pictures
 
         # A tap plays; a long press opens the same menu as ⋮.
         tap = Gtk.GestureMultiPress(widget=ev)
@@ -899,23 +992,7 @@ class Video(Gtk.Application):
         hold.connect("pressed", lambda *_a: (state.update(held=True),
                                              ev.unset_state_flags(Gtk.StateFlags.ACTIVE),
                                              GLib.idle_add(lambda: self.card_menu(video, ev) and False)))
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        outer._video_key = (video["source"], video["id"])
-        outer._entry_id = video.get("entry_id")
-        outer.pack_start(ev, True, True, 0)
-        if self.on_sub("playlist") and self.sub["order"] == "lesson":
-            task = Gtk.CheckButton(label="Выполнено")
-            task.set_active(bool(video.get("task_done")))
-            playlist = self.sub["playlist"]
-            def toggle(check):
-                try:
-                    self.core.command("playlist_task", {"entity": playlist, "video": video,
-                                                         "on": check.get_active()})
-                except ValueError as exc:
-                    self.say(str(exc))
-            task.connect("toggled", toggle)
-            outer.pack_start(task, False, False, 0)
-        return outer
+        return ev
 
     def section(self, box, title, action=None):
         row = Gtk.Box(spacing=12)
@@ -1066,6 +1143,7 @@ class Video(Gtk.Application):
         thumb = playlist.get("thumb") or (cursor and cursor["video"].get("thumb"))
         if thumb:
             self.thumbs.get(thumb, image, size)
+            tile._pictures = lambda on: self.thumbs.get(thumb, image, size) if on else self.thumbs.drop(image)
         else:
             image.get_style_context().add_class("nocover")
             image.set_from_icon_name("view-list-symbolic", Gtk.IconSize.DIALOG)
@@ -1177,45 +1255,65 @@ class Video(Gtk.Application):
 
     def channel_row(self, chan, action):
         """A channel with what is known about it; a tap opens it, action
-        (a button) sits at the end."""
+        (a button) sits at the end. Details that come later fill it in
+        place (_refresh)."""
         row = Gtk.Box(spacing=12)
         row.get_style_context().add_class("chan")
-        inner = Gtk.Box(spacing=16)
-        avatar = Gtk.Image()
-        avatar.set_size_request(AVATAR, AVATAR)
-        avatar.set_valign(Gtk.Align.START)
-        self.thumbs.get(chan.get("thumb"), avatar, (AVATAR, AVATAR))
-        inner.pack_start(avatar, False, False, 0)
-        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        text.set_valign(Gtk.Align.CENTER)
-        name = label(chan["title"], "cname")
-        name.set_ellipsize(3)  # Pango.EllipsizeMode.END
-        text.pack_start(name, False, False, 0)
-        latest = nice_age(chan.get("latest"))
-        src = self.sources.get(chan["source"])
-        bits = [src.label if src and len(self.sources) > 1 else "",
-                chan.get("handle") or "", nice_subscribers(chan.get("subscribers")),
-                ("новое видео " + latest) if latest else ""]
-        bits = [b for b in bits if b]
-        if bits:
-            sub = label(" · ".join(bits), "csub")
-            sub.set_ellipsize(3)
-            text.pack_start(sub, False, False, 0)
-        if chan.get("description"):
-            desc = label(chan["description"], "cdesc", wrap=True)
-            desc.set_lines(2)
-            desc.set_ellipsize(3)
-            desc.set_max_width_chars(60)
-            text.pack_start(desc, False, False, 0)
-        inner.pack_start(text, True, True, 0)
         open_btn = Gtk.Button()
         open_btn.get_style_context().add_class("open")
-        open_btn.add(inner)
-        open_btn.connect("clicked", lambda _b: self.show_channel(chan))
+        shown = {}
+
+        def fill(chan):
+            shown.update(chan=chan)
+            inner = Gtk.Box(spacing=16)
+            avatar = shown["avatar"] = Gtk.Image()
+            avatar.set_size_request(AVATAR, AVATAR)
+            avatar.set_valign(Gtk.Align.START)
+            self.thumbs.get(chan.get("thumb"), avatar, (AVATAR, AVATAR))
+            inner.pack_start(avatar, False, False, 0)
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            text.set_valign(Gtk.Align.CENTER)
+            name = label(chan["title"], "cname")
+            name.set_ellipsize(3)  # Pango.EllipsizeMode.END
+            text.pack_start(name, False, False, 0)
+            latest = nice_age(chan.get("latest"))
+            src = self.sources.get(chan["source"])
+            bits = [src.label if src and len(self.sources) > 1 else "",
+                    chan.get("handle") or "", nice_subscribers(chan.get("subscribers")),
+                    ("новое видео " + latest) if latest else ""]
+            bits = [b for b in bits if b]
+            if bits:
+                sub = label(" · ".join(bits), "csub")
+                sub.set_ellipsize(3)
+                text.pack_start(sub, False, False, 0)
+            if chan.get("description"):
+                desc = label(chan["description"], "cdesc", wrap=True)
+                desc.set_lines(2)
+                desc.set_ellipsize(3)
+                desc.set_max_width_chars(60)
+                text.pack_start(desc, False, False, 0)
+            inner.pack_start(text, True, True, 0)
+            open_btn.add(inner)
+
+        def refresh():
+            known = next((c for c in self.library.channels()
+                          if c["source"] == chan["source"] and c["id"] == chan["id"]), None)
+            if known is not None and known != shown["chan"]:
+                old = open_btn.get_child()
+                open_btn.remove(old)
+                old.destroy()
+                fill(known)
+                open_btn.show_all()
+
+        fill(chan)
+        open_btn.connect("clicked", lambda _b: self.show_channel(shown["chan"]))
         row.pack_start(open_btn, True, True, 0)
         action.set_valign(Gtk.Align.CENTER)
         row.pack_start(action, False, False, 0)
         row.pack_start(self.bookmark_button("channel", chan), False, False, 0)
+        row._refresh = refresh
+        row._pictures = lambda on: (self.thumbs.get(shown["chan"].get("thumb"), shown["avatar"], (AVATAR, AVATAR))
+                                    if on else self.thumbs.drop(shown["avatar"]))
         return row
 
     def refresh_channels(self):
@@ -1328,44 +1426,10 @@ class Video(Gtk.Application):
         page = {"videos": result["items"], "next": result["next"]} if result["ready"] else None
         failed = result["failed"]
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        sorting = Gtk.ComboBoxText()
-        sorting.get_style_context().add_class("choice")
-        sorting.set_tooltip_text("По номеру урока: номер по возрастанию, внутри одного номера — "
-                                 "обратный порядок сервиса.")
-        for oid, title in playlist_view.ORDERS:
-            sorting.append(oid, title)
-        sorting.set_active_id(order)
-        sub = self.sub
-
-        def changed(combo):
-            selected = combo.get_active_id()
-            if self.sub is sub and selected is not None and selected != order:
-                self.playlist_order[key[:3]] = selected
-                self.redraw_after(combo, lambda: self.show_playlist(playlist, chan))
-
-        sorting.connect("changed", changed)
-        # One row over the cards: the order, «Продолжить» and ⋮ for the rest.
-        # The resets and the editor are rare, so they wait in the menu.
-        tools = Gtk.Box(spacing=12)
-        tools.pack_start(sorting, False, False, 0)
-        resume, note = self.playlist_resume(self.sub)
-        if resume:
-            tools.pack_start(resume, True, True, 0)
-        else:
-            tools.pack_start(Gtk.Box(), True, True, 0)
-        more = Gtk.Button(label="⋮")
-        more.get_style_context().add_class("more")
-        more.set_tooltip_text("Ещё")
-        more.connect("clicked", lambda b: self.menu(b, self.playlist_actions(sub)))
-        tools.pack_start(more, False, False, 0)
-        box.pack_start(tools, False, False, 0)
-        bits = []
-        if order == "lesson":
-            bits.append("Выполнено %d из %d" % (result["tasks"]["done"], result["tasks"]["total"]))
-        if note:
-            bits.append(note)
-        if bits:
-            box.pack_start(label(" · ".join(bits), "hint", wrap=True), False, False, 0)
+        # Over the cards; drawn again alone when a lesson is marked done.
+        self.sub["head"] = head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.pack_start(head, False, False, 0)
+        self.playlist_head(self.sub, result)
         if page is None:
             self.say("Не удалось загрузить плейлист: нет связи?" if failed else
                      ("Загружаю весь плейлист…" if order != "vk" else "Загружаю…"))
@@ -1385,6 +1449,56 @@ class Video(Gtk.Application):
                 nav.pack_start(btn, True, True, 0)
         box.pack_start(nav, False, False, 0)
         self.set_content(box)
+
+    def playlist_head(self, sub, result=None):
+        """The row over a playlist's cards (the order, «Продолжить» and ⋮)
+        and the line of lessons done; asked again without result."""
+        playlist, chan, key, order = sub["playlist"], sub["chan"], sub["key"], sub["order"]
+        if result is None:
+            result = sub["result"] = self.core.query("playlist", {"entity": playlist, "order": order,
+                                                                  "offset": key[3]})
+        head = sub["head"]
+        for child in head.get_children():
+            head.remove(child)
+            child.destroy()
+        sorting = Gtk.ComboBoxText()
+        sorting.get_style_context().add_class("choice")
+        sorting.set_tooltip_text("По номеру урока: номер по возрастанию, внутри одного номера — "
+                                 "обратный порядок сервиса.")
+        for oid, title in playlist_view.ORDERS:
+            sorting.append(oid, title)
+        sorting.set_active_id(order)
+
+        def changed(combo):
+            selected = combo.get_active_id()
+            if self.sub is sub and selected is not None and selected != order:
+                self.playlist_order[key[:3]] = selected
+                self.redraw_after(combo, lambda: self.show_playlist(playlist, chan))
+
+        sorting.connect("changed", changed)
+        # One row over the cards: the order, «Продолжить» and ⋮ for the rest.
+        # The resets and the editor are rare, so they wait in the menu.
+        tools = Gtk.Box(spacing=12)
+        tools.pack_start(sorting, False, False, 0)
+        resume, note = self.playlist_resume(sub)
+        if resume:
+            tools.pack_start(resume, True, True, 0)
+        else:
+            tools.pack_start(Gtk.Box(), True, True, 0)
+        more = Gtk.Button(label="⋮")
+        more.get_style_context().add_class("more")
+        more.set_tooltip_text("Ещё")
+        more.connect("clicked", lambda b: self.menu(b, self.playlist_actions(sub)))
+        tools.pack_start(more, False, False, 0)
+        head.pack_start(tools, False, False, 0)
+        bits = []
+        if order == "lesson":
+            bits.append("Выполнено %d из %d" % (result["tasks"]["done"], result["tasks"]["total"]))
+        if note:
+            bits.append(note)
+        if bits:
+            head.pack_start(label(" · ".join(bits), "hint", wrap=True), False, False, 0)
+        head.show_all()
 
     def show_playlist_editor(self, playlist=None, chan=None, order=None, return_order=None, again=False):
         """The whole playlist in the order being made: a tap picks a video, a
@@ -1737,6 +1851,9 @@ class Video(Gtk.Application):
         update()
         btn._refresh = update
         btn.connect("clicked", clicked)
+        # Every star on show follows a bookmark changed anywhere (library_changed).
+        self.stars.add(btn)
+        btn.connect("destroy", self.stars.discard)
         return btn
 
     def bookmark_menu(self, button, saved):
@@ -1792,9 +1909,8 @@ class Video(Gtk.Application):
         self.core.command("bookmark_remove", {"key": saved["key"], "local_only": local_only})
         self.bookmark_sync.refresh()
         if not saved["links"] and not self.library.confirm:
-            self.notice("Закладка «%s» удалена" % title, "Вернуть", lambda: (
-                self.core.command("bookmark_add", {"kind": saved["kind"], "entity": saved["object"]}),
-                self.redraw_cards()))
+            self.notice("Закладка «%s» удалена" % title, "Вернуть", lambda: self.core.command(
+                "bookmark_add", {"kind": saved["kind"], "entity": saved["object"]}))
         return True
 
     def bookmark_status(self, saved):
@@ -1855,6 +1971,8 @@ class Video(Gtk.Application):
         menu.set_valign(Gtk.Align.CENTER)
         menu.connect("clicked", lambda btn: self.bookmark_menu(btn, saved))
         row.pack_start(menu, False, False, 0)
+        row._pictures = lambda on: (self.thumbs.get(obj.get("thumb"), thumb, (AVATAR, AVATAR))
+                                    if on else self.thumbs.drop(thumb))
         return row
 
     def open_bookmark(self, saved):
@@ -2563,24 +2681,34 @@ class Video(Gtk.Application):
 
     # --- channels ---------------------------------------------------------
     def library_changed(self, what):
-        if what in ("playlist_edits", "tasks") and self.on_sub("playlist"):
+        if what == "playlist_edits" and self.on_sub("playlist"):
             self.show_playlist(self.sub["playlist"], self.sub["chan"], self.sub["key"][3],
                                again=True, previous=self.sub["previous"])
+        elif what == "tasks" and self.on_sub("playlist"):
+            LazyList.refresh_all()  # the marks on the cards, in place
+            self.playlist_head(self.sub)
         elif what == "bookmarks":
+            for star in list(self.stars):
+                star._refresh()
             self.redraw("bookmarks")
             self.redraw("home")
         elif what in ("history", "playlist_progress"):
             self.redraw("home")
         elif what == "position":
+            LazyList.refresh_all()  # the strips on the cards, in place
             state = self.player.state
             if state is None or state["paused"]:
-                self.redraw(self.page)  # the strips on the cards; not while one watches
+                self.redraw("home")  # «Продолжить просмотр»; not while one watches
         elif what == "follow":
             self.feed.invalidate()  # the new channels' videos are not in it yet
             if self.on_sub("channel"):
                 self.show_channel(self.sub["chan"], again=True)
             self.redraw("channels")
-        elif what in ("unfollow", "details"):
+        elif what == "details":
+            LazyList.refresh_all()  # the channels' rows, in place
+            if self.on_sub("channel"):
+                self.show_channel(self.sub["chan"], again=True)
+        elif what == "unfollow":
             self.redraw(self.page)  # Каналы, and a feed without the channel
             if self.on_sub("channel"):
                 self.show_channel(self.sub["chan"], again=True)
@@ -2610,23 +2738,14 @@ class Video(Gtk.Application):
                                                         self.say("Вы подписались на «%s»." % chan["title"])))
         saved = self.library.bookmarks.find("video", video)
         if saved:
-            action("Убрать из закладок", lambda: self.remove_bookmark(saved) and self.redraw_cards())
+            action("Убрать из закладок", lambda: self.remove_bookmark(saved))
         else:
             action("В закладки", lambda: (self.core.command("bookmark_add", {"kind": "video", "entity": video}),
-                                          self.bookmark_sync.refresh(), self.redraw_cards()))
+                                          self.bookmark_sync.refresh()))
         pop.add(box)
         pop.show_all()
         pop.popup()
         return pop
-
-    def redraw_cards(self):
-        """Stars on the cards follow a bookmark changed from a menu."""
-        if self.sub is None:
-            self.redraw(self.page)
-        elif self.sub["kind"] == "playlist":
-            self.keep_scroll(lambda: self.show_playlist(
-                self.sub["playlist"], self.sub["chan"], self.sub["key"][3], again=True,
-                previous=self.sub["previous"]))
 
     def unfollow(self, chan):
         """Asks first unless the person turned questions off; then a note
