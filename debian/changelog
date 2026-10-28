@@ -1,3 +1,10 @@
+haltia-video (2.11.2) unstable; urgency=medium
+
+  * Run the program's code from a module, so that Python loads it
+    compiled.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 28 Oct 2026 14:00:00 +0300
+
 haltia-video (2.11.1) unstable; urgency=medium
 
   * Load Pillow and the network modules on first use, in a worker, not
