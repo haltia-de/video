@@ -222,7 +222,7 @@ modules:
         runpy.run_module("haltia_video_main", run_name="__main__", alter_sys=False)
         EOF
         chmod 755 /app/bin/haltia-video
-      - for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
+      - for f in library.py kept.py search.py signin.py player.py pictures.py lazy_list.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
         install -D -m 644 $f /app/lib/haltia-video/$f; done
       - for f in sources/*.py; do install -D -m 644 $f /app/lib/haltia-video/$f; done
       - find haltia_video -type f \( -name '*.py' -o -name '*.js' -o -name '*.css' -o -name '*.html' \) -exec sh -c 'install -D -m 644 "$1" "/app/lib/haltia-video/$1"' sh {} \;

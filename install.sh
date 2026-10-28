@@ -19,7 +19,7 @@ id=io.github.haltia_de.Video
 old_id=io.github.trudenboy.Video
 lib=$root$prefix/lib/haltia-video
 rm -rf "$lib" "$root$prefix/lib/b8k-video"
-for f in library.py kept.py search.py signin.py player.py pictures.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
+for f in library.py kept.py search.py signin.py player.py pictures.py lazy_list.py playlist.py renamed.py bookmarks.py bookmark_sync.py; do
 	install -D -m 644 "$here/$f" "$lib/$f"
 done
 find "$here/haltia_video" -type f \( -name '*.py' -o -name '*.js' -o -name '*.css' -o -name '*.html' \) | while IFS= read -r f; do

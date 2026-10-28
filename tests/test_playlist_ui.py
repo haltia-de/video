@@ -77,6 +77,13 @@ class PlaylistUITest(unittest.TestCase):
             elif not self.jobs:
                 break
 
+    def settle(self, done, seconds=3):
+        deadline = time.monotonic() + seconds
+        while not done() and time.monotonic() < deadline:
+            self.pump()
+            time.sleep(.01)
+        self.assertTrue(done())
+
     def widgets(self, widget=None):
         widget = widget or self.view.win
         yield widget
@@ -96,12 +103,15 @@ class PlaylistUITest(unittest.TestCase):
         self.pump()
         self.assertEqual(self.view.sub["kind"], "playlist_editor")
         items = self.view.sub["items"]
-        self.assertEqual(len(items), 65)  # the whole playlist, built lazily
+        self.assertEqual(len(items), 65)  # the whole playlist, its rows made as it is scrolled to
+        self.assertLess(self.view.sub["rows"].built, 65)
         first, target = items[0], items[60]
         self.row(first["entry_id"]).clicked()
         self.pump()
         self.assertEqual(self.view.sub["pick"], first["entry_id"])
         self.pump()
+        self.view.sub["rows"].locate(lambda v: v["entry_id"] == target["entry_id"])
+        self.settle(lambda: self.view.sub["rows"].built > 60)
         self.row(target["entry_id"]).clicked()
         self.pump()
         ids = [v["entry_id"] for v in self.view.sub["items"]]
