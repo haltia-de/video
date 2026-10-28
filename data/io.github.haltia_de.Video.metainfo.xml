@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.11.2" date="2026-10-28">
+      <description>
+        <p>The program starts faster: its code is loaded already compiled.</p>
+        <p xml:lang="ru">Программа запускается быстрее: её код загружается уже скомпилированным.</p>
+      </description>
+    </release>
     <release version="2.11.1" date="2026-10-28">
       <description>
         <p>Video opens faster: picture handling and the network parts load in the background when first needed, not before the window appears.</p>
