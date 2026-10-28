@@ -360,6 +360,9 @@ class Application:
     def home_sections(self):
         return self.views.home_sections()
 
+    def actions(self, kind, item, context=None):
+        return self.views.actions(kind, item, context)
+
     def command(self, name, p=None, device="gtk"):
         p = p or {}
         if name == "playlist_cancel":
@@ -456,7 +459,12 @@ class Application:
                 raise ValueError("Неизвестное действие входа.")
         elif name == "refresh":
             self.bookmark_sync.refresh_accounts()
-            self.bookmark_sync.refresh()
+            for sid, session in list(self.bookmark_sync.sessions.items()):
+                # An account not asked yet what it keeps is asked first.
+                if not session["kinds"]:
+                    self.bookmark_sync.probe(sid)
+                else:
+                    self.bookmark_sync.refresh(sid)
             self.feed.invalidate()
         elif name == "sync_enabled":
             self.bookmark_sync.enable(p["source"], bool(p["on"]))

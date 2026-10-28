@@ -3,6 +3,13 @@
 
     Views(app).query(view, params, device) -> a copy of the view's data
     Views(app).home_sections() -> Главная's sections, in the person's order
+    Views(app).actions(kind, item, context) -> what a menu offers, in order
+
+An action is {"id", "title"} and, when a command does it, "command" and
+"params"; "confirm" ({"text", "button"}) when it asks first, "undo"
+({"notice", "command", "params"}) when it is done at once and offered
+back. Others (open the channel, edit the order…) the adapter carries out
+by id, with what the action brings (entity, order, what).
 
 The window (GTK) and the browser draw the same pages: what a page holds,
 in which sections, what a card says about itself (watched, bookmarked,
@@ -16,7 +23,7 @@ import copy
 import secrets
 import time
 
-from .bookmarks import key
+from .bookmarks import KINDS, SORTS, key
 from . import playlist as ordering
 
 # What a section of Главная brings: a window shows one row of it.
@@ -139,6 +146,7 @@ class Views:
             return {"sources": sources, "shorts": self.app.library.shorts,
                     "scope": self.app.library.scope, "sort": self.app.library.sort,
                     "confirm": self.app.library.confirm, "home_sections": self.home_sections(),
+                    "bookmark_kinds": [list(k) for k in KINDS],
                     "device": device}
         if view == "channels":
             self.app.refresh_channels()
@@ -302,13 +310,17 @@ class Views:
                 for video in items:
                     video["task_done"] = key("video", video) in done
             tasks = {key("video", v) for v in videos}
-            return {"entity": playlist, "order": order, "offset": offset,
+            result = {"entity": playlist, "order": order, "offset": offset,
                     "bookmarked": bool(self.app.library.bookmarks.find("playlist", playlist)),
                     "items": items, "tasks": {"done": len(tasks & done), "total": len(tasks)},
                     "has_tasks": bool(done), "has_manual": bool(self.app.library.manual_order(playlist, "custom") or
                                                                 self.app.library.manual_order(playlist, "lesson")),
                     "next": (page or {}).get("next"), "loading": loading,
                     "failed": failed, "ready": page is not None, "resume": saved, "continuation": continuation}
+            result["play"] = self.resume(result)
+            return result
+        if view == "actions":
+            return {"actions": self.actions(p["kind"], p["item"], dict(p.get("context") or {}, device=device))}
         raise ValueError("Неизвестный запрос.")
 
     def _sync_state(self, sid):
@@ -316,3 +328,144 @@ class Views:
         if not s:
             return None
         return {"note": s["note"], "kinds": s["kinds"], "enabled": self.app.library.bookmarks.enabled(s["aid"])}
+
+    # --- actions ----------------------------------------------------------
+    def actions(self, kind, item, context=None):
+        """What ⋮ (or a long press) offers on a video, a playlist page, a
+        bookmark, a channel, or Закладки itself (context: its filters)."""
+        app, library = self.app, self.app.library
+        context = context or {}
+        out = []
+        if kind == "video":
+            if item.get("channel_id"):
+                chan = {"source": item["source"], "id": item["channel_id"],
+                        "title": item.get("channel") or "Канал"}
+                out.append({"id": "channel", "title": "Открыть канал «%s»" % chan["title"], "entity": chan})
+                out += self._follow(chan, "Подписаться на канал", "Отписаться от канала")
+            out += self._bookmark("video", item, "Убрать из закладок")
+        elif kind == "channel":
+            out += self._follow(item, "Подписаться", "Отписаться")
+            out += self._bookmark("channel", item, "Удалить закладку")
+        elif kind == "playlist":
+            order = context.get("order") or library.playlist_order(item, context.get("device", "gtk"))
+            saved = library.playlist_resume(item)
+            out.append({"id": "edit_order", "title": "Изменить порядок",
+                        "order": "lesson" if order == "lesson" else "custom", "return_order": order})
+            if saved:
+                out.append({"id": "locate", "title": "Показать в списке"})
+            out += self._bookmark("playlist", item, "Убрать из закладок")
+            if saved:
+                out.append({"id": "reset", "what": "progress", "title": "Сбросить прогресс"})
+            if order == "lesson" and library.task_done(item):
+                out.append({"id": "reset", "what": "tasks", "title": "Сбросить выполнение"})
+            if library.manual_order(item, "custom") or library.manual_order(item, "lesson"):
+                out.append({"id": "reset", "what": "order", "title": "Сбросить ручной порядок"})
+        elif kind == "bookmark":
+            saved = library.bookmarks.get(item["key"])
+            if saved is None or saved.get("deleted"):
+                return []
+            ident, pinned = saved["key"], "pin" in saved
+            out.append({"id": "pin", "title": "Открепить" if pinned else "Закрепить",
+                        "command": "bookmark_pin", "params": {"key": ident, "on": not pinned}})
+            if pinned:
+                out += [{"id": "up", "title": "Переместить выше", "command": "bookmark_move",
+                         "params": {"key": ident, "step": -1}},
+                        {"id": "down", "title": "Переместить ниже", "command": "bookmark_move",
+                         "params": {"key": ident, "step": 1}}]
+            link = app.bookmark_sync.link_for(saved["kind"], saved["object"])
+            if link and link[0] not in saved["links"]:
+                out.append({"id": "link", "title": "Синхронизировать с VK", "command": "bookmark_link",
+                            "params": {"key": ident}})
+            if saved["links"]:
+                out.append(self._removal(saved, "Оставить только на устройстве", local_only=True))
+            out.append(self._removal(saved, "Удалить закладку"))
+        elif kind == "bookmarks":
+            f = context
+            mark = lambda on, title: ("✓ " if on else "") + title
+            out += [{"id": "filter", "field": "sort", "value": v,
+                     "title": mark(f.get("sort", "added") == v, "Сортировать: " + t.lower())} for v, t in SORTS]
+            reverse = f.get("reverse", True)
+            out.append({"id": "filter", "field": "reverse", "value": not reverse,
+                        "title": "Сначала старые" if reverse else "Сначала новые"})
+            everything = library.bookmarks.view()
+            sources = {b["object"].get("source") for b in everything}
+            if len(sources) > 1:
+                out += [{"id": "filter", "field": "source", "value": s.id,
+                         "title": mark(f.get("source") == s.id, "Только " + s.label)}
+                        for s in app.ordered() if s.id in sources]
+            if any(b["links"] for b in everything):
+                out += [{"id": "filter", "field": "state", "value": v, "title": mark(f.get("state") == v, t)}
+                        for v, t in (("local", "Только локальные"), ("synced", "Только синхронизируемые"))]
+            out += [{"id": "add_link", "title": "Добавить по ссылке"},
+                    {"id": "refresh", "title": "Обновить", "command": "refresh", "params": {}}]
+        else:
+            raise ValueError("Неизвестный вид действий.")
+        return copy.deepcopy(out)
+
+    def _follow(self, chan, follow, unfollow):
+        library = self.app.library
+        if not library.is_followed(chan["source"], chan["id"]):
+            return [{"id": "follow", "title": follow, "command": "follow", "params": {"entity": chan}}]
+        chans = library.channels()
+        at = next((i for i, c in enumerate(chans) if c["source"] == chan["source"] and c["id"] == chan["id"]), None)
+        kept = chans[at] if at is not None else chan
+        title = kept.get("title") or "канал"
+        action = {"id": "unfollow", "title": unfollow, "command": "unfollow", "params": {"entity": kept}}
+        if library.confirm:
+            action["confirm"] = {"text": "«%s»" % title, "button": "Отписаться от канала"}
+        else:
+            # Back at its place in the list.
+            action["undo"] = {"notice": "Вы отписались от «%s»" % title, "command": "follow",
+                              "params": {"entity": kept, "at": at}}
+        return [action]
+
+    def _bookmark(self, kind, obj, remove):
+        saved = self.app.library.bookmarks.find(kind, obj)
+        if saved is None:
+            return [{"id": "bookmark_add", "title": "В закладки", "command": "bookmark_add",
+                     "params": {"kind": kind, "entity": obj}}]
+        return [self._removal(saved, remove)]
+
+    def _removal(self, saved, title, local_only=False):
+        """A bookmark linked to an account always asks first; others ask
+        unless the person turned questions off, and are offered back."""
+        name = saved["object"].get("title") or "закладка"
+        action = {"id": "local" if local_only else "remove", "title": title, "command": "bookmark_remove",
+                  "params": {"key": saved["key"], "local_only": local_only}}
+        if saved["links"]:
+            action["confirm"] = {
+                "text": "Закладка будет удалена из связанных аккаунтов сервиса" +
+                        (", но останется на устройстве." if local_only else " и из приложения."),
+                "button": "Оставить только на устройстве" if local_only else "Удалить закладку"}
+        elif self.app.library.confirm:
+            action["confirm"] = {"text": "«%s»" % name, "button": "Удалить закладку"}
+        else:
+            action["undo"] = {"notice": "Закладка «%s» удалена" % name, "command": "bookmark_add",
+                              "params": {"kind": saved["kind"], "entity": saved["object"]}}
+        return action
+
+    @staticmethod
+    def resume(result):
+        """A playlist page's «Продолжить»: its caption, the video it goes
+        on from (and where), the action («play», or «first» from the
+        start), whether it can, and a note on where it goes on; None
+        without a video to go on from."""
+        order, saved, status = result["order"], result["resume"], result["continuation"]
+        if not saved and order == "lesson" and status and status["video"]:
+            saved = {"video": status["video"], "pos": None, "duration": None, "complete": False}
+        if not saved:
+            return None
+        kind = status["kind"] if status else None
+        notes = {"missing": "Последнего видео нет среди доступных, начнём с первого доступного.",
+                 "tasks_done": "Все задания выполнены.",
+                 "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео."}
+        note = notes.get(kind, "")
+        if not note and saved["complete"] and order != "lesson":
+            note = "Последнее видео досмотрено, продолжим со следующего."
+        caption = {"tasks_done": "Смотреть сначала", "finished": "Начать сначала",
+                   "missing": "Первое доступное видео"}.get(kind, "Продолжить")
+        video = status["video"] if kind in ("next", "task_next") and status["video"] else saved["video"]
+        return {"caption": caption, "title": video["title"],
+                "pos": saved["pos"] if video is saved["video"] else None,
+                "action": "first" if kind == "tasks_done" else "play",
+                "enabled": kind != "empty", "note": note}

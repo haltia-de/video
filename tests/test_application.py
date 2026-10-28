@@ -77,6 +77,45 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual(saved, VIDEO)
         self.assertNotIn("bookmarked", self.library.channels()[0])
 
+    def test_a_cards_menu_is_the_cores_with_what_it_asks(self):
+        video = dict(VIDEO, channel_id="-1", channel="One")
+        ids = lambda acts: [a["id"] for a in acts]
+        self.assertEqual(ids(self.core.actions("video", video)), ["channel", "follow", "bookmark_add"])
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-2", "title": "Two"}})
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-1", "title": "One"}})
+        self.core.command("bookmark_add", {"kind": "video", "entity": video})
+        acts = {a["id"]: a for a in self.core.actions("video", video)}
+        self.assertEqual(acts["unfollow"]["confirm"]["button"], "Отписаться от канала")
+        self.assertEqual(acts["remove"]["confirm"], {"text": "«Video»", "button": "Удалить закладку"})
+        self.core.command("confirm", {"on": False})
+        acts = {a["id"]: a for a in self.core.actions("video", video)}
+        undo = acts["unfollow"]["undo"]
+        self.assertEqual((undo["command"], undo["params"]["at"]), ("follow", 1))  # back at its place
+        self.assertEqual(acts["remove"]["undo"]["command"], "bookmark_add")
+        self.core.command(acts["unfollow"]["command"], acts["unfollow"]["params"])
+        self.core.command(undo["command"], undo["params"])
+        self.assertEqual([c["id"] for c in self.library.channels()], ["-2", "-1"])
+
+    def test_a_playlists_menu_follows_its_progress_order_and_tasks(self):
+        ids = lambda **ctx: [a["id"] + a.get("what", "") for a in self.core.actions("playlist", PLAYLIST, ctx)]
+        self.assertEqual(ids(order="vk"), ["edit_order", "bookmark_add"])
+        self.library.played(VIDEO)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        self.assertEqual(ids(order="vk"), ["edit_order", "locate", "bookmark_add", "resetprogress"])
+        bookmarks = [a["title"] for a in self.core.actions("bookmarks", {}, {"sort": "title", "reverse": True})]
+        self.assertIn("✓ Сортировать: название", bookmarks)
+        self.assertEqual(bookmarks[-2:], ["Добавить по ссылке", "Обновить"])
+
+    def test_continue_says_where_a_playlist_goes_on(self):
+        self.library.played(VIDEO)
+        self.library.note_position(VIDEO, 90, 600)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "reverse"})
+        self.pump()
+        play = self.core.query("playlist", {"entity": PLAYLIST, "order": "reverse"})["play"]
+        self.assertEqual((play["caption"], play["title"], play["pos"], play["action"]),
+                         ("Продолжить", "Video", 90, "play"))
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:

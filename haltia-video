@@ -1886,66 +1886,34 @@ class Video(Gtk.Application):
 
     def playlist_resume(self, sub):
         """The «Продолжить» button (None without a video to go on from) and
-        a note on where it goes on."""
-        result = sub["result"]
-        saved = result["resume"]
-        if not saved and sub["order"] == "lesson" and result["continuation"] and result["continuation"]["video"]:
-            saved = {"video": result["continuation"]["video"], "pos": None, "duration": None, "complete": False}
-        if not saved:
+        a note on where it goes on; what they say is the core's (views.resume)."""
+        play = sub["result"]["play"]
+        if not play:
             return None, ""
-        status = result["continuation"]
-        notes = {"missing": "Последнего видео нет среди доступных, начнём с первого доступного.",
-                 "tasks_done": "Все задания выполнены.",
-                 "finished": "Плейлист просмотрен.", "empty": "В плейлисте нет доступных видео."}
-        note = notes.get(status["kind"], "") if status else ""
-        if not note and saved["complete"] and sub["order"] != "lesson":
-            note = "Последнее видео досмотрено, продолжим со следующего."
-        caption = ("Смотреть сначала" if status and status["kind"] == "tasks_done" else
-                   "Начать сначала" if status and status["kind"] == "finished" else
-                   "Первое доступное видео" if status and status["kind"] == "missing" else "Продолжить")
-        video = (status["video"] if status and status["kind"] in ("next", "task_next") and status["video"]
-                 else saved["video"])
-        bits = ["▶ " + caption, video["title"]]
-        if video is saved["video"] and saved["pos"]:
-            bits.append(nice_duration(saved["pos"]))
-        btn = Gtk.Button(sensitive=not status or status["kind"] != "empty")
+        bits = ["▶ " + play["caption"], play["title"]]
+        if play["pos"]:
+            bits.append(nice_duration(play["pos"]))
+        btn = Gtk.Button(sensitive=play["enabled"])
         text = Gtk.Label(label=" · ".join(bits), xalign=0)
         text.set_ellipsize(3)  # Pango.EllipsizeMode.END
         btn.add(text)
         btn.get_style_context().add_class("find")
-        btn._caption = caption
-        btn.connect("clicked", lambda _b: self.playlist_resume_action(sub,
-                    "first" if status and status["kind"] == "tasks_done" else "play"))
-        return btn, note
+        btn._caption = play["caption"]
+        btn.connect("clicked", lambda _b: self.playlist_resume_action(sub, play["action"]))
+        return btn, play["note"]
 
     def playlist_actions(self, sub):
         """What ⋮ on a playlist offers, as (title, fn)."""
-        result = sub["result"]
-        playlist, chan = sub["playlist"], sub["chan"]
-        actions = [("Изменить порядок", lambda: self.show_playlist_editor(
-            playlist, chan, "lesson" if sub["order"] == "lesson" else "custom", return_order=sub["order"]))]
-        if result["resume"]:
-            actions.append(("Показать в списке", lambda: self.playlist_resume_action(sub, "locate")))
-        obj = dict(playlist, owner_title=chan["title"])
-        saved = self.library.bookmarks.find("playlist", obj)
-        if saved:
-            actions.append(("Убрать из закладок", lambda: self.remove_bookmark(saved)))
-        else:
-            actions.append(("В закладки", lambda: (self.core.command("bookmark_add", {"kind": "playlist", "entity": obj}),
-                                                   self.bookmark_sync.refresh())))
-        if result["resume"]:
-            actions.append(("Сбросить прогресс", lambda: self.playlist_resume_action(sub, "reset")))
-        if sub["order"] == "lesson" and result["has_tasks"]:
-            actions.append(("Сбросить выполнение", lambda: self.playlist_resume_action(sub, "reset_tasks")))
-        if result["has_manual"]:
-            actions.append(("Сбросить ручной порядок", lambda: self.playlist_resume_action(sub, "reset_order")))
-        return actions
+        obj = dict(sub["playlist"], owner_title=sub["chan"]["title"])
+        return self.core_actions("playlist", obj, {"order": sub["order"]}, sub=sub)
 
-    def menu(self, anchor, actions):
+    def menu(self, anchor, actions, status=""):
         """A popover of buttons under anchor; each closes it and acts."""
         pop = Gtk.Popover.new(anchor)
         pop.connect("closed", lambda p: p.destroy())
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        if status:
+            box.pack_start(label(status, "hint", wrap=True), False, False, 0)
         for title, fn in actions:
             btn = Gtk.Button(label=title)
             btn.get_style_context().add_class("more")
@@ -2017,8 +1985,6 @@ class Video(Gtk.Application):
                 self.bookmark_menu(btn, saved)
             else:
                 self.core.command("bookmark_add", {"kind": kind, "entity": obj})
-                update()
-                self.bookmark_sync.refresh()
         update()
         btn._refresh = update
         btn.connect("clicked", clicked)
@@ -2028,61 +1994,10 @@ class Video(Gtk.Application):
         return btn
 
     def bookmark_menu(self, button, saved):
-        pop = Gtk.Popover.new(button)
-        pop.connect("closed", lambda p: p.destroy())
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
-        ident = saved["key"]
-
-        def action(title, fn, sensitive=True):
-            btn = Gtk.Button(label=title, sensitive=sensitive)
-            btn.get_style_context().add_class("more")
-            btn.connect("clicked", lambda _b: (pop.popdown(), fn()))
-            box.pack_start(btn, False, False, 0)
-
-        def remove(local_only=False):
-            if self.remove_bookmark(saved, local_only) and button.get_parent():
-                getattr(button, "_refresh", lambda: button.set_label("★" if local_only else "☆"))()
-
+        """⋮ on a bookmark (or ★ on what is bookmarked): its state, then
+        what the core offers for it."""
         status = self.bookmark_status(saved)[1]
-        box.pack_start(label(status, "hint", wrap=True), False, False, 0)
-        pinned = "pin" in saved
-        action("Открепить" if pinned else "Закрепить",
-               lambda: self.core.command("bookmark_pin", {"key": ident, "on": not pinned}))
-        if pinned:
-            action("Переместить выше", lambda: self.core.command("bookmark_move", {"key": ident, "step": -1}))
-            action("Переместить ниже", lambda: self.core.command("bookmark_move", {"key": ident, "step": 1}))
-        link = self.bookmark_sync.link_for(saved["kind"], saved["object"])
-        if link and link[0] not in saved["links"]:
-            action("Синхронизировать с VK", lambda: (
-                self.core.command("bookmark_link", {"key": ident}), self.bookmark_sync.refresh()))
-        if saved["links"]:
-            action("Оставить только на устройстве", lambda: remove(True))
-        action("Удалить закладку", remove)
-        pop.add(box)
-        pop.show_all()
-        pop.popup()
-        return pop
-
-    def remove_bookmark(self, saved, local_only=False):
-        """Whether it was removed. One linked to an account always asks
-        first; others ask unless the person turned questions off, and then
-        a note offers it back."""
-        title = saved["object"].get("title") or "закладка"
-        if saved["links"]:
-            if not dialogs.ask(
-                    self.win,
-                    "Закладка будет удалена из связанных аккаунтов сервиса" +
-                    (", но останется на устройстве." if local_only else " и из приложения."),
-                    "Оставить только на устройстве" if local_only else "Удалить закладку"):
-                return False
-        elif self.library.confirm and not dialogs.ask(self.win, "«%s»" % title, "Удалить закладку"):
-            return False
-        self.core.command("bookmark_remove", {"key": saved["key"], "local_only": local_only})
-        self.bookmark_sync.refresh()
-        if not saved["links"] and not self.library.confirm:
-            self.notice("Закладка «%s» удалена" % title, "Вернуть", lambda: self.core.command(
-                "bookmark_add", {"kind": saved["kind"], "entity": saved["object"]}))
-        return True
+        return self.menu(button, self.core_actions("bookmark", {"key": saved["key"]}), status)
 
     def bookmark_status(self, saved):
         links = saved["links"]
@@ -2167,7 +2082,6 @@ class Video(Gtk.Application):
         # tap clears it), and ⋮ for the rest. Two rows of drop-downs stood
         # over even a single bookmark.
         f = self.bookmark_filters
-        everything = self.library.bookmarks.view()
         row = Gtk.Box(spacing=12)
         for value, title in [("all", "Все")] + list(bookmark_view.KINDS):
             chip = Gtk.Button(label=title)
@@ -2188,7 +2102,7 @@ class Video(Gtk.Application):
         more = Gtk.Button(label="⋮")
         more.get_style_context().add_class("more")
         more.set_tooltip_text("Ещё")
-        more.connect("clicked", lambda b: self.menu(b, self.bookmark_actions(everything)))
+        more.connect("clicked", lambda b: self.menu(b, self.core_actions("bookmarks", {}, self.bookmark_filters)))
         row.pack_end(more, False, False, 0)
         box.pack_start(row, False, False, 0)
         for sid in self.bookmark_sync.sessions:
@@ -2197,26 +2111,6 @@ class Video(Gtk.Application):
         box.pack_start(self.lazy(found, self.bookmark_row).widget, False, False, 0)
         self.say(self.bookmark_note or ("" if found else "Закладок пока нет или они не подходят под фильтры."))
         self.set_content(box)
-
-    def bookmark_actions(self, everything):
-        """What ⋮ on Закладки offers: the order, the filters that have
-        something to filter, adding by link and refreshing."""
-        f = self.bookmark_filters
-        mark = lambda on, title: ("✓ " if on else "") + title
-        actions = [(mark(f["sort"] == value, "Сортировать: " + title.lower()),
-                    lambda v=value: self.bookmark_filter("sort", v))
-                   for value, title in bookmark_view.SORTS]
-        actions.append(("Сначала старые" if f["reverse"] else "Сначала новые",
-                        lambda: self.bookmark_filter("reverse", not f["reverse"])))
-        sources = {b["object"].get("source") for b in everything}
-        if len(sources) > 1:
-            actions += [(mark(f["source"] == s.id, "Только " + s.label), lambda v=s.id: self.bookmark_filter("source", v))
-                        for s in self.ordered() if s.id in sources]
-        if any(b["links"] for b in everything):
-            actions += [(mark(f["state"] == v, t), lambda v=v: self.bookmark_filter("state", v))
-                        for v, t in (("local", "Только локальные"), ("synced", "Только синхронизируемые"))]
-        actions += [("Добавить по ссылке", self.bookmark_link_page), ("Обновить", self.refresh_bookmarks)]
-        return actions
 
     def bookmark_filter(self, field, value, combo=None):
         if value is not None:
@@ -2254,14 +2148,6 @@ class Video(Gtk.Application):
         box.pack_start(row, False, False, 0)
         box.pack_start(label(s["note"], "csub", wrap=True), False, False, 0)
         return box
-
-    def refresh_bookmarks(self):
-        self.bookmark_sync.refresh_accounts()
-        for sid, s in list(self.bookmark_sync.sessions.items()):
-            if not s["kinds"]:
-                self.bookmark_sync.probe(sid)
-            else:
-                self.bookmark_sync.refresh(sid)
 
     def bookmark_tick(self):
         self.bookmark_sync.refresh_accounts()
@@ -2888,51 +2774,51 @@ class Video(Gtk.Application):
 
     def card_menu(self, video, anchor):
         """⋮ on a card, or a long press on it: the channel and the bookmark."""
-        pop = Gtk.Popover.new(anchor)
-        pop.connect("closed", lambda p: p.destroy())
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12)
+        return self.menu(anchor, self.core_actions("video", video))
 
-        def action(title, fn):
-            btn = Gtk.Button(label=title)
-            btn.get_style_context().add_class("more")
-            btn.connect("clicked", lambda _b: (pop.popdown(), fn()))
-            box.pack_start(btn, False, False, 0)
+    def core_actions(self, kind, item, context=None, sub=None):
+        """What the core offers on kind (views.actions), as (title, fn)."""
+        return [(a["title"], lambda a=a: self.run_action(a, sub)) for a in self.core.actions(kind, item, context)]
 
-        if video.get("channel_id"):
-            chan = {"source": video["source"], "id": video["channel_id"],
-                    "title": video.get("channel") or "Канал"}
-            action("Открыть канал «%s»" % chan["title"], lambda: self.show_channel(chan))
-            if self.library.is_followed(chan["source"], chan["id"]):
-                action("Отписаться от канала", lambda: self.unfollow(chan))
-            else:
-                action("Подписаться на канал", lambda: (self.core.command("follow", {"entity": chan}),
-                                                        self.say("Вы подписались на «%s»." % chan["title"])))
-        saved = self.library.bookmarks.find("video", video)
-        if saved:
-            action("Убрать из закладок", lambda: self.remove_bookmark(saved))
-        else:
-            action("В закладки", lambda: (self.core.command("bookmark_add", {"kind": "video", "entity": video}),
-                                          self.bookmark_sync.refresh()))
-        pop.add(box)
-        pop.show_all()
-        pop.popup()
-        return pop
+    def run_action(self, action, sub=None):
+        """One of the core's actions: its command (asked first, or offered
+        back for a few seconds), or what the window does for its id."""
+        if action.get("command"):
+            confirm, undo = action.get("confirm"), action.get("undo")
+            if confirm and not dialogs.ask(self.win, confirm["text"], confirm["button"]):
+                return False
+            try:
+                self.core.command(action["command"], action["params"])
+            except ValueError as exc:
+                self.say(str(exc))
+                return False
+            if undo:
+                self.notice(undo["notice"], "Вернуть", lambda: self.core.command(undo["command"], undo["params"]))
+            elif action["id"] == "follow":
+                self.say("Вы подписались на «%s»." % action["params"]["entity"].get("title", ""))
+            return True
+        name = action["id"]
+        if name == "channel":
+            self.show_channel(action["entity"])
+        elif name == "add_link":
+            self.bookmark_link_page()
+        elif name == "filter":
+            self.bookmark_filter(action["field"], action["value"])
+        elif name == "edit_order":
+            self.show_playlist_editor(sub["playlist"], sub["chan"], action["order"], return_order=action["return_order"])
+        elif name == "locate":
+            self.playlist_resume_action(sub, "locate")
+        elif name == "reset":
+            self.playlist_resume_action(sub, {"progress": "reset", "tasks": "reset_tasks",
+                                              "order": "reset_order"}[action["what"]])
+        return True
 
     def unfollow(self, chan):
-        """Asks first unless the person turned questions off; then a note
-        offers the channel back, at its place in the list, for a few seconds."""
-        chans = self.library.channels()
-        at = next((i for i, c in enumerate(chans)
-                   if c["source"] == chan["source"] and c["id"] == chan["id"]), None)
-        kept = chans[at] if at is not None else chan
-        title = kept.get("title") or "канал"
-        if self.library.confirm:
-            if dialogs.ask(self.win, "«%s»" % title, "Отписаться от канала"):
-                self.core.command("unfollow", {"entity": kept})
-            return
-        self.core.command("unfollow", {"entity": kept})
-        self.notice("Вы отписались от «%s»" % title, "Вернуть",
-                    lambda: self.core.command("follow", {"entity": kept, "at": at}))
+        """The channel's «Отписаться» (Каналы' ✕, its page, a search):
+        asked first, or offered back at its place in the list."""
+        action = next(a for a in self.core.actions("channel", chan) if a["id"] in ("unfollow", "follow"))
+        if action["id"] == "unfollow":
+            self.run_action(action)
 
     def notice(self, text, button, fn, seconds=5):
         self.toast_text.set_text(text)
