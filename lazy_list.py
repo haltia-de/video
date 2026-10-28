@@ -14,7 +14,7 @@ A page of 300 cards made whole kept the GTK thread busy for seconds after
 it showed (each card is a dozen widgets for GTK to style and measure; on
 the tablet some 25 ms), and every tap waited behind it. Only the first
 screen is made at once; the next one when the bottom of the list comes
-within AHEAD screens of what the window shows. Made widgets stay, so the
+within AHEAD screens of what the window shows, a row at a time. Made widgets stay, so the
 scroll stays smooth; their pictures go when they are more than RELEASE
 screens away, or the page is hidden (a kept tab), and come back on return.
 
@@ -33,7 +33,11 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 AHEAD = 1.5  # screens below the window made ahead of the scroll
 RELEASE = 3  # screens away from the window a widget's pictures go at
-ROWS_AT_ONCE = 20  # rows (not cards) of a screen
+ROWS_AT_ONCE = 12  # rows (not cards) of a screen, made at once
+# Made in one go later, while the person may be touching the screen: a
+# row of cards or a few rows, so a tap waits for little (a card is some
+# 25 ms on the tablet).
+ROWS_PER_IDLE = 5
 PICTURES_EVERY = 0.25  # s between looks at which pictures to keep
 
 
@@ -50,10 +54,10 @@ class LazyList:
             self.widget = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                       max_children_per_line=cols, min_children_per_line=cols,
                                       row_spacing=16, column_spacing=16)
-            self.batch = cols * 3
+            first, self.batch = cols * 3, cols
         else:
             self.widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
-            self.batch = ROWS_AT_ONCE
+            first, self.batch = ROWS_AT_ONCE, ROWS_PER_IDLE
         self.widget.set_valign(Gtk.Align.START)
         self.made = []  # the widgets, in the items' order
         self.held = {}  # index: whether its pictures are on
@@ -70,7 +74,7 @@ class LazyList:
         self.widget.connect("map", self._queue)
         self.widget.connect("unmap", lambda *_a: self._pictures_all(False))
         self.widget.connect("hierarchy-changed", self._attach)
-        self._add(max(at_least, self.batch))
+        self._add(max(at_least, first))
         LazyList.live.add(self)
 
     @property
