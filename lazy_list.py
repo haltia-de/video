@@ -201,14 +201,21 @@ class LazyList:
         widget = self.made[index]
         top = self._top(widget)
         adj = self.adjustment
-        if top is None or not widget.get_mapped() or adj.get_upper() < top + widget.get_allocated_height() - 1:
+        height = widget.get_allocated_height()
+        if top is None or not widget.get_mapped() or adj.get_upper() < top + height - 1:
             return  # again on the next allocation
-        self.want = None
-        widget.set_can_focus(True)
-        widget.grab_focus()
-        adj.set_value(max(adj.get_lower(), min(top, adj.get_upper() - adj.get_page_size())))
-        if done:
-            done(widget)
+        value, page = adj.get_value(), adj.get_page_size()
+        if top >= value - 1 and (top + height <= value + page + 1 or height > page):
+            # On screen, and it stays: the cards above it may still have
+            # grown (their titles wrapped) after the scroll was set.
+            self.want = None
+            widget.set_can_focus(True)
+            widget.grab_focus()
+            if done:
+                done(widget)
+            return
+        adj.set_value(max(adj.get_lower(), min(top, adj.get_upper() - page)))
+        self._queue()
 
     def _pictures_soon(self):
         """Which pictures to keep, at most every PICTURES_EVERY: a fling

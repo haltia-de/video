@@ -48,6 +48,35 @@ class ApplicationTest(unittest.TestCase):
         self.pump()
         self.assertEqual(len(asked), 1)  # synced less than a day ago
 
+    def test_home_follows_the_persons_sections_with_where_all_goes(self):
+        self.library.played(VIDEO)
+        self.library.note_position(VIDEO, 120, 600)
+        self.library.note_playlist(PLAYLIST, VIDEO)
+        home = self.core.query("home")["sections"]
+        self.assertEqual([s["id"] for s in home], ["continue", "playlists", "feed"])
+        cont, playlists, feed = home
+        self.assertEqual(cont["items"][0]["id"], VIDEO["id"])
+        self.assertEqual((cont["more"], cont["always"], cont["total"]), ({"view": "history"}, True, 1))
+        cursor = playlists["items"][0]
+        self.assertEqual((cursor["playlist"]["id"], cursor["video"]["pos"], cursor["chan"]["id"]), ("7", 120, "-7"))
+        self.assertIn("подписаться", feed["hint"])  # no channels followed yet
+        self.core.command("home_sections", {"sections": [{"id": "bookmarks", "on": True},
+                                                         {"id": "continue", "on": False}]})
+        self.core.command("bookmark_add", {"kind": "video", "entity": cont["items"][0]})
+        home = self.core.query("home")["sections"]
+        self.assertEqual([s["id"] for s in home], ["bookmarks", "playlists", "feed"])
+        self.assertEqual([e["id"] for e in self.core.query("state")["home_sections"]][:2], ["bookmarks", "continue"])
+
+    def test_what_a_page_showed_comes_back_plain(self):
+        shown = self.core._videos([VIDEO])[0]
+        self.assertIn("progress", shown)
+        self.core.command("bookmark_add", {"kind": "video", "entity": dict(shown, task_done=True)})
+        self.core.command("follow", {"entity": {"source": "vk", "id": "-1", "title": "One",
+                                                "followed": False, "bookmarked": True}})
+        saved = self.library.bookmarks.view()[0]["object"]
+        self.assertEqual(saved, VIDEO)
+        self.assertNotIn("bookmarked", self.library.channels()[0])
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:

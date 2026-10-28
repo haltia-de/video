@@ -21,6 +21,15 @@ from .playlist_editor import Editor
 # An account's channels are brought here when it signs in, and then at
 # most once a day (at the program's start).
 SUBSCRIPTIONS_SYNC_SEC = 86400
+# What a section of Главная brings: a window shows one row of it.
+HOME_ITEMS = 12
+# What queries add to an entity for showing it, not kept when it comes
+# back in a command (a bookmark or a follow of what a page showed).
+VIEW_FIELDS = ("progress", "bookmarked", "followed", "pos", "task_done")
+
+
+def plain(entity):
+    return {k: v for k, v in entity.items() if k not in VIEW_FIELDS} if isinstance(entity, dict) else entity
 
 
 class RecentInputs(OrderedDict):
@@ -347,6 +356,76 @@ class Application:
             out.append(item)
         return out
 
+    def _cursor(self, cursor):
+        """A playlist begun, as Главная and «Мои плейлисты» show it: where it
+        stopped (with its position) and the channel it opens with."""
+        playlist, video = cursor["playlist"], cursor["video"]
+        item = self._videos([video])[0]
+        item["pos"] = (self.library.position(video) or {}).get("pos")
+        chan = {"source": playlist["source"], "id": str(playlist.get("owner_id", "")),
+                "title": playlist.get("owner_title") or video.get("channel") or "", "from_tab": True}
+        return {"playlist": playlist, "video": item, "chan": chan,
+                "bookmarked": bool(self.library.bookmarks.find("playlist", playlist))}
+
+    def home_sections(self):
+        """Главная's sections, as {"id", "title", "on"}, in the person's order."""
+        titles = {"continue": "Продолжить просмотр", "playlists": "Мои плейлисты",
+                  "feed": "Новое в подписках", "bookmarks": "Закладки"}
+        for src in self.ordered():
+            got = self.home.get(src.id) if hasattr(src, "home") else None
+            titles["source:" + src.id] = (got or {}).get("title") or src.label
+        return [{"id": sid, "title": titles[sid], "on": on}
+                for sid, on in self.library.home_sections([s.id for s in self.ordered()])]
+
+    def _home(self):
+        """Главная: each section switched on, with what it shows (up to
+        HOME_ITEMS; a window shows one row of them) and where «Все →» goes
+        ("more"; "always": also when the row holds them all)."""
+        enabled = {s.id for s in self.enabled()}
+        sections, loading = [], False
+        for entry in self.home_sections():
+            sid, title = entry["id"], entry["title"]
+            if not entry["on"] or (sid.startswith("source:") and sid[7:] not in enabled):
+                continue
+            section = {"id": sid, "title": title, "kind": "videos", "items": [], "more": None,
+                       "always": False, "hint": ""}
+            if sid == "continue":
+                section.update(items=self._videos(self.wanted(self.library.unfinished())),
+                               more={"view": "history"}, always=True)
+            elif sid == "playlists":
+                section.update(kind="playlists", more={"view": "my_playlists"},
+                               items=[self._cursor(c) for c in self.library.playlists_in_progress()])
+            elif sid == "feed":
+                shown = self.feed_shown()
+                loading = loading or self.feed.is_loading("feed")
+                if not self.library.channels():
+                    section["hint"] = ("Чтобы подписаться на канал, нажмите ⋮ на его видео "
+                                       "или найдите канал на странице «Каналы».")
+                elif shown:
+                    section.update(items=self._videos(shown), more={"view": "feed"}, always=True)
+                else:
+                    section["hint"] = "Загружаю…" if self.feed.is_loading("feed") else "Пока ничего нет."
+            elif sid == "bookmarks":
+                section.update(items=self._videos([b["object"] for b in self.library.bookmarks.view(kind="video")]),
+                               more={"view": "bookmarks"}, always=True)
+            else:
+                src = self.sources[sid[7:]]
+                got = self.home.get(src.id) if hasattr(src, "home") else None
+                loading = loading or (hasattr(src, "home") and self.home.is_loading(src.id))
+                videos = self.wanted((got or {}).get("videos") or [])
+                if videos:
+                    section.update(items=self._videos(videos), more={"view": "source_home", "source": src.id})
+                elif getattr(src, "login", None) == "cookies" and not src.account():
+                    section["hint"] = ("Рекомендации %s появятся после входа в аккаунт "
+                                       "в настройках (⚙)." % src.label)
+                    section["title"] = src.label
+            if not section["items"] and not section["hint"]:
+                continue
+            section["total"] = len(section["items"])
+            section["items"] = section["items"][:HOME_ITEMS]
+            sections.append(section)
+        return {"sections": sections, "loading": loading}
+
     def _source(self, entity):
         if not isinstance(entity, dict) or entity.get("source") not in self.sources:
             raise ValueError("Неизвестный источник.")
@@ -382,11 +461,13 @@ class Application:
                                 "sync": self._sync_state(src.id)})
             return {"sources": sources, "shorts": self.library.shorts,
                     "scope": self.library.scope, "sort": self.library.sort,
+                    "confirm": self.library.confirm, "home_sections": self.home_sections(),
                     "device": device}
         if view == "channels":
             self.refresh_channels()
             query = str(p.get("query", "")).casefold()
-            items = [c for c in self.library.channels() if query in c["title"].casefold()]
+            items = [dict(c, bookmarked=bool(self.library.bookmarks.find("channel", c)))
+                     for c in self.library.channels() if query in c["title"].casefold()]
             return self._page(items, offset)
         if view == "history":
             return self._page(self._videos(self.library.history()), offset)
@@ -395,16 +476,18 @@ class Application:
             result.update(loading=self.feed.is_loading("feed"), failed=self.feed.has_failed("feed"))
             return result
         if view == "home":
-            sections = [{"title": "Новое в подписках", "items": self._videos(self.feed_shown()[:6])}]
-            loading = self.feed.is_loading("feed")
-            for src in self.enabled():
-                if not hasattr(src, "home"):
-                    continue
-                got = self.home.get(src.id)
-                loading = loading or self.home.is_loading(src.id)
-                if got:
-                    sections.append({"title": got["title"], "items": self._videos(self.wanted(got["videos"])[:12])})
-            return {"sections": sections, "loading": loading}
+            return self._home()
+        if view == "my_playlists":
+            return self._page([self._cursor(c) for c in self.library.playlists_in_progress()], offset,
+                              max(1, min(int(p.get("count", 30)), 1000)))
+        if view == "source_home":
+            src = self.sources.get(p.get("source"))
+            if src is None or not hasattr(src, "home"):
+                raise ValueError("Неизвестный источник.")
+            got = self.home.get(src.id) or {}
+            result = self._page(self._videos(self.wanted(got.get("videos") or [])), offset)
+            result.update(title=got.get("title") or src.label, loading=self.home.is_loading(src.id))
+            return result
         if view == "bookmarks":
             items = self.library.bookmarks.view(
                 query=str(p.get("query", ""))[:256], kind=p.get("kind", "all"),
@@ -433,6 +516,10 @@ class Application:
             for section in result["sections"]:
                 if kind == "search":
                     section["items"] = self._videos(section["items"])
+                else:
+                    section["items"] = [dict(c, followed=self.library.is_followed(c["source"], c["id"]),
+                                             bookmarked=bool(self.library.bookmarks.find("channel", c)))
+                                        for c in section["items"]]
                 section["items"] = section["items"][:60]
             result.update(loading=bool(loading), kind=kind)
             return result
@@ -446,7 +533,12 @@ class Application:
             for album in albums or []:
                 album.setdefault("owner_title", chan["title"])
             result = self._page(self._videos(self.wanted(videos or [])), offset)
-            result.update(entity=chan, playlists=albums or [],
+            # What is known of a followed channel (its avatar, subscribers…).
+            known = next((c for c in self.library.channels()
+                          if c["source"] == chan["source"] and c["id"] == chan["id"]), chan)
+            albums = [dict(a, bookmarked=bool(self.library.bookmarks.find("playlist", a))) for a in albums or []]
+            result.update(entity=chan, known=known, playlists=albums,
+                          bookmarked=bool(self.library.bookmarks.find("channel", chan)),
                           followed=self.library.is_followed(chan["source"], chan["id"]),
                           loading=self.channel_videos.is_loading(k) or self.playlists.is_loading(k),
                           failed=self.channel_videos.has_failed(k))
@@ -535,6 +627,7 @@ class Application:
                     video["task_done"] = key("video", video) in done
             tasks = {key("video", v) for v in videos}
             return {"entity": playlist, "order": order, "offset": offset,
+                    "bookmarked": bool(self.library.bookmarks.find("playlist", playlist)),
                     "items": items, "tasks": {"done": len(tasks & done), "total": len(tasks)},
                     "has_tasks": bool(done), "has_manual": bool(self.library.manual_order(playlist, "custom") or
                                                                 self.library.manual_order(playlist, "lesson")),
@@ -579,7 +672,7 @@ class Application:
                         self.update_playlist_queues(playlist, full)
                     self.editor.drafts.pop(p["token"], None)
         elif name == "follow":
-            obj = p["entity"]
+            obj = plain(p["entity"])
             self._source(obj)
             self.library.follow(obj, p.get("at"))
         elif name == "unfollow":
@@ -587,7 +680,7 @@ class Application:
             self._source(obj)
             self.library.unfollow(obj["source"], obj["id"])
         elif name == "bookmark_add":
-            obj, kind = p["entity"], p["kind"]
+            obj, kind = plain(p["entity"]), p["kind"]
             self._source(obj)
             if kind not in ("video", "playlist", "channel"):
                 raise ValueError("Неизвестный тип закладки.")

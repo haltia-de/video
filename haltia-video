@@ -1228,65 +1228,37 @@ class Video(Gtk.Application):
     # Главная ------------------------------------------------------------
     def home_sections(self):
         """Главная's sections, as (id, title, on), in the person's order."""
-        titles = {"continue": "Продолжить просмотр", "playlists": "Мои плейлисты",
-                  "feed": "Новое в подписках", "bookmarks": "Закладки"}
-        for src in self.ordered():
-            got = self.home.get(src.id) if hasattr(src, "home") else None
-            titles["source:" + src.id] = (got or {}).get("title") or src.label
-        return [(sid, titles[sid], on)
-                for sid, on in self.library.home_sections([s.id for s in self.ordered()])]
+        return [(e["id"], e["title"], e["on"]) for e in self.core.home_sections()]
 
     def show_home(self):
         """One row of each section the person keeps on Главная, and «Все →»
-        for the rest of it: an overview, and fewer pictures for the B8000."""
+        for the rest of it: an overview, and fewer pictures for the B8000.
+        What the sections hold is the core's, the same as the browser's."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         row = self.columns()
-        enabled = {s.id for s in self.enabled()}
-        for sid, title, on in self.home_sections():
-            if not on or (sid.startswith("source:") and sid[7:] not in enabled):
-                continue
-            if sid == "continue":
-                videos = self.wanted(self.library.unfinished())
-                if videos:
-                    self.section(box, title, self.all_button(lambda: self.show_page("history")))
-                    box.pack_start(self.grid(videos[:row]), False, False, 0)
-            elif sid == "playlists":
-                cursors = self.library.playlists_in_progress()
-                if cursors:
-                    self.section(box, title, self.all_button(self.show_my_playlists)
-                                 if len(cursors) > row else None)
-                    box.pack_start(self.playlist_tiles(cursors[:row]), False, False, 0)
-            elif sid == "feed":
-                self.section(box, title, self.all_button(lambda: self.show_page("feed"))
-                             if self.feed_shown() else None)
-                if not self.library.channels():
-                    box.pack_start(label("Чтобы подписаться на канал, нажмите ⋮ на его видео "
-                                         "или найдите канал на странице «Каналы».", "hint", wrap=True),
-                                   False, False, 0)
-                elif self.feed_shown():
-                    box.pack_start(self.grid(self.feed_shown()[:row]), False, False, 0)
-                else:
-                    box.pack_start(label("Загружаю…" if self.feed.is_loading("feed")
-                                         else "Пока ничего нет.", "hint"), False, False, 0)
-            elif sid == "bookmarks":
-                videos = [b["object"] for b in self.library.bookmarks.view(kind="video")]
-                if videos:
-                    self.section(box, title, self.all_button(lambda: self.show_page("bookmarks")))
-                    box.pack_start(self.grid(videos[:row]), False, False, 0)
+        for section in self.core.query("home")["sections"]:
+            more = section["more"]
+            go = None
+            if more and (section["always"] or section["total"] > row):
+                go = self.all_button(lambda m=more: self.open_more(m))
+            self.section(box, section["title"], go)
+            if section["hint"]:
+                box.pack_start(label(section["hint"], "hint", wrap=True), False, False, 0)
+            elif section["kind"] == "playlists":
+                box.pack_start(self.playlist_tiles(section["items"][:row]), False, False, 0)
             else:
-                src = self.sources[sid[7:]]
-                got = self.home.get(src.id) if hasattr(src, "home") else None
-                videos = self.wanted((got or {}).get("videos") or [])
-                if videos:
-                    self.section(box, title, self.all_button(lambda s=src: self.show_source_home(s))
-                                 if len(videos) > row else None)
-                    box.pack_start(self.grid(videos[:row]), False, False, 0)
-                elif getattr(src, "login", None) == "cookies" and not src.account():
-                    self.section(box, src.label)
-                    box.pack_start(label("Рекомендации %s появятся после входа в аккаунт "
-                                         "в настройках (⚙)." % src.label, "hint", wrap=True),
-                                   False, False, 0)
+                box.pack_start(self.grid(section["items"][:row]), False, False, 0)
         self.set_content(box)
+
+    def open_more(self, more):
+        """Where a section's «Все →» goes."""
+        view = more["view"]
+        if view == "my_playlists":
+            self.show_my_playlists()
+        elif view == "source_home":
+            self.show_source_home(self.sources[more["source"]])
+        else:
+            self.show_page(view)
 
     def all_button(self, fn):
         more = Gtk.Button(label="Все →")
@@ -1303,19 +1275,14 @@ class Video(Gtk.Application):
 
     def show_my_playlists(self):
         self.open_sub({"kind": "my_playlists"}, "Мои плейлисты")
-        cursors = self.library.playlists_in_progress()
+        cursors = self.core.query("my_playlists", {"count": 1000})["items"]
         self.say("" if cursors else "Здесь будут плейлисты, которые вы начали смотреть.")
         self.set_content(self.playlist_tiles(cursors))
 
     def playlist_tiles(self, cursors):
         """Playlists begun: each with where it stopped and «Продолжить»."""
-        def tile(cursor):
-            playlist, video = cursor["playlist"], cursor["video"]
-            chan = {"source": playlist["source"], "id": str(playlist.get("owner_id", "")),
-                    "title": playlist.get("owner_title") or video.get("channel") or "",
-                    "from_tab": True}
-            return self.playlist_card(playlist, chan, cursor)
-        return self.lazy(cursors, tile, self.columns()).widget
+        return self.lazy(cursors, lambda c: self.playlist_card(c["playlist"], c["chan"], c),
+                         self.columns()).widget
 
     def playlist_card(self, playlist, chan, cursor=None):
         """A playlist as a card: the service's cover (or, begun, the video it

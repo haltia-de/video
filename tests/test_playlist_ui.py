@@ -207,8 +207,9 @@ class PlaylistUITest(unittest.TestCase):
         _x, top = focus.translate_coordinates(self.view.body, 0, 0)
         self.assertGreater(adjustment.get_value(), 0)
         self.assertGreaterEqual(top, adjustment.get_value() - 1)
-        self.assertLessEqual(top + focus.get_allocated_height(),
-                             adjustment.get_value() + adjustment.get_page_size() + 1)
+        if focus.get_allocated_height() <= adjustment.get_page_size():  # else its top is what shows
+            self.assertLessEqual(top + focus.get_allocated_height(),
+                                 adjustment.get_value() + adjustment.get_page_size() + 1)
 
     def test_locate_focuses_and_reveals_lazily_built_card(self):
         self.assert_locates("vk")
@@ -237,6 +238,11 @@ class PlaylistUITest(unittest.TestCase):
         self.assertGreater(len(flow.get_children()), made)
 
     def test_tabs_are_kept_where_they_were_scrolled_to(self):
+        # The window's size settled first: a new size makes the kept tabs stale.
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            self.pump()
+            time.sleep(.01)
         for video in self.videos[:40]:
             self.view.library.played(video)
         self.view.show_page("history")
