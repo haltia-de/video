@@ -393,6 +393,20 @@ class Library:
             self._cfg["confirm"] = bool(on)
             self._changed("settings")
 
+    def layout(self, screen, default="grid"):
+        """How a screen shows what it holds in the window: "grid" (cards)
+        or "list" (rows); default until the person chose. The window's own:
+        a browser keeps its choice in the browser, as a phone and a tablet
+        may want them apart."""
+        return self._cfg.get("layouts", {}).get(screen, default)
+
+    def set_layout(self, screen, mode):
+        if mode not in ("grid", "list"):
+            raise ValueError("Неизвестный вид.")
+        if mode != self._cfg.get("layouts", {}).get(screen):
+            self._cfg.setdefault("layouts", {})[screen] = mode
+            self._changed("layout")
+
     def set_shorts(self, on):
         if bool(on) != self.shorts:
             self._cfg["shorts"] = bool(on)

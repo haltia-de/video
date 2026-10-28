@@ -362,8 +362,9 @@ class Views:
 
     # --- actions ----------------------------------------------------------
     def actions(self, kind, item, context=None):
-        """What ⋮ (or a long press) offers on a video, a playlist page, a
-        bookmark, a channel, or Закладки itself (context: its filters)."""
+        """What ⋮ (or a long press) offers on a video, a channel, a playlist's
+        card (playlist_item) or its page (playlist), a bookmark, or Закладки
+        itself (context: its filters)."""
         app, library = self.app, self.app.library
         context = context or {}
         out = []
@@ -377,6 +378,12 @@ class Views:
         elif kind == "channel":
             out += self._follow(item, "Подписаться", "Отписаться")
             out += self._bookmark("channel", item, "Удалить закладку")
+        elif kind == "playlist_item":
+            # A playlist's card (Главная, a channel's «Плейлисты»): where it is from, and the bookmark.
+            if item.get("owner_id") and item.get("owner_title"):
+                chan = {"source": item["source"], "id": str(item["owner_id"]), "title": item["owner_title"]}
+                out.append({"id": "channel", "title": "Открыть канал «%s»" % chan["title"], "entity": chan})
+            out += self._bookmark("playlist", item, "Убрать из закладок")
         elif kind == "playlist":
             order = context.get("order") or library.playlist_order(item, context.get("device", "gtk"))
             saved = library.playlist_resume(item)
