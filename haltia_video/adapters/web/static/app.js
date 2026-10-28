@@ -754,6 +754,9 @@ const PAGES = {
   async settings(ctx) {
     const root = el('div');
     section(root, 'Сервисы');
+    // The accounts are the PC's: a browser signs in to nothing of its own.
+    root.append(el('p', 'Аккаунты сервисов — общие с Видео на ПК: войти достаточно один раз, здесь или на ПК, ' +
+                    'и вход действует для всех подключённых устройств.', 'hint'));
     state.sources.forEach(src => root.append(sourceSettings(src)));
     root.append(el('p', 'Поиск идёт во всех включённых сервисах, первыми — результаты YouTube. Кнопка рядом с полем поиска ' +
                     'оставляет один сервис.', 'hint'));
