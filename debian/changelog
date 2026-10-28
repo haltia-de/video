@@ -1,3 +1,10 @@
+haltia-video (2.11.1) unstable; urgency=medium
+
+  * Load Pillow and the network modules on first use, in a worker, not
+    before the first window.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 28 Oct 2026 12:00:00 +0300
+
 haltia-video (2.11.0) unstable; urgency=medium
 
   * Fill the card's width with larger pictures (not on 32-bit ARM), show
