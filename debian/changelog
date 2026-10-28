@@ -1,3 +1,9 @@
+haltia-video (2.13.1) unstable; urgency=medium
+
+  * Light the buttons while they are pressed.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 28 Oct 2026 17:37:24 +0300
+
 haltia-video (2.13.0) unstable; urgency=medium
 
   * Draw the browser client's pages as the window does, from the core's

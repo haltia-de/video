@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.13.1 (2026-10-28)
+
+### Русский
+
+Кнопки подсвечиваются, пока палец на них: вкладки, «Все →», меню, «Подписаться», чипы, ↑ и ↓, кнопки на картинках. Раньше нажатие было видно только когда палец уже отпущен.
+
+### English
+
+Buttons light up while the finger is on them: the tabs, «Все →», menus, «Подписаться», chips, ↑ and ↓, the buttons on pictures. Before, a tap showed only once the finger had left.
+
 ## 2.13.0 (2026-10-28)
 
 ### Русский
