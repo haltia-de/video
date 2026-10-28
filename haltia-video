@@ -1501,7 +1501,8 @@ class Video(Gtk.Application):
         if videos is not None:
             videos = self.wanted(videos)
         if videos is None:
-            self.say("Не удалось загрузить: нет связи?" if self.channel_videos.has_failed(key)
+            self.say(self.core.views.failure(chan["source"], self.channel_videos, key, "channel")
+                     if self.channel_videos.has_failed(key)
                      else "Загружаю…")
         else:
             self.say("" if videos else "У канала пока нет видео.")
@@ -1600,7 +1601,7 @@ class Video(Gtk.Application):
         box.pack_start(head, False, False, 0)
         self.playlist_head(self.sub, result)
         if page is None:
-            self.say("Не удалось загрузить плейлист: нет связи?" if failed else
+            self.say(result["failure"] if failed else
                      ("Загружаю весь плейлист…" if order != "vk" else "Загружаю…"))
         else:
             videos = self.wanted(page["videos"])
@@ -1690,7 +1691,7 @@ class Video(Gtk.Application):
             self.set_content(box)
             return
         if result.get("loading") or result.get("failed"):
-            self.say("Не удалось загрузить плейлист." if result.get("failed") else "Загружаю плейлист…")
+            self.say(result.get("failure") or "Загружаю плейлист…")
             self.set_content(box)
             return
         sub["token"] = result["token"]

@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
+import sources
 from sources import stream_of, vkvideo, youtube
 from sources import vault_in
 from tests.replay import Replay, exchange, load
@@ -266,6 +267,17 @@ class VKSignInTest(Dirs):
         vk.user = {"token": "USER", "name": "Account"}
         with self.assertRaises(vkvideo.ApiError):
             vk.subscriptions()
+
+    def test_a_closed_album_is_denied_not_failed(self):
+        class HTTP:
+            def get_json(inner, url, data, headers):
+                return {"error": {"error_code": 204, "error_msg": "Access denied"}}
+        vk = vkvideo.VKVideo(http=HTTP(), config_dir=self.home, cache_dir=self.home,
+                             vault=vault_in(self.home, keyring=None))
+        vk.user = {"token": "USER", "name": "Account"}
+        with self.assertRaises(sources.Denied) as raised:
+            vk.playlist_videos({"source": "vk", "owner_id": "-1", "id": "7", "title": "Closed"})
+        self.assertIsInstance(raised.exception, vkvideo.ApiError)  # still what callers catch
 
     def test_import_batches_at_most_25_individual_counter_calls(self):
         import re

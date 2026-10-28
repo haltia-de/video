@@ -652,8 +652,7 @@ const PAGES = {
         return root;
       }
     }
-    say(first.items.length ? '' : first.failed ? 'Не удалось загрузить: нет связи?' : first.loading ? 'Загружаю…' :
-        'У канала пока нет видео.', ctx.pane);
+    say(first.items.length ? '' : first.failure || (first.loading ? 'Загружаю…' : 'У канала пока нет видео.'), ctx.pane);
     root.append(box, end);
     return root;
   },
@@ -686,8 +685,7 @@ const PAGES = {
     if (result.order === 'lesson') bits.push('Выполнено ' + result.tasks.done + ' из ' + result.tasks.total);
     if (resume && resume.note) bits.push(resume.note);
     if (bits.length) root.append(el('p', bits.join(' · '), 'hint'));
-    if (!result.ready) say(result.failed ? 'Не удалось загрузить плейлист: нет связи?' :
-                           result.order !== 'vk' ? 'Загружаю весь плейлист…' : 'Загружаю…', ctx.pane);
+    if (!result.ready) say(result.failure || (result.order !== 'vk' ? 'Загружаю весь плейлист…' : 'Загружаю…'), ctx.pane);
     else say(result.items.length ? '' : 'На этой странице нет доступных видео.', ctx.pane);
     root.append(grid(result.items || [], result.order === 'lesson' ? p.entity : null));
     const nav = el('div', null, 'pager'), previous = p.previous || [];
@@ -715,7 +713,7 @@ const PAGES = {
       result = await query('playlist_editor', {entity: p.entity, order: p.order, token: p.token, count: 2000});
     } catch (error) { delete p.token; throw error; }
     if (result.loading || result.failed) {
-      say(result.failed ? 'Не удалось загрузить плейлист.' : 'Загружаю плейлист…', ctx.pane);
+      say(result.failure || 'Загружаю плейлист…', ctx.pane);
       return root;
     }
     p.token = result.token;

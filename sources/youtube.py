@@ -22,7 +22,7 @@ from datetime import datetime
 
 from haltia_kit.vault import Locked
 
-from . import CONFIG_DIR, LARGE_PICTURES, load_json, net, save_json, stream_of, vault_in
+from . import CONFIG_DIR, LARGE_PICTURES, Denied, load_json, net, save_json, stream_of, vault_in
 
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=%s"
 # The feed tells no durations: the channel's «Видео» tab does, from YouTube's
@@ -37,6 +37,8 @@ VIDEOS_TAB = "EgZ2aWRlb3PyBgQKAjoA"
 BADGE = re.compile(r'"thumbnailBadgeViewModel":\{([^{}]*)')
 BADGE_TEXT = re.compile(r'"text":"(\d+(?::\d\d)+)"')
 BADGE_VIDEO = re.compile(r'"animationActivationTargetId":"([\w-]{11})"')
+# What yt-dlp says of a playlist the account may not see.
+PRIVATE = re.compile(r"private|members|sign in|does not exist|unavailable", re.I)
 NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "yt": "http://www.youtube.com/xml/schemas/2015",
@@ -467,8 +469,14 @@ class YouTube:
         # Read one extra to establish whether another page exists even
         # when YouTube omits the playlist's total count.
         with self._ydl({"playliststart": offset + 1, "playlistend": offset + count + 1}) as ydl:
-            info = ydl.extract_info("https://www.youtube.com/playlist?list=" + playlist["id"],
-                                    download=False)
+            try:
+                info = ydl.extract_info("https://www.youtube.com/playlist?list=" + playlist["id"],
+                                        download=False)
+            except Exception as exc:
+                # yt-dlp's words for a playlist kept from this account.
+                if PRIVATE.search(str(exc)):
+                    raise Denied(str(exc)) from exc
+                raise
         entries = list(info.get("entries") or [])
         videos = [v for v in (_video(e or {}) for e in entries[:count]) if v]
         return {"videos": videos, "next": offset + count if len(entries) > count else None}

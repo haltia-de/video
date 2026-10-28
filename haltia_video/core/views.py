@@ -228,7 +228,8 @@ class Views:
                           bookmarked=bool(self.app.library.bookmarks.find("channel", chan)),
                           followed=self.app.library.is_followed(chan["source"], chan["id"]),
                           loading=self.app.channel_videos.is_loading(k) or self.app.playlists.is_loading(k),
-                          failed=self.app.channel_videos.has_failed(k))
+                          failed=self.app.channel_videos.has_failed(k),
+                          failure=self.failure(chan["source"], self.app.channel_videos, k, "channel"))
             return result
         if view in ("playlist", "locate", "reset_preview", "playlist_editor"):
             playlist = p["entity"]
@@ -249,7 +250,8 @@ class Views:
                 if order not in ("lesson", "custom"):
                     raise ValueError("Для редактирования выберите «Мой порядок» или номера уроков.")
                 if full is None:
-                    return {"loading": self.app.playlist_all.is_loading(k), "failed": self.app.playlist_all.has_failed(k)}
+                    return {"loading": self.app.playlist_all.is_loading(k), "failed": self.app.playlist_all.has_failed(k),
+                            "failure": self.failure(playlist["source"], self.app.playlist_all, k)}
                 token = p.get("token") or self.app.editor.begin(device, playlist, order, full,
                                                             self.app.wanted(self.app.playlist_ordered(playlist, full, order)), self.app.epoch)
                 draft = self.app.editor.get(token, device, full, self.app.epoch)
@@ -301,10 +303,12 @@ class Views:
                                 "next": page["next"]}
                 loading = self.app.playlist_pages.is_loading(k + (offset,))
                 failed = self.app.playlist_pages.has_failed(k + (offset,))
+                failure = self.failure(playlist["source"], self.app.playlist_pages, k + (offset,))
             else:
                 page = ordering.page(self.app.wanted(self.app.playlist_ordered(playlist, full, order)), offset) if full else None
                 loading = self.app.playlist_all.is_loading(k)
                 failed = self.app.playlist_all.has_failed(k)
+                failure = self.failure(playlist["source"], self.app.playlist_all, k)
             videos = self.app.wanted(self.app.playlist_ordered(playlist, full, order)) if full else []
             done = self.app.library.task_done(playlist)
             continuation = (ordering.task_continuation(videos, saved, done) if order == "lesson" and full else
@@ -320,7 +324,8 @@ class Views:
                     "has_tasks": bool(done), "has_manual": bool(self.app.library.manual_order(playlist, "custom") or
                                                                 self.app.library.manual_order(playlist, "lesson")),
                     "next": (page or {}).get("next"), "loading": loading,
-                    "failed": failed, "ready": page is not None, "resume": saved, "continuation": continuation}
+                    "failed": failed, "failure": failure, "ready": page is not None, "resume": saved,
+                    "continuation": continuation}
             result["play"] = self.resume(result)
             return result
         if view == "actions":
@@ -332,6 +337,22 @@ class Views:
         if not s:
             return None
         return {"note": s["note"], "kinds": s["kinds"], "enabled": self.app.library.bookmarks.enabled(s["aid"])}
+
+    def failure(self, sid, kept, k, what="playlist"):
+        """What a page says when its fetch failed, or None: the service
+        refusing it (to a guest, who may sign in; or to this account) is
+        not «нет связи?»."""
+        if not kept.has_failed(k):
+            return None
+        if not kept.denied(k):
+            return "Не удалось загрузить плейлист: нет связи?" if what == "playlist" else "Не удалось загрузить: нет связи?"
+        sign = self.app.signins.get(sid)
+        if sign is not None and sign.state["kind"] != "in":
+            return ("%s закрыт%s для гостей: войдите в аккаунт %s в настройках (⚙)." % (
+                "Плейлист" if what == "playlist" else "Видео канала", "" if what == "playlist" else "ы",
+                self.app.sources[sid].label))
+        return ("Нет доступа к плейлисту: он закрыт или открыт только подписчикам." if what == "playlist" else
+                "Нет доступа к видео канала: они закрыты или открыты только подписчикам.")
 
     # --- actions ----------------------------------------------------------
     def actions(self, kind, item, context=None):

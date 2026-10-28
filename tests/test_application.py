@@ -116,6 +116,22 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual((play["caption"], play["title"], play["pos"], play["action"]),
                          ("Продолжить", "Video", 90, "play"))
 
+    def test_a_refused_playlist_says_so_not_no_network(self):
+        from haltia_video.core.kept import Denied
+
+        def closed(p, offset=0):
+            raise Denied("private")
+        self.source.playlist_videos = closed
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.pump()
+        result = self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.assertIn("Нет доступа к плейлисту", result["failure"])
+        self.source.playlist_videos = lambda p, offset=0: (_ for _ in ()).throw(OSError("down"))
+        self.core.reset_channel_data()
+        self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})
+        self.pump()
+        self.assertIn("нет связи?", self.core.query("playlist", {"entity": PLAYLIST, "order": "vk"})["failure"])
+
     def test_core_imports_without_gi_or_desktop_kit(self):
         code = '''import sys
 class Block:
