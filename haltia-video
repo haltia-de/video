@@ -1315,7 +1315,7 @@ class Video(Gtk.Application):
         over.add(image)
         thumb = playlist.get("thumb") or (cursor and cursor["video"].get("thumb"))
         if thumb:
-            self.thumbs.get(thumb, image, size)
+            # Its list asks for the cover (channel_row tells why).
             tile._pictures = lambda on: self.thumbs.get(thumb, image, size) if on else self.thumbs.drop(image)
         else:
             image.get_style_context().add_class("nocover")
@@ -1442,7 +1442,8 @@ class Video(Gtk.Application):
             avatar = shown["avatar"] = Gtk.Image()
             avatar.set_size_request(AVATAR, AVATAR)
             avatar.set_valign(Gtk.Align.START)
-            self.thumbs.get(chan.get("thumb"), avatar, (AVATAR, AVATAR))
+            if shown.get("asked"):
+                self.thumbs.get(chan.get("thumb"), avatar, (AVATAR, AVATAR))
             inner.pack_start(avatar, False, False, 0)
             text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             text.set_valign(Gtk.Align.CENTER)
@@ -1485,8 +1486,16 @@ class Video(Gtk.Application):
         row.pack_start(action, False, False, 0)
         row.pack_start(self.bookmark_button("channel", chan), False, False, 0)
         row._refresh = refresh
-        row._pictures = lambda on: (self.thumbs.get(shown["chan"].get("thumb"), shown["avatar"], (AVATAR, AVATAR))
-                                    if on else self.thumbs.drop(shown["avatar"]))
+        # Its list asks for the avatar: asked while rows are still being made,
+        # the workers' decoding took the GTK thread's turns (Pillow holds the
+        # interpreter's lock), some 25 ms a row on the tablet instead of 6.
+        def pictures(on):
+            shown["asked"] = on
+            if on:
+                self.thumbs.get(shown["chan"].get("thumb"), shown["avatar"], (AVATAR, AVATAR))
+            else:
+                self.thumbs.drop(shown["avatar"])
+        row._pictures = pictures
         return row
 
     def refresh_channels(self):
@@ -1748,7 +1757,9 @@ class Video(Gtk.Application):
             inner.pack_start(num, False, False, 0)
             mini = Gtk.Image()
             mini.set_size_request(EDITOR_THUMB[0], EDITOR_THUMB[1])
-            self.thumbs.get(item.get("thumb"), mini, EDITOR_THUMB)
+            # Its list asks for the picture (channel_row tells why).
+            row._pictures = lambda on: (self.thumbs.get(item.get("thumb"), mini, EDITOR_THUMB)
+                                        if on else self.thumbs.drop(mini))
             inner.pack_start(mini, False, False, 0)
             title = label(item["title"], "ttl")
             title.set_ellipsize(3)  # Pango.EllipsizeMode.END
@@ -2114,7 +2125,6 @@ class Video(Gtk.Application):
         row.get_style_context().add_class("chan")
         thumb = Gtk.Image()
         thumb.set_size_request(AVATAR, AVATAR)
-        self.thumbs.get(obj.get("thumb"), thumb, (AVATAR, AVATAR))
         row.pack_start(thumb, False, False, 0)
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         title = label(("📌 " if "pin" in saved else "") + obj["title"], "cname", wrap=True)
@@ -2146,6 +2156,7 @@ class Video(Gtk.Application):
         menu.set_valign(Gtk.Align.CENTER)
         menu.connect("clicked", lambda btn: self.bookmark_menu(btn, saved))
         row.pack_start(menu, False, False, 0)
+        # Its list asks for the picture (channel_row tells why).
         row._pictures = lambda on: (self.thumbs.get(obj.get("thumb"), thumb, (AVATAR, AVATAR))
                                     if on else self.thumbs.drop(thumb))
         return row

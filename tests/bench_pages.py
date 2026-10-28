@@ -35,8 +35,11 @@ sys.path.insert(0, str(REPO))
 
 app = runpy.run_path(str(REPO / "haltia-video"), run_name="bench_pages")
 Gtk, GLib, Gio = app["Gtk"], app["GLib"], app["Gio"]
-import lazy_list  # noqa: E402
 from library import Library  # noqa: E402
+try:
+    import lazy_list  # 2.12; without it, a version before can be measured
+except ImportError:
+    lazy_list = None
 
 CACHE = app["CACHE"]
 os.makedirs(CACHE, exist_ok=True)
@@ -120,17 +123,16 @@ def timed(acc):
 
 
 layout, frame, make = timer(), timer(), timer()
-made = lazy_list.LazyList._add
+if lazy_list:
+    made = lazy_list.LazyList._add
 
+    def add(self, n):
+        start, end = timed(make)
+        start()
+        made(self, n)
+        end()
 
-def add(self, n):
-    start, end = timed(make)
-    start()
-    made(self, n)
-    end()
-
-
-lazy_list.LazyList._add = add
+    lazy_list.LazyList._add = add
 
 
 def pump(seconds):
@@ -233,7 +235,7 @@ SCENARIOS = {
     "grid-48": (nothing, grid_of(48)),
     "grid-300": (nothing, grid_of(300)),
     "history-100": (history, lambda: view.show_page("history")),
-    "history-again": (history_left, lambda: view.tab_clicked("history")),
+    "history-again": (history_left, lambda: getattr(view, "tab_clicked", view.show_page)("history")),
     "history-redraw": (lambda: (history(), view.show_page("history"), until_done()),
                        lambda: view.library_changed("position")),
     "playlist": (nothing, lambda: view.show_playlist(playlist, chan)),

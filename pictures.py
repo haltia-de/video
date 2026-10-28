@@ -92,12 +92,16 @@ def size_of(picture):
 
 
 def _with_pillow(path, size, max_pixels):
-    with Image.open(path, formats=FORMATS) as im:
+    with Image.open(path, formats=FORMATS) as opened:
+        im = opened
         w, h = im.size
         if w <= 0 or h <= 0 or w * h > max_pixels:
             return None
         im.draft("RGB", size)  # JPEG: decoded at 1/2, 1/4 or 1/8 when that is enough
-        im = im.convert("RGB")
+        # Not converted when it is RGB already (a JPEG): a copy that holds
+        # the interpreter's lock, which the GTK thread waits for meanwhile.
+        im = im.convert("RGB") if im.mode != "RGB" else im
+        im.load()
         box = size[0] / size[1]
         if box > 1 and im.width >= im.height and abs(im.width / im.height - box) > 0.01:
             # A card's 16:9 box filled by a landscape picture: its middle
@@ -114,7 +118,7 @@ def _with_pillow(path, size, max_pixels):
         w, h = max(1, round(im.width * k)), max(1, round(im.height * k))
         if (w, h) != im.size:
             im = im.resize((w, h), Image.BILINEAR)
-        return im
+        return im.copy() if im is opened else im  # closing the file frees the one opened
 
 
 class Recent:
