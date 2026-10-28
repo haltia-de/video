@@ -18,6 +18,24 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.12.0" date="2026-10-28">
+      <description>
+        <ul>
+          <li>Big pages — a long playlist, History, Bookmarks, Channels — open at once and stay smooth: cards are made as you scroll, and buttons answer while the page is still filling in.</li>
+          <li>Tabs are remembered: back on a tab you find it as you left it, at the same place. Tapping the open tab again takes it back to the top. The channel a playlist was opened from also waits for «←».</li>
+          <li>The watched strip, a bookmark's star and lesson marks change in place instead of the whole page being drawn again — after coming back from the player, for one.</li>
+          <li>In a playlist by lesson number the «done» mark moved to the picture's top left corner: a circle ○, and for a lesson done a green tick ✓ with the picture dimmed.</li>
+          <li>Pictures load first for what is on screen, and more of them stay in memory.</li>
+        </ul>
+        <ul>
+          <li xml:lang="ru">Большие страницы — длинный плейлист, История, Закладки, Каналы — открываются сразу и не подтормаживают: карточки достраиваются по мере прокрутки, а кнопки отвечают, пока страница ещё дополняется.</li>
+          <li xml:lang="ru">Вкладки запоминаются: вернувшись на вкладку, вы видите её такой, какой оставили, на том же месте. Повторное нажатие на открытую вкладку возвращает её к началу. Канал, из которого открыли плейлист, тоже ждёт вас по кнопке «←».</li>
+          <li xml:lang="ru">Полоска просмотра, звёздочка закладки и отметки уроков меняются на месте, страница не перерисовывается целиком — например, после возврата из проигрывателя.</li>
+          <li xml:lang="ru">Отметка «Выполнено» в плейлисте по номеру урока переехала в левый верхний угол картинки: кружок ○, а у пройденного урока — зелёная галочка ✓ и приглушённая картинка.</li>
+          <li xml:lang="ru">Картинки грузятся в первую очередь для того, что на экране, и больше их остаётся в памяти.</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.11.2" date="2026-10-28">
       <description>
         <p>The program starts faster: its code is loaded already compiled.</p>

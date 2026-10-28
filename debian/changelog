@@ -1,3 +1,12 @@
+haltia-video (2.12.0) unstable; urgency=medium
+
+  * Make a page's cards and rows as it is scrolled to, keep the tabs made,
+    change cards in place, draw a card's picture by hand and keep
+    pictures as cairo surfaces, as many as the memory allows.
+  * Depend on python3-gi-cairo.
+
+ -- Haltia <rensomail@gmail.com>  Wed, 28 Oct 2026 14:23:53 +0300
+
 haltia-video (2.11.2) unstable; urgency=medium
 
   * Run the program's code from a module, so that Python loads it
