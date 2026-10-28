@@ -1,5 +1,25 @@
 # Что нового · What's new
 
+## 2.12.0 (2026-10-28)
+
+### Русский
+
+- Большие страницы — длинный плейлист, История, Закладки, Каналы — открываются сразу и не подтормаживают: карточки достраиваются по мере прокрутки, а кнопки отвечают, пока страница ещё дополняется.
+- Вкладки запоминаются: вернувшись на вкладку, вы видите её такой, какой оставили, на том же месте. Повторное нажатие на открытую вкладку возвращает её к началу. Канал, из которого открыли плейлист, тоже ждёт вас по кнопке «←».
+- Полоска просмотра, звёздочка закладки и отметки уроков меняются на месте, страница не перерисовывается целиком — например, после возврата из проигрывателя.
+- Отметка «Выполнено» в плейлисте по номеру урока переехала в левый верхний угол картинки: кружок ○, а у пройденного урока — зелёная галочка ✓ и приглушённая картинка.
+- Картинки грузятся в первую очередь для того, что на экране, и больше их остаётся в памяти.
+- Пока страница загружается или дополняется внизу, рядом крутится индикатор — видно, что программа работает, а не зависла.
+
+### English
+
+- Big pages — a long playlist, History, Bookmarks, Channels — open at once and stay smooth: cards are made as you scroll, and buttons answer while the page is still filling in.
+- Tabs are remembered: back on a tab you find it as you left it, at the same place. Tapping the open tab again takes it back to the top. The channel a playlist was opened from also waits for «←».
+- The watched strip, a bookmark's star and lesson marks change in place instead of the whole page being drawn again — after coming back from the player, for one.
+- In a playlist by lesson number the «done» mark moved to the picture's top left corner: a circle ○, and for a lesson done a green tick ✓ with the picture dimmed.
+- Pictures load first for what is on screen, and more of them stay in memory.
+- While a page loads, or fills in at its bottom, a spinner turns beside it: the program is at work, not stuck.
+
 ## 2.11.2 (2026-10-28)
 
 ### Русский

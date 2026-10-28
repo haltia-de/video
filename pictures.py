@@ -3,6 +3,10 @@
 
     decode(path, (w, h)) -> a Pixbuf fitting w x h (its shape kept; a
     landscape picture fills a landscape box, its middle cut out), or None
+    surface(path, (w, h)) -> the same as a cairo surface, what the screen
+        draws from (a Pixbuf is turned into one at every first draw: some
+        4 ms a 600 px card, all the cards of a page at once); without
+        Pillow a Pixbuf still, to be turned on the GTK thread
 
 gdk-pixbuf 2.44 on Alpine has no loaders of its own: every JPEG goes to
 glycin, a loader process in a bwrap sandbox, and on the tablet one such
@@ -55,20 +59,49 @@ _one_at_a_time = threading.Lock()
 def decode(path, size, max_pixels=MAX_PIXELS):
     try:
         if _pillow() is not None:
-            return _with_pillow(path, size, max_pixels)
+            im = _with_pillow(path, size, max_pixels)
+            return im and GdkPixbuf.Pixbuf.new_from_bytes(
+                GLib.Bytes.new(im.tobytes()), GdkPixbuf.Colorspace.RGB, False, 8, im.width, im.height, im.width * 3)
         with _one_at_a_time:
             return _with_gdk_pixbuf(path, size, max_pixels)
     except Exception:  # whatever the file holds, a card goes without
         return None
 
 
+def surface(path, size, max_pixels=MAX_PIXELS):
+    if _pillow() is None:
+        return decode(path, size, max_pixels)
+    try:
+        im = _with_pillow(path, size, max_pixels)
+        if im is None:
+            return None
+        import cairo
+        # Cairo's RGB24 is a 32-bit word per pixel, in memory B, G, R and
+        # one unused on little-endian machines (all those it runs on).
+        data = bytearray(im.tobytes("raw", "BGRX"))
+        return cairo.ImageSurface.create_for_data(data, cairo.FORMAT_RGB24, im.width, im.height, im.width * 4)
+    except Exception:
+        return None
+
+
+def size_of(picture):
+    """The bytes a Pixbuf or a cairo surface takes."""
+    if hasattr(picture, "get_byte_length"):
+        return picture.get_byte_length()
+    return picture.get_stride() * picture.get_height()
+
+
 def _with_pillow(path, size, max_pixels):
-    with Image.open(path, formats=FORMATS) as im:
+    with Image.open(path, formats=FORMATS) as opened:
+        im = opened
         w, h = im.size
         if w <= 0 or h <= 0 or w * h > max_pixels:
             return None
         im.draft("RGB", size)  # JPEG: decoded at 1/2, 1/4 or 1/8 when that is enough
-        im = im.convert("RGB")
+        # Not converted when it is RGB already (a JPEG): a copy that holds
+        # the interpreter's lock, which the GTK thread waits for meanwhile.
+        im = im.convert("RGB") if im.mode != "RGB" else im
+        im.load()
         box = size[0] / size[1]
         if box > 1 and im.width >= im.height and abs(im.width / im.height - box) > 0.01:
             # A card's 16:9 box filled by a landscape picture: its middle
@@ -85,13 +118,13 @@ def _with_pillow(path, size, max_pixels):
         w, h = max(1, round(im.width * k)), max(1, round(im.height * k))
         if (w, h) != im.size:
             im = im.resize((w, h), Image.BILINEAR)
-        return GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(im.tobytes()),
-                                               GdkPixbuf.Colorspace.RGB, False, 8, w, h, w * 3)
+        return im.copy() if im is opened else im  # closing the file frees the one opened
 
 
 class Recent:
-    """Pixbufs by key, the least recently used going first once they take
-    more than max_bytes. Not locked: the caller holds its own lock."""
+    """Pictures (Pixbufs or cairo surfaces) by key, the least recently
+    used going first once they take more than max_bytes. Not locked: the
+    caller holds its own lock."""
 
     def __init__(self, max_bytes):
         self.max_bytes = max_bytes
@@ -109,7 +142,7 @@ class Recent:
         old = self.kept.pop(key, None)
         if old is not None:
             self.bytes -= old[1]
-        size = pix.get_byte_length()
+        size = size_of(pix)
         self.kept[key] = (pix, size)
         self.bytes += size
         while self.bytes > self.max_bytes and len(self.kept) > 1:

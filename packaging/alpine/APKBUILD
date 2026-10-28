@@ -1,13 +1,13 @@
 # Maintainer: Mikhail Nevskiy <rensomail@gmail.com>
 pkgname=haltia-video
-pkgver=2.11.2
+pkgver=2.12.0
 pkgrel=0
 pkgdesc="Видео: videos from YouTube and VK Video (GTK 3)"
 url="https://github.com/haltia-de/video"
 # haltia-vplay, the video window, is C.
 arch="all"
 license="GPL-2.0-only"
-depends="python3 py3-gobject3 gtk+3.0 py3-haltia-kit>=2.2.0 py3-pillow yt-dlp quickjs py3-qrcode"
+depends="python3 py3-gobject3 py3-cairo gtk+3.0 py3-haltia-kit>=2.2.0 py3-pillow yt-dlp quickjs py3-qrcode"
 # The original 32-bit tablet keeps the native UI without web dependencies.
 if [ "$CARCH" != "armv7" ]; then
 	depends="$depends py3-aiohttp ffmpeg"

@@ -28,8 +28,10 @@ class NavigationTest(unittest.TestCase):
         for name in ("header", "back_btn", "entry", "win"):
             setattr(self.app, name, Mock())
         for name in ("left", "mark_tab", "say", "show_home", "show_feed",
-                     "show_channels", "show_history", "show_bookmarks", "update_scope", "show_top"):
+                     "show_channels", "show_history", "show_bookmarks", "update_scope", "show_top",
+                     "enter_sub", "keep_scroll"):
             setattr(self.app, name, Mock())
+        self.app.enter_tab = Mock(return_value=(False, False))  # a tab made anew
         for name in ("go_back", "update_back", "show_page", "open_sub", "close_search", "on_page"):
             setattr(self.app, name, method(name).__get__(self.app))
         self.actions = Gio.SimpleActionGroup()
