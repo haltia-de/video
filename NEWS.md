@@ -8,6 +8,7 @@
 - В браузере появились Главная с вашими разделами и «Все →», «Мои плейлисты», шапка канала с переключателем «Видео | Плейлисты», чипы Закладок, плейлист с одной строкой «Порядок · Продолжить · ⋮», редактор порядка, где каждое перемещение сохраняется сразу, и настройки с теми же разделами.
 - Отписка и удаление закладки в браузере спрашивают или предлагают «Вернуть» — по той же настройке «Спрашивать перед удалением».
 - Вкладки в браузере запоминаются, длинные списки догружаются при прокрутке, на телефоне вкладки внизу экрана. Видео разворачивается на весь экран кнопкой ⛶ или двойным касанием.
+- Закрытый плейлист или канал больше не выдаётся за «нет связи?»: Видео говорит, что он закрыт для гостей и нужно войти в аккаунт, или что у аккаунта нет к нему доступа.
 
 ### English
 
@@ -15,6 +16,7 @@
 - The browser gains Главная with your sections and «Все →», «Мои плейлисты», a channel's header with the «Видео | Плейлисты» switch, the bookmarks' chips, the playlist's one row «order · Continue · ⋮», the order editor saving each move at once, and settings with the same sections.
 - Unfollowing and removing a bookmark in the browser ask first or offer «Вернуть», by the same «Спрашивать перед удалением» setting.
 - The browser remembers its tabs, long lists load more as you scroll, and on a phone the tabs are at the bottom of the screen. A video takes the whole screen with ⛶ or a double tap.
+- A closed playlist or channel no longer passes for «no connection?»: Video says it is closed to guests and you need to sign in, or that the account has no access to it.
 
 ## 2.12.0 (2026-10-28)
 
