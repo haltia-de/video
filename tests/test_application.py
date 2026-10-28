@@ -68,7 +68,7 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual([e["id"] for e in self.core.query("state")["home_sections"]][:2], ["bookmarks", "continue"])
 
     def test_what_a_page_showed_comes_back_plain(self):
-        shown = self.core._videos([VIDEO])[0]
+        shown = self.core.views._videos([VIDEO])[0]
         self.assertIn("progress", shown)
         self.core.command("bookmark_add", {"kind": "video", "entity": dict(shown, task_done=True)})
         self.core.command("follow", {"entity": {"source": "vk", "id": "-1", "title": "One",
