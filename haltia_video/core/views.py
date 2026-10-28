@@ -147,6 +147,7 @@ class Views:
                     "scope": self.app.library.scope, "sort": self.app.library.sort,
                     "confirm": self.app.library.confirm, "home_sections": self.home_sections(),
                     "bookmark_kinds": [list(k) for k in KINDS],
+                    "playlist_orders": [list(o) for o in ordering.ORDERS],
                     "device": device}
         if view == "channels":
             self.app.refresh_channels()
@@ -158,7 +159,8 @@ class Views:
             return self._page(self._videos(self.app.library.history()), offset, count)
         if view == "feed":
             result = self._page(self._videos(self.app.feed_shown()), offset, count)
-            result.update(loading=self.app.feed.is_loading("feed"), failed=self.app.feed.has_failed("feed"))
+            result.update(loading=self.app.feed.is_loading("feed"), failed=self.app.feed.has_failed("feed"),
+                          channels=bool(self.app.library.channels()))
             return result
         if view == "home":
             return self._home()
@@ -222,6 +224,7 @@ class Views:
                           if c["source"] == chan["source"] and c["id"] == chan["id"]), chan)
             albums = [dict(a, bookmarked=bool(self.app.library.bookmarks.find("playlist", a))) for a in albums or []]
             result.update(entity=chan, known=known, playlists=albums,
+                          has_playlists=hasattr(src, "playlists") and hasattr(src, "playlist_videos"),
                           bookmarked=bool(self.app.library.bookmarks.find("channel", chan)),
                           followed=self.app.library.is_followed(chan["source"], chan["id"]),
                           loading=self.app.channel_videos.is_loading(k) or self.app.playlists.is_loading(k),
@@ -257,7 +260,8 @@ class Views:
                 # The editor shows the whole playlist (it builds the rows lazily).
                 result = self._page([entries[i] for i in ids], offset,
                                     max(1, min(int(p.get("count", 30)), 2000)))
-                result.update(token=token, order=order, total=len(ids))
+                result.update(token=token, order=order, total=len(ids),
+                              manual=bool(self.app.library.manual_order(playlist, order)))
                 for i, video in enumerate(result["items"], offset):
                     video.update(position=i, minimum=0, maximum=len(ids) - 1)
                     if order == "lesson":
