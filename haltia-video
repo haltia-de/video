@@ -34,6 +34,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import gi
 from gi.repository import GLib
@@ -97,6 +98,13 @@ QR_SIZE = 320
 PIXBUFS_BYTES = (32 if sources.LARGE_PICTURES else 16) * 1024 * 1024
 # A card's picture fills the card's width, up to this (sources.LARGE_PICTURES).
 CARD_PICTURE_MAX = 720
+# Pages kept made while another is on show: the five tabs and the sub-page
+# left for another (a channel, while one of its playlists is open), so a
+# tab comes back at once and where it was scrolled to. The B8000 (1 GB)
+# keeps Главная alone. A kept page older than this is made anew, with what
+# its caches fetched meanwhile and the ages of its videos ("3 ч назад").
+KEEP_PAGES = not platform.machine().startswith("armv")
+KEEP_PAGE_SEC = 5 * 60
 CACHE_MAX_BYTES = 150 * 1024 * 1024
 CACHE_MAX_AGE = 30 * 86400
 NET_WORKERS = 4
@@ -526,6 +534,7 @@ class Video(Gtk.Application):
 
     def _core_event(self, event):
         kind, data = event["type"], event["data"]
+        self.stale_by(kind, data)
         if kind == "library":
             self.library_changed(data["what"])
         elif kind == "cache":
@@ -546,6 +555,18 @@ class Video(Gtk.Application):
             self.stop_playback()
         elif kind == "queue_changed" and data["id"] == self.core.local_session:
             self.player.reorder_queue(self.core.sessions.get(data["id"])["queue"])
+
+    def stale_by(self, kind, data):
+        """Which kept hidden pages a change makes stale (made anew when
+        shown): what changes a card in place (lists of every page follow
+        it) none; the Library or an account all; the caches the channel
+        kept when it is its videos. The tabs' caches redraw() them."""
+        if kind == "library" and data["what"] not in ("position", "tasks", "details"):
+            self.stale_hidden()
+        elif kind == "account":
+            self.stale_hidden()
+        elif kind == "cache" and data["kind"] in ("channel_videos", "playlists"):
+            self.stale_hidden(lambda pane: pane.sub is not None and pane.sub.get("key") == tuple(data["key"]))
 
     def ordered(self):
         return self.core.ordered()
@@ -644,7 +665,7 @@ class Video(Gtk.Application):
                           ("history", "История")):
             btn = Gtk.Button(label=text)
             btn.get_style_context().add_class("tab")
-            btn.connect("clicked", lambda _b, k=key: self.show_page(k))
+            btn.connect("clicked", lambda _b, k=key: self.tab_clicked(k))
             tabs.pack_start(btn, True, True, 0)
             self.tabs[key] = btn
         self.top.add_named(tabs, "tabs")
@@ -675,18 +696,12 @@ class Video(Gtk.Application):
         box.set_border_width(16)
         box.get_style_context().add_class("page")
 
-        # The note and the cards scroll together: a wrapped label outside
-        # the scrolled part made the window taller than the room the
-        # on-screen keyboard leaves, and the window covered its top row.
-        self.scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        self.scroll.set_kinetic_scrolling(True)
-        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        self.note = label("", "note", wrap=True)
-        self.note.set_no_show_all(True)
-        self.note.set_margin_top(12)
-        self.body.pack_start(self.note, False, False, 0)
-        self.scroll.add(self.body)
-        box.pack_start(self.scroll, True, True, 0)
+        # Each page made is a pane of its own in the stack (make_pane).
+        self.stack = Gtk.Stack()
+        self.panes = {}  # tab: its pane
+        self.sub_pane = self.prev_pane = None  # the sub-page's, and the one it was opened from
+        self.use_pane(self.make_pane())
+        box.pack_start(self.stack, True, True, 0)
         self.toast = Gtk.Box(spacing=12)
         self.toast.get_style_context().add_class("toast")
         self.toast.set_halign(Gtk.Align.CENTER)
@@ -729,6 +744,86 @@ class Video(Gtk.Application):
         else:
             self.note.hide()
 
+    # --- panes ------------------------------------------------------------
+    def make_pane(self, title=None):
+        """A page's own scrolled window, with its note over its content."""
+        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_kinetic_scrolling(True)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        # The note and the cards scroll together: a wrapped label outside
+        # the scrolled part made the window taller than the room the
+        # on-screen keyboard leaves, and the window covered its top row.
+        note = label("", "note", wrap=True)
+        note.set_no_show_all(True)
+        note.set_margin_top(12)
+        body.pack_start(note, False, False, 0)
+        scroll.add(body)
+        scroll.show_all()
+        self.stack.add(scroll)
+        return SimpleNamespace(scroll=scroll, body=body, note=note, made=time.monotonic(),
+                               stale=False, sub=None, title=title)
+
+    def use_pane(self, pane):
+        self.pane = pane
+        self.scroll, self.body, self.note = pane.scroll, pane.body, pane.note
+        self.stack.set_visible_child(pane.scroll)
+
+    def drop_pane(self, pane):
+        if pane is not None and pane is not self.pane:
+            pane.scroll.destroy()
+
+    def fresh(self, pane):
+        return (pane is not None and not pane.stale
+                and time.monotonic() - pane.made < KEEP_PAGE_SEC)
+
+    def hidden_panes(self):
+        return [p for p in list(self.panes.values()) + [self.sub_pane, self.prev_pane]
+                if p is not None and p is not self.pane]
+
+    def stale_hidden(self, match=lambda pane: True):
+        """Kept pages the change is shown on are made anew when shown."""
+        for pane in self.hidden_panes():
+            if match(pane):
+                pane.stale = True
+
+    def enter_tab(self, key, again):
+        """The tab's pane on show, the sub-pages' gone; whether it is kept
+        as it was (else it is to be made), and whether it was made before."""
+        pane = self.panes.get(key)
+        kept, made = self.fresh(pane) and not again, pane is not None
+        if pane is None:
+            pane = self.panes[key] = self.make_pane()
+        self.use_pane(pane)
+        for old in (self.sub_pane, self.prev_pane):
+            self.drop_pane(old)
+        self.sub_pane = self.prev_pane = None
+        if not KEEP_PAGES:
+            for k in [k for k in self.panes if k not in (key, "home")]:
+                self.drop_pane(self.panes.pop(k))
+        if not kept:
+            pane.made, pane.stale = time.monotonic(), False
+        return kept, made
+
+    def enter_sub(self, left, title):
+        """A new pane for a sub-page; the channel it is opened from kept."""
+        old, gone = self.sub_pane, [self.prev_pane]
+        self.prev_pane = None
+        if left is not None and left["kind"] == "channel" and KEEP_PAGES and old is not None:
+            self.prev_pane, old.sub = old, left
+        else:
+            gone.append(old)
+        self.sub_pane = self.make_pane(title)
+        self.use_pane(self.sub_pane)
+        for pane in gone:
+            self.drop_pane(pane)
+
+    def tab_clicked(self, key):
+        """A tab; the one on show again goes back to its top."""
+        if self.on_page(key) and not self.searching:
+            self.scroll.get_vadjustment().set_value(0)
+        else:
+            self.show_page(key)
+
     def set_content(self, widget):
         for child in self.body.get_children():
             if child is not self.note:
@@ -744,14 +839,34 @@ class Video(Gtk.Application):
             (ctx.add_class if k == key else ctx.remove_class)("current")
 
     def open_sub(self, sub, title):
-        """A page over the tabs; the back button returns to the tab."""
+        """A page over the tabs; the back button returns to the tab. The
+        channel it is opened from is kept (restore_channel)."""
         left, self.sub = self.sub, sub
+        self.enter_sub(left, title)
         self.searching = sub["kind"] == "search"
         self.show_top("search" if self.searching else "title", title)
         self.entry.set_placeholder_text("Найти видео")
         self.update_scope()
         self.update_back()
         self.left(left)
+
+    def restore_channel(self, chan):
+        """Back on the channel a playlist was opened from: as it was left,
+        if nothing it shows has changed."""
+        prev = self.prev_pane
+        if not (self.fresh(prev) and prev.sub["kind"] == "channel"
+                and prev.sub["key"] == (chan["source"], chan["id"])):
+            return False
+        left, self.sub = self.sub, prev.sub
+        old, self.sub_pane, self.prev_pane = self.sub_pane, prev, None
+        self.use_pane(prev)
+        self.drop_pane(old)
+        self.searching = False
+        self.show_top("title", prev.title)
+        self.update_scope()
+        self.update_back()
+        self.left(left)
+        return True
 
     def show_top(self, mode, title="Видео"):
         """What the one row on top shows: the tabs, a page's title or the search."""
@@ -831,6 +946,7 @@ class Video(Gtk.Application):
         if size == self.drawn_size:
             return
         self.drawn_size = size
+        self.stale_hidden()  # their cards are of the old size
         if self.resize_pending:
             GLib.source_remove(self.resize_pending)
         self.resize_pending = GLib.timeout_add(300, self._redraw_resized)
@@ -1003,7 +1119,9 @@ class Video(Gtk.Application):
         box.pack_start(row, False, False, 0)
 
     # --- pages ------------------------------------------------------------
-    def show_page(self, key):
+    def show_page(self, key, again=False):
+        """A tab: the kept one as it was left, unless what it shows changed
+        (again: made anew)."""
         self.page = key
         left, self.sub = self.sub, None
         self.left(left)
@@ -1011,28 +1129,34 @@ class Video(Gtk.Application):
         self.update_back()
         self.show_top("search" if self.searching else "tabs")
         self.mark_tab(key)
-        self.say("")
         self.entry.set_placeholder_text("Поиск в закладках" if key == "bookmarks" else "Найти видео")
         self.entry.set_text(self.bookmark_query if key == "bookmarks" else "")
         self.update_scope()
-        if key == "home":
-            self.show_home()
-        elif key == "feed":
-            self.show_feed()
-        elif key == "channels":
-            self.show_channels()
-        elif key == "bookmarks":
-            self.show_bookmarks()
-        else:
-            self.show_history()
+        kept, made = self.enter_tab(key, again)
+        if kept:
+            if key == "bookmarks":
+                self.scope_btn.hide()  # this tab has its own Source filter
+            elif key == "channels":
+                self.refresh_channels()
+            return
+
+        def make():
+            self.say("")
+            {"home": self.show_home, "feed": self.show_feed, "channels": self.show_channels,
+             "bookmarks": self.show_bookmarks, "history": self.show_history}[key]()
+        # Made anew where it was scrolled to.
+        self.keep_scroll(make) if made else make()
 
     def on_page(self, key):
         return self.page == key and self.sub is None
 
     def redraw(self, key):
-        """Show the tab again with what came in, if it is on show."""
+        """Show the tab again with what came in, if it is on show; kept
+        hidden, it is made anew when shown."""
         if self.on_page(key):
-            self.keep_scroll(lambda: self.show_page(key))
+            self.show_page(key, again=True)
+        elif key in self.panes:
+            self.panes[key].stale = True
 
     # Главная ------------------------------------------------------------
     def home_sections(self):
@@ -1324,6 +1448,8 @@ class Video(Gtk.Application):
     def show_channel(self, chan, again=False):
         key = (chan["source"], chan["id"])
         if not again:
+            if self.restore_channel(chan):
+                return
             self.open_sub({"kind": "channel", "chan": chan, "key": key}, chan["title"])
         if chan["source"] not in self.sources:
             return

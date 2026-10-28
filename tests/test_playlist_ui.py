@@ -34,6 +34,7 @@ class PlaylistUITest(unittest.TestCase):
                         "channel": "Channel", "thumb": "", "duration": 600} for i in range(65)]
         videos = self.videos
         src = SimpleNamespace(id="vk", label="VK", home=lambda: None,
+                              channel_videos=lambda _c: videos[:12], playlists=lambda _c: [],
                               playlist_videos=lambda _p, offset=0: {
                                   "videos": videos[offset:offset + 30],
                                   "next": offset + 30 if offset + 30 < len(videos) else None})
@@ -214,3 +215,61 @@ class PlaylistUITest(unittest.TestCase):
 
     def test_locate_focuses_card_in_lesson_order(self):
         self.assert_locates("lesson")
+
+    def body_page(self):
+        return self.view.body.get_children()[-1]
+
+    def test_a_list_is_made_as_it_is_scrolled_to(self):
+        many = [dict(self.videos[i % 65], id="-7_x%d" % i) for i in range(300)]
+        self.view.open_sub({"kind": "test"}, "Test")  # not a tab, which a late redraw would replace
+        self.view.set_content(self.view.grid(many))
+        self.settle(lambda: self.body_page().get_children())
+        self.pump()
+        flow = self.body_page()
+        made = len(flow.get_children())
+        self.assertLess(made, 40)  # a screen and a half, not 300
+        adjustment = self.view.scroll.get_vadjustment()
+        for _ in range(5):
+            adjustment.set_value(adjustment.get_upper())
+            self.pump()
+            time.sleep(.05)
+            self.pump()
+        self.assertGreater(len(flow.get_children()), made)
+
+    def test_tabs_are_kept_where_they_were_scrolled_to(self):
+        for video in self.videos[:40]:
+            self.view.library.played(video)
+        self.view.show_page("history")
+        self.pump()
+        adjustment = self.view.scroll.get_vadjustment()
+        self.settle(lambda: adjustment.get_upper() > adjustment.get_page_size() + 400)
+        adjustment.set_value(400)
+        page = self.body_page()
+        self.view.tab_clicked("home")
+        self.pump()
+        self.view.tab_clicked("history")
+        self.pump()
+        self.assertIs(self.body_page(), page)  # not made again
+        self.assertEqual(self.view.scroll.get_vadjustment().get_value(), 400)
+        # A change it shows makes it anew when shown, where it was.
+        self.view.tab_clicked("home")
+        self.view.library.played(self.videos[50])
+        self.pump()
+        self.view.tab_clicked("history")
+        self.pump()
+        self.assertIsNot(self.body_page(), page)
+        self.assertEqual(self.view.scroll.get_vadjustment().get_value(), 400)
+        # The tab on show tapped again goes to its top.
+        self.view.tab_clicked("history")
+        self.assertEqual(self.view.scroll.get_vadjustment().get_value(), 0)
+
+    def test_back_from_a_playlist_finds_its_channel_as_left(self):
+        self.view.show_channel(self.chan)
+        self.pump()
+        page = self.body_page()
+        self.view.show_playlist(self.playlist, self.chan)
+        self.pump()
+        self.view.go_back()
+        self.pump()
+        self.assertEqual(self.view.sub["kind"], "channel")
+        self.assertIs(self.body_page(), page)
