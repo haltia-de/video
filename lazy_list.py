@@ -15,12 +15,15 @@ it showed (each card is a dozen widgets for GTK to style and measure; on
 the tablet some 25 ms), and every tap waited behind it. Only the first
 screen is made at once; the next one when the bottom of the list comes
 within AHEAD screens of what the window shows, a row at a time. Made widgets stay, so the
-scroll stays smooth; their pictures go when they are more than RELEASE
-screens away, or the page is hidden (a kept tab), and come back on return.
+scroll stays smooth. Their pictures are asked for by the list, the
+nearest the window first (a card made asks for none: the row below the
+first screen, made right after it, came before it); they go when they
+are more than RELEASE screens away, or the page is hidden (a kept tab),
+and come back on return.
 
 A widget make() returns may have:
     _refresh()      read its state again (the bookmark, the position)
-    _pictures(on)   let its pictures go (False) or take them back (True)
+    _pictures(on)   ask for its pictures (True) or let them go (False)
 """
 import itertools
 import time
@@ -60,7 +63,7 @@ class LazyList:
             first, self.batch = ROWS_AT_ONCE, ROWS_PER_IDLE
         self.widget.set_valign(Gtk.Align.START)
         self.made = []  # the widgets, in the items' order
-        self.held = {}  # index: whether its pictures are on
+        self.held = {}  # index: whether its pictures are asked for
         self.alive = True
         self.queued = False
         self.pictures_at = 0.0
@@ -214,21 +217,30 @@ class LazyList:
             return
         adj = self.adjustment
         page = adj.get_page_size()
-        low = adj.get_value() - RELEASE * page
-        high = adj.get_value() + page + RELEASE * page
+        value = adj.get_value()
+        wanted = []
         for i, widget in enumerate(self.made):
             fn = getattr(widget, "_pictures", None)
             if fn is None:
                 continue
             top = self._top(widget)
-            on = top is None or (top + widget.get_allocated_height() >= low and top <= high)
-            if self.held.get(i, True) != on:
-                self.held[i] = on
-                fn(on)
+            if top is None:
+                away = page  # not laid out yet: after those on screen
+            else:
+                away = max(0, value - (top + widget.get_allocated_height()), top - (value + page))
+            on = away <= RELEASE * page
+            if on and not self.held.get(i):
+                wanted.append((away, i, fn))
+            elif not on and self.held.get(i):
+                self.held[i] = False
+                fn(False)
+        for _away, i, fn in sorted(wanted, key=lambda w: w[:2]):
+            self.held[i] = True
+            fn(True)
 
     def _pictures_all(self, on):
         for i, widget in enumerate(self.made):
             fn = getattr(widget, "_pictures", None)
-            if fn is not None and self.held.get(i, True) != on:
+            if fn is not None and bool(self.held.get(i)) != on:
                 self.held[i] = on
                 fn(on)

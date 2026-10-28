@@ -27,6 +27,7 @@ last feed and Главная in ~/.cache/haltia-video/ (moved there from the b8k
 places of 1.x at the first start, renamed.py), so that a start shows them at
 once and fetches what is new behind them.
 """
+import collections
 import hashlib
 import os
 import platform
@@ -49,6 +50,7 @@ gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "3.0")
 from haltia_kit import dialogs  # noqa: E402
 from gi.repository import Gdk, GdkPixbuf, Gio, Gtk  # noqa: E402
+import cairo  # noqa: E402
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Next to it in the repository, or PREFIX/lib/haltia-video when installed.
@@ -348,13 +350,32 @@ class Picture(Gtk.DrawingArea):
         super().__init__()
         self.set_size_request(*size)
         self.surface = None
+        self.screen = None  # the surface where the screen keeps it (X11), made at its first draw
         self.fraction = None
         self.dim = False
         self.connect("draw", self._draw)
 
     def set_from_surface(self, surface):
         self.surface = surface
+        self.screen = None
         self.queue_draw()
+
+    def _on_screen(self):
+        """X11 keeps what windows draw on the server: a picture in the
+        program's memory went there at every frame (9 cards on screen, some
+        7 MB a frame), so it goes once. On Wayland, where windows draw in
+        the program's memory, it is drawn as it is."""
+        if self.screen is None:
+            w, h = self.surface.get_width(), self.surface.get_height()
+            similar = self.get_window().create_similar_surface(cairo.CONTENT_COLOR, w, h)
+            if isinstance(similar, cairo.ImageSurface):
+                self.screen = self.surface
+            else:
+                cr = cairo.Context(similar)
+                cr.set_source_surface(self.surface, 0, 0)
+                cr.paint()
+                self.screen = similar
+        return self.screen
 
     def set_progress(self, fraction):
         if fraction != self.fraction:
@@ -371,7 +392,7 @@ class Picture(Gtk.DrawingArea):
         pw, ph = (self.surface.get_width(), self.surface.get_height()) if self.surface else (w, h)
         x, y = (w - pw) // 2, (h - ph) // 2
         if self.surface:
-            cr.set_source_surface(self.surface, x, y)
+            cr.set_source_surface(self._on_screen(), x, y)
             if self.dim:
                 cr.paint_with_alpha(0.4)
             else:
@@ -394,9 +415,8 @@ class Thumbs:
 
     def __init__(self):
         self.kept = pictures.Recent(PIXBUFS_BYTES)  # (url, size): cairo surface
-        # Asked for, the newest first: the cards last made are the ones
-        # nearest the window (a page's first screen before those below).
-        self.queue = []
+        # Asked for, in turn: a list asks for those nearest the window first.
+        self.queue = collections.deque()
         self.ready = threading.Condition()
         self.workers = 0
         self.waiting = {}  # (url, size): [(image, alive)] while it is fetched
@@ -435,7 +455,7 @@ class Thumbs:
             with self.ready:
                 while not self.queue:
                     self.ready.wait()
-                key = self.queue.pop()
+                key = self.queue.popleft()
             self._load(key)
 
     @staticmethod
@@ -1110,13 +1130,9 @@ class Video(Gtk.Application):
         refresh()
         ev._refresh = refresh
 
-        def pictures(on):
-            if on:
-                self.thumbs.get(video["thumb"], picture, size)
-            else:
-                self.thumbs.drop(picture)
-        pictures(True)
-        ev._pictures = pictures
+        # Its list asks for its picture, those nearest the window first.
+        ev._pictures = lambda on: (self.thumbs.get(video["thumb"], picture, size) if on
+                                   else self.thumbs.drop(picture))
 
         # A tap plays; a long press opens the same menu as ⋮.
         tap = Gtk.GestureMultiPress(widget=ev)
