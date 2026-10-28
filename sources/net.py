@@ -5,7 +5,6 @@ tablet's CPU, and a page of cards or a feed of channels asks one host
 dozens of times) and gzip for the large JSON and XML answers. Not a
 source: it defines no SOURCE."""
 import gzip
-import http.client
 import json
 import threading
 import urllib.parse
@@ -26,6 +25,10 @@ class HTTPError(OSError):
 
 
 def _conn(scheme, host, fresh=False):
+    # http.client (with ssl and the email package) is imported by the first
+    # request, in a worker, not before the first window.
+    import http.client
+
     conns = getattr(_local, "conns", None)
     if conns is None:
         conns = _local.conns = {}
@@ -42,6 +45,8 @@ def _conn(scheme, host, fresh=False):
 def request(url, data=None, headers=None, limit=MAX_BYTES):
     """The body of url (POSTed data, a dict, when given: as a form, or as
     JSON when headers say so), unpacked."""
+    import http.client
+
     hdrs = {"User-Agent": UA, "Accept-Encoding": "gzip"}
     hdrs.update(headers or {})
     body = None

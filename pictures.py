@@ -29,10 +29,23 @@ import gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf, GLib  # noqa: E402
 
-try:
-    from PIL import Image
-except ImportError:  # gdk-pixbuf then, one picture at a time
-    Image = None
+# PIL.Image, imported by the first decode (in a worker, not before the
+# first window: Pillow takes longer to import than any other module the
+# program starts with), or None without Pillow: gdk-pixbuf then, one
+# picture at a time.
+_NOT_YET = object()
+Image = _NOT_YET
+
+
+def _pillow():
+    global Image
+    if Image is _NOT_YET:
+        try:
+            from PIL import Image as image
+        except ImportError:
+            image = None
+        Image = image
+    return Image
 
 MAX_PIXELS = 4 * 1000 * 1000  # cards are up to 1280x720, avatars at most 900x900
 FORMATS = ("JPEG", "PNG", "WEBP")
@@ -41,7 +54,7 @@ _one_at_a_time = threading.Lock()
 
 def decode(path, size, max_pixels=MAX_PIXELS):
     try:
-        if Image is not None:
+        if _pillow() is not None:
             return _with_pillow(path, size, max_pixels)
         with _one_at_a_time:
             return _with_gdk_pixbuf(path, size, max_pixels)
