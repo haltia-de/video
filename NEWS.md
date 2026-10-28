@@ -1,5 +1,15 @@
 # Что нового · What's new
 
+## 2.11.1 (2026-10-28)
+
+### Русский
+
+Видео открывается быстрее: обработка картинок и сетевые части загружаются в фоне при первой надобности, а не до появления окна.
+
+### English
+
+Video opens faster: picture handling and the network parts load in the background when first needed, not before the window appears.
+
 ## 2.11.0 (2026-10-27)
 
 ### Русский

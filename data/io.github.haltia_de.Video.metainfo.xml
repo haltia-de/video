@@ -18,6 +18,12 @@
   <content_rating type="oars-1.1"/>
   <requires><control>touch</control></requires>
   <releases>
+    <release version="2.11.1" date="2026-10-28">
+      <description>
+        <p>Video opens faster: picture handling and the network parts load in the background when first needed, not before the window appears.</p>
+        <p xml:lang="ru">Видео открывается быстрее: обработка картинок и сетевые части загружаются в фоне при первой надобности, а не до появления окна.</p>
+      </description>
+    </release>
     <release version="2.11.0" date="2026-10-27">
       <description>
         <p>Video pictures are larger and fill the card's width; YouTube's lose their black bars. On the Lenovo YOGA B8000 tablet they keep their old size so as not to slow it down.</p>
