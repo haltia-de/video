@@ -33,7 +33,6 @@ import platform
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import gi
@@ -92,10 +91,24 @@ THUMB_W, THUMB_H = 352, 198
 EDITOR_THUMB = (112, 63)
 AVATAR = 96
 QR_SIZE = 320
-# Decoded pictures kept in memory: some eighty cards of 352 px on the
-# B8000 (1 GB), some fifty of 600 px elsewhere; the rest are decoded again
-# from the disk cache, off the GTK thread.
-PIXBUFS_BYTES = (32 if sources.LARGE_PICTURES else 16) * 1024 * 1024
+
+
+def pixbufs_bytes():
+    """Decoded pictures kept in memory: a twentieth of the memory, 16 to
+    128 MB (a 600 px one is some 0.5 MB: 32 MB held fewer than История's
+    hundred, decoded anew at each visit); on the B8000 (1 GB) 16 MB, some
+    eighty of its 352 px ones. The rest are decoded again from the disk
+    cache, off the GTK thread."""
+    if not sources.LARGE_PICTURES:
+        return 16 * 1024 * 1024
+    try:
+        memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError):
+        memory = 0
+    return max(16 * 1024 * 1024, min(memory // 20, 128 * 1024 * 1024))
+
+
+PIXBUFS_BYTES = pixbufs_bytes()
 # A card's picture fills the card's width, up to this (sources.LARGE_PICTURES).
 CARD_PICTURE_MAX = 720
 # Pages kept made while another is on show: the five tabs and the sub-page
@@ -334,13 +347,13 @@ class Picture(Gtk.DrawingArea):
     def __init__(self, size):
         super().__init__()
         self.set_size_request(*size)
-        self.pix = None
+        self.surface = None
         self.fraction = None
         self.dim = False
         self.connect("draw", self._draw)
 
-    def set_from_pixbuf(self, pix):
-        self.pix = pix
+    def set_from_surface(self, surface):
+        self.surface = surface
         self.queue_draw()
 
     def set_progress(self, fraction):
@@ -355,10 +368,10 @@ class Picture(Gtk.DrawingArea):
 
     def _draw(self, _widget, cr):
         w, h = self.get_allocated_width(), self.get_allocated_height()
-        pw, ph = (self.pix.get_width(), self.pix.get_height()) if self.pix else (w, h)
+        pw, ph = (self.surface.get_width(), self.surface.get_height()) if self.surface else (w, h)
         x, y = (w - pw) // 2, (h - ph) // 2
-        if self.pix:
-            Gdk.cairo_set_source_pixbuf(cr, self.pix, x, y)
+        if self.surface:
+            cr.set_source_surface(self.surface, x, y)
             if self.dim:
                 cr.paint_with_alpha(0.4)
             else:
@@ -380,8 +393,12 @@ class Thumbs:
     What is still queued for cards gone with their page is dropped."""
 
     def __init__(self):
-        self.pool = ThreadPoolExecutor(max_workers=NET_WORKERS)
-        self.kept = pictures.Recent(PIXBUFS_BYTES)  # (url, size): pixbuf
+        self.kept = pictures.Recent(PIXBUFS_BYTES)  # (url, size): cairo surface
+        # Asked for, the newest first: the cards last made are the ones
+        # nearest the window (a page's first screen before those below).
+        self.queue = []
+        self.ready = threading.Condition()
+        self.workers = 0
         self.waiting = {}  # (url, size): [(image, alive)] while it is fetched
         self.lock = threading.Lock()
         os.makedirs(CACHE, exist_ok=True)
@@ -404,16 +421,29 @@ class Thumbs:
                     return
                 self.waiting[key] = [(image, alive)]
         if pix is not None:
-            image.set_from_pixbuf(pix)
+            image.set_from_surface(pix)
             return
-        self.pool.submit(self._load, key)
+        with self.ready:
+            self.queue.append(key)
+            self.ready.notify()
+            if self.workers < NET_WORKERS:
+                self.workers += 1
+                threading.Thread(target=self._work, daemon=True).start()
+
+    def _work(self):
+        while True:
+            with self.ready:
+                while not self.queue:
+                    self.ready.wait()
+                key = self.queue.pop()
+            self._load(key)
 
     @staticmethod
     def drop(image):
         """Its picture let go (far from the window, or on a page hidden);
         get() takes it back, from memory if it is still there."""
         image._thumb = None
-        image.set_from_pixbuf(None)
+        image.set_from_surface(None)
 
     def _load(self, key):
         with self.lock:
@@ -431,21 +461,24 @@ class Thumbs:
                 os.replace(path + ".new", path)
             # Not through gdk-pixbuf's loaders (pictures.py: one stuck
             # loader froze the whole program on the tablet).
-            pix = pictures.decode(path, size)
+            pix = pictures.surface(path, size)
         except (OSError, GLib.Error):
             pass
         with self.lock:
             images = self.waiting.pop(key)
-            if pix is not None:
+            if pix is not None and not isinstance(pix, GdkPixbuf.Pixbuf):
                 self.kept.put(key, pix)
         if pix is not None:
             GLib.idle_add(self._show, images, key, pix)
 
-    @staticmethod
-    def _show(images, key, pix):
+    def _show(self, images, key, pix):
+        if isinstance(pix, GdkPixbuf.Pixbuf):  # without Pillow: made a surface here, on the GTK thread
+            pix = Gdk.cairo_surface_create_from_pixbuf(pix, 1, None)
+            with self.lock:
+                self.kept.put(key, pix)
         for image, alive in images:
             if alive[0] and image._thumb == key:
-                image.set_from_pixbuf(pix)
+                image.set_from_surface(pix)
         return False
 
     @staticmethod

@@ -51,6 +51,14 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual((r, g, b), (200, 30, 40))
         self.assertFalse(pix.get_has_alpha())
 
+    def test_a_surface_for_the_screen_with_the_same_pixels(self):
+        surface = pictures.surface(self.picture(1280, 720, "PNG"), (352, 198))
+        self.assertEqual((surface.get_width(), surface.get_height()), (352, 198))
+        b, g, r = bytes(surface.get_data()[:3])  # cairo's RGB24 on a little-endian machine
+        self.assertEqual((r, g, b), (200, 30, 40))
+        self.assertEqual(pictures.size_of(surface), 352 * 4 * 198)
+        self.assertIsNone(pictures.surface(self.picture(3000, 2000), (352, 198)))
+
     def test_transparency_is_flattened(self):
         pix = pictures.decode(self.picture(100, 100, "PNG", "RGBA"), (96, 96))
         self.assertFalse(pix.get_has_alpha())
