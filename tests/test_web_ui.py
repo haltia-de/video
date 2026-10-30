@@ -43,13 +43,38 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
             await response.write(movie.read_bytes()[:128])
             request.transport.close()
             return response
+        self.held = 0
+        self.release = asyncio.Event()
+        async def held(request):
+            # A source that answers and then hardly sends: a byte every 5 s
+            # keeps the PC's own read bound (20 s) from ending it, and no
+            # metadata ever comes.
+            self.held += 1
+            data = movie.read_bytes()
+            response = web.StreamResponse(headers={"Content-Type": "video/mp4", "Content-Length": str(len(data))})
+            await response.prepare(request)
+            try:
+                for byte in data[:40]:
+                    await response.write(bytes([byte]))
+                    try:
+                        await asyncio.wait_for(self.release.wait(), 5)
+                        break
+                    except asyncio.TimeoutError:
+                        pass
+            except ConnectionResetError:
+                return response
+            if request.transport is not None:
+                request.transport.close()
+            return response
         app = web.Application()
         app.router.add_get("/movie", media)
         app.router.add_get("/forbidden", forbidden)
         app.router.add_get("/short", short)
+        app.router.add_get("/held", held)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         self.addAsyncCleanup(runner.cleanup)
+        self.addAsyncCleanup(self.release_held)
         await web.TCPSite(runner, "127.0.0.1", 0).start()
         self.media_base = "http://127.0.0.1:%d" % runner.addresses[0][1]
         movie_url = self.media_base + "/movie"
@@ -75,6 +100,9 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         await self.page.get_by_role("button", name="Подключиться", exact=True).click()
         await self.page.locator("#panes").wait_for(state="visible")
         await self.open_playlist(self.page)
+
+    async def release_held(self):
+        self.release.set()
 
     async def open_playlist(self, page):
         await page.locator('#tabs button[data-page="bookmarks"]').click()
@@ -206,6 +234,98 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.refused, refused + 1)  # no retry of its own
         await page.locator("#close-player").click()
         await page.locator("#player").wait_for(state="hidden")
+        self.assertEqual(self.errors, [])
+
+    def count_seeks(self, page):
+        seeks = []
+        page.on("request", lambda request: seeks.append(1) if request.url.endswith("/api/seek") else None)
+        return seeks
+
+    async def hold_seeks(self, page):
+        gate = asyncio.Event()
+        async def handle(route):
+            await gate.wait()
+            await route.continue_()
+        await page.route("**/api/seek", handle)
+        return gate
+
+    async def test_refused_autoplay_waits_for_a_tap_beyond_the_bound(self):
+        page = self.page
+        seeks = self.count_seeks(page)
+        self.serve("/held")
+        # The browser's refusal as a policy gives it, once: the next play is the tap's.
+        await page.evaluate("""() => {
+            const real = HTMLMediaElement.prototype.play; let refusals = 0;
+            HTMLMediaElement.prototype.play = function () {
+                if (refusals++ === 0) return Promise.reject(new DOMException('a tap first', 'NotAllowedError'));
+                return real.call(this);
+            };
+        }""")
+        await page.locator('.pane:not([hidden]) [data-video="0"] h3').click()
+        prompt = "Нажмите ▶, чтобы начать просмотр."
+        await page.wait_for_function("t => document.getElementById('player-note').textContent === t", arg=prompt)
+        await page.wait_for_timeout(33000)  # past the 30 s a play has
+        self.assertEqual(await page.locator("#player-note").text_content(), prompt)
+        self.assertTrue(await page.locator("#retry").is_hidden())
+        self.assertEqual(await page.locator("#video").evaluate("v => v.hasAttribute('src') && v.readyState"), 0)
+        # The tap's play is bound again: a source that never prepares is told.
+        await page.locator("#toggle-play").click()
+        started = asyncio.get_running_loop().time()
+        await page.wait_for_function("document.getElementById('player-note').textContent === ''")
+        await page.locator("#retry").wait_for(state="visible", timeout=45000)
+        self.assertGreater(asyncio.get_running_loop().time() - started, 25)
+        self.assertEqual(await page.locator("#player-note").text_content(), FAILED)
+        self.assertEqual(seeks, [])  # nothing asked again by itself
+        self.assertGreater(self.held, 0)  # the source was asked, and held
+        await page.locator("#close-player").click()
+        self.assertEqual(self.errors, [])
+
+    async def test_retry_asks_once_however_often_tapped(self):
+        page = self.page
+        seeks = self.count_seeks(page)
+        self.serve("/forbidden")
+        await self.play_failing(page)
+        refused = self.refused
+        gate = await self.hold_seeks(page)
+        told = await page.evaluate("""() => {
+            const retry = document.getElementById('retry');
+            retry.click(); retry.click(); document.getElementById('toggle-play').click();
+            return [document.getElementById('player-note').textContent, retry.disabled];
+        }""")
+        self.assertEqual(told, ["Повторяю…", True])
+        await page.wait_for_timeout(500)
+        self.assertEqual(len(seeks), 1)
+        gate.set()
+        # The one request brings a stream, which fails as the first did.
+        await page.wait_for_function("t => document.getElementById('player-note').textContent === t "
+                                     "&& !document.getElementById('retry').disabled", arg=FAILED, timeout=45000)
+        self.assertEqual(len(seeks), 1)
+        self.assertEqual(self.refused, refused + 1)
+        await page.unroute("**/api/seek")
+        # A new video started while a retry waits is not replaced by its answer.
+        gate = await self.hold_seeks(page)
+        await page.locator("#retry").click()
+        await page.wait_for_function("document.getElementById('retry').disabled")
+        self.serve("/movie")
+        await page.locator('.pane:not([hidden]) [data-video="1"] h3').click()
+        await page.wait_for_function("document.getElementById('playing-title').textContent === 'Урок 1'")
+        gate.set()
+        await page.wait_for_function("document.getElementById('video').currentTime>.5")
+        await page.wait_for_timeout(500)
+        self.assertEqual(await page.locator("#playing-title").text_content(), "Урок 1")
+        self.assertTrue(await page.locator("#retry").is_hidden())
+        await page.unroute("**/api/seek")
+        # Nor a closed player opened again by it.
+        self.serve("/forbidden")
+        await page.locator('.pane:not([hidden]) [data-video="2"] h3').click()
+        await page.locator("#retry").wait_for(state="visible", timeout=45000)
+        gate = await self.hold_seeks(page)
+        await page.locator("#retry").click()
+        await page.locator("#close-player").click()
+        await page.locator("#player").wait_for(state="hidden")
+        gate.set()
+        await page.wait_for_timeout(1000)
+        self.assertTrue(await page.locator("#player").is_hidden())
         self.assertEqual(self.errors, [])
 
     async def test_source_cut_early_ends_in_an_error(self):

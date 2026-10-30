@@ -1113,11 +1113,8 @@ async function installPlayback(session) {
   $('player').hidden = false; $('playing-title').textContent = session.video.title;
   $('service-link').href = session.service_url;
   $('previous').disabled = !session.previous; $('next').disabled = !session.next;
-  $('player-note').textContent = ''; $('retry').hidden = true;
-  clearTimeout(prepareTimer);
-  prepareTimer = setTimeout(() => {
-    if (playing === session && video.readyState < HTMLMediaElement.HAVE_METADATA) mediaFailed(session);
-  }, PREPARE_MS);
+  $('player-note').textContent = ''; $('retry').hidden = true; $('retry').disabled = false;
+  armPrepare(session);
   video.controls = session.mode === 'direct'; video.src = session.url;
   video.onloadedmetadata = () => {
     if (playing !== session) return;
@@ -1125,21 +1122,41 @@ async function installPlayback(session) {
     if (session.mode === 'direct' && session.pos > 0) video.currentTime = session.pos;
     session.ready = true; updateTimeline();
   };
-  // Not awaited: the promise of a video that never loads never settles. A
-  // failed load rejects it too, after the error handler told why; only an
-  // autoplay the browser refused asks for a tap.
-  video.play().catch(error => {
-    if (playing === session && !session.failed && error.name === 'NotAllowedError')
-      $('player-note').textContent = 'Нажмите ▶, чтобы начать просмотр.';
-  });
+  startPlaying(session);
   window.scrollTo({top: 0, behavior: 'smooth'});
+}
+// The bound runs only while the browser tries to play: a tap it waits for is
+// no failed delivery, however long it takes (video.onplay arms it again).
+function armPrepare(session) {
+  session.blocked = false;
+  clearTimeout(prepareTimer);
+  prepareTimer = setTimeout(() => {
+    if (playing === session && video.readyState < HTMLMediaElement.HAVE_METADATA) mediaFailed(session);
+  }, PREPARE_MS);
+}
+// Not awaited: the promise of a video that never loads never settles. A
+// failed load rejects it too, after the error handler told why; only a play
+// the browser refused for want of a tap asks for one.
+function startPlaying(session, note = '') {
+  video.play().catch(error => {
+    if (playing !== session || session.failed) return;
+    if (error.name === 'NotAllowedError') {
+      session.blocked = true; clearTimeout(prepareTimer);
+      $('player-note').textContent = 'Нажмите ▶, чтобы начать просмотр.';
+    } else if (note) $('player-note').textContent = note;
+  });
 }
 // Told once per session, and only while it is the one on show: a late error
 // of a replaced or seeked stream changes nothing. The browser stops fetching;
 // «Повторить» asks the PC for the stream again, nothing retries by itself.
+// It covers a source refused or cut before the metadata (the 30 s bound);
+// a cut later on, or in a joined stream, is the browser's to tell.
 function mediaFailed(session) {
   if (playing !== session || session.failed) return;
-  session.failed = true; session.retryAt = session.ready ? position() : session.pos; session.ready = false;
+  // Where it was watched is kept (a source that never prepared tells nothing).
+  if (session.ready) report(true);
+  session.retryAt = session.ready ? position() : session.pos;
+  session.failed = true; session.ready = false;
   clearTimeout(prepareTimer);
   video.removeAttribute('src'); video.load();
   $('player-note').textContent = MEDIA_FAILED; $('retry').hidden = false;
@@ -1148,7 +1165,10 @@ function mediaFailed(session) {
 function retry() {
   if (playing && playing.failed) seek(playing.retryAt);
 }
-function position() { return playing ? (playing.offset || 0) + (video.currentTime || 0) : 0; }
+function position() {
+  if (!playing) return 0;
+  return playing.failed ? playing.retryAt : (playing.offset || 0) + (video.currentTime || 0);
+}
 function duration() { return playing && (playing.duration || (Number.isFinite(video.duration) ? video.duration : null)); }
 function updateTimeline() {
   if (!playing) return;
@@ -1160,22 +1180,37 @@ function updateTimeline() {
 }
 async function report(force = false, beacon = false, ended = false) {
   if (!playing || !playing.ready) return;
-  const now = Date.now();
+  const now = Date.now(), session = playing;
   if (!force && now - reportedAt < 5000) return;
   reportedAt = now;
   const data = {id: playing.id, generation: playing.generation, pos: position(), duration: duration(), paused: video.paused, ended, force};
   if (beacon && navigator.sendBeacon) { navigator.sendBeacon('/api/progress', new Blob([JSON.stringify(data)], {type: 'application/json'})); return; }
   try {
     const result = await api('/api/progress', data);
-    if (!result.saved) $('player-note').textContent = 'Общий прогресс сохраняется на другом устройстве.';
+    if (!result.saved && playing === session && !session.failed)
+      $('player-note').textContent = 'Общий прогресс сохраняется на другом устройстве.';
   } catch { /* The last progress the PC took stays. */ }
 }
 async function seek(pos, quality = null) {
-  if (!playing) return;
-  await report(true);
   const session = playing;
-  try { const result = await api('/api/seek', {id: session.id, pos, quality}); if (playing === session) await installPlayback(result); }
+  if (!session) return;
+  // A failed stream is asked for once for any number of taps (Повторить,
+  // ▶, the timeline, the quality): a second request would replace the
+  // stream the first one brings and fail it.
+  const again = session.failed;
+  if (again) {
+    if (session.retrying) return;
+    session.retrying = true; $('retry').disabled = true;
+    $('player-note').textContent = 'Повторяю…';
+  }
+  await report(true);
+  try {
+    if (playing !== session) return;  // closed or replaced meanwhile
+    const result = await api('/api/seek', {id: session.id, pos, quality}); if (playing === session) await installPlayback(result); }
   catch (error) { if (playing === session) $('player-note').textContent = error.message; }
+  finally {
+    if (again) { session.retrying = false; if (playing === session) $('retry').disabled = false; }
+  }
 }
 function clearPlayer() {
   playGeneration++; pendingPlay = null; playing = null; clearTimeout(prepareTimer);
@@ -1220,6 +1255,12 @@ video.addEventListener('pointerup', event => {
   if (now - lastTap < 350) { lastTap = 0; playerFullscreen(); } else lastTap = now;
 });
 video.ondblclick = playerFullscreen;
+video.onplay = () => {
+  // A play started after a refused one (▶, the browser's own controls): its
+  // video is bound again, so a source that never answers is still told.
+  if (playing && playing.blocked && !playing.failed) { armPrepare(playing); $('player-note').textContent = ''; }
+  updateTimeline();
+};
 video.ontimeupdate = () => { updateTimeline(); report(); };
 video.onpause = () => { updateTimeline(); report(true); };
 video.onseeked = () => report(true);
@@ -1230,10 +1271,8 @@ video.onerror = () => {
 };
 $('toggle-play').onclick = () => {
   if (playing && playing.failed) retry();
-  else if (video.paused) {
-    const session = playing;
-    video.play().catch(() => { if (playing === session && session && !session.failed) $('player-note').textContent = 'Не удалось начать просмотр.'; });
-  } else video.pause();
+  else if (video.paused) { if (playing) startPlaying(playing, 'Не удалось начать просмотр.'); }
+  else video.pause();
 };
 $('retry').onclick = retry;
 $('previous').onclick = () => adjacent('previous');
@@ -1244,7 +1283,7 @@ $('timeline').oninput = () => { seeking = true; $('time').textContent = time(Num
 $('timeline').onchange = () => {
   seeking = false;
   const pos = Number($('timeline').value);
-  if (playing && playing.mode === 'direct') video.currentTime = pos; else seek(pos);
+  if (playing && playing.mode === 'direct' && !playing.failed) video.currentTime = pos; else seek(pos);
 };
 $('quality').onchange = () => seek(position(), Number($('quality').value));
 
