@@ -4,13 +4,17 @@
 HALTIA_WEB_UI_TESTS=1 python3 -m unittest tests.test_web_ui
 Needs aiohttp, Playwright, Chrome/Chromium and FFmpeg with libx264.
 """
+import asyncio
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import unittest
 
 from tests import test_web as fixture_module
+
+FAILED = "Не удалось получить видео с ПК. Повторите или откройте его в сервисе."
 
 
 @unittest.skipUnless(os.environ.get("HALTIA_WEB_UI_TESTS"), "requires an explicit browser test session")
@@ -27,13 +31,28 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
                         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(movie)], check=True)
         async def media(request):
             return web.FileResponse(movie)
+        self.refused = 0
+        async def forbidden(request):
+            self.refused += 1
+            return web.Response(status=403)
+        async def short(request):
+            # A source that stops early: 128 bytes of the movie, a length it
+            # never sends, then its own connection closed.
+            response = web.StreamResponse(headers={"Content-Type": "video/mp4", "Content-Length": "999999"})
+            await response.prepare(request)
+            await response.write(movie.read_bytes()[:128])
+            request.transport.close()
+            return response
         app = web.Application()
         app.router.add_get("/movie", media)
+        app.router.add_get("/forbidden", forbidden)
+        app.router.add_get("/short", short)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         self.addAsyncCleanup(runner.cleanup)
         await web.TCPSite(runner, "127.0.0.1", 0).start()
-        movie_url = "http://127.0.0.1:%d/movie" % runner.addresses[0][1]
+        self.media_base = "http://127.0.0.1:%d" % runner.addresses[0][1]
+        movie_url = self.media_base + "/movie"
         videos = [dict(fixture_module.VIDEO, id=str(i), title="Урок %d" % i, thumb="", duration=10) for i in range(65)]
         self.playlist = {"source": "vk", "owner_id": "-7", "id": "7", "title": "Курс"}
         source = self.fixture.source
@@ -150,6 +169,55 @@ class WebUITest(unittest.IsolatedAsyncioTestCase):
         await self.pane(page).locator(".rows .rowcard").first.wait_for()  # kept in this browser
         await page.locator("#back").click()
         await page.locator('#tabs button[data-page="history"]').click()
+        # The tab's pane is shown at once and drawn after: its switch, either way, first.
+        await self.pane(page).get_by_role("button", name=re.compile("^(Списком|Карточками)$")).first.wait_for()
         self.assertEqual(await self.pane(page).get_by_role("button", name="Списком").count(), 1)  # its own choice
+        self.assertEqual(self.errors, [])
+
+    def serve(self, path):
+        self.fixture.source.browser_stream = lambda *args: {
+            "tracks": [{"url": self.media_base + path, "container": "mp4"}], "duration": 10}
+
+    async def play_failing(self, page):
+        await page.locator('.pane:not([hidden]) [data-video="0"] h3').click()
+        await page.locator("#retry").wait_for(state="visible", timeout=45000)
+        self.assertEqual(await page.locator("#player-note").text_content(), FAILED)
+        self.assertTrue(await page.locator("#service-link").is_visible())
+        # Nothing left saying it still prepares.
+        await page.wait_for_function("""() => !document.querySelector('.pane:not([hidden]) .note')
+            .textContent.includes('Подготавливаю')""")
+
+    async def test_refused_source_is_told_not_taken_for_autoplay(self):
+        page = self.page
+        self.serve("/forbidden")
+        await self.play_failing(page)
+        await page.wait_for_timeout(500)  # the play() rejection after the error does not cover it
+        self.assertEqual(await page.locator("#player-note").text_content(), FAILED)
+        # «Повторить» asks once more, by hand only.
+        refused = self.refused
+        await page.locator("#retry").click()
+        for _ in range(100):
+            if self.refused > refused:
+                break
+            await asyncio.sleep(.1)
+        self.assertEqual(self.refused, refused + 1)
+        await page.locator("#retry").wait_for(state="visible")
+        await page.wait_for_timeout(1000)
+        self.assertEqual(self.refused, refused + 1)  # no retry of its own
+        await page.locator("#close-player").click()
+        await page.locator("#player").wait_for(state="hidden")
+        self.assertEqual(self.errors, [])
+
+    async def test_source_cut_early_ends_in_an_error(self):
+        page = self.page
+        self.serve("/short")
+        await self.play_failing(page)
+        # A video that plays afterwards is not covered by the old one's failure.
+        self.serve("/movie")
+        await page.locator('.pane:not([hidden]) [data-video="1"] h3').click()
+        await page.wait_for_function("document.getElementById('video').currentTime>.5")
+        self.assertTrue(await page.locator("#retry").is_hidden())
+        self.assertEqual(await page.locator("#player-note").text_content(), "")
+        await page.locator("#close-player").click()
         self.assertEqual(self.errors, [])
 

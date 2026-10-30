@@ -214,8 +214,17 @@ class Media:
                 response = web.StreamResponse(status=upstream.status, headers=out)
                 await response.prepare(request)
                 if request.method != "HEAD":
-                    async for chunk in upstream.content.iter_chunked(65536):
-                        await response.write(chunk)
+                    try:
+                        async for chunk in upstream.content.iter_chunked(65536):
+                            await response.write(chunk)
+                    except aiohttp.ClientPayloadError:
+                        # The source closed short of what it announced. Ending
+                        # the body would pass a cut video as whole (a chunked
+                        # one would end cleanly): the browser's connection is
+                        # cut as well, and its player waits no further than
+                        # its own bound (PREPARE_MS in app.js).
+                        if request.transport is not None:
+                            request.transport.close()
                 return response
         finally:
             self.upstreams.release()

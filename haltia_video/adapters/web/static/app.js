@@ -9,12 +9,17 @@ const TABS = {home: 'Главная', feed: 'Новое', channels: 'Канал�
 // A kept tab older than this is drawn anew (its caches' news, the ages).
 const KEEP_MS = 5 * 60 * 1000;
 const PAGE = 30;  // what one query of a list brings
+// A video whose metadata has not come by then is told as failed. A source
+// that stops early leaves the browser retrying the cut response with no
+// error event; the PC itself gives FFmpeg's first bytes 20 s (media.py).
+const PREPARE_MS = 30 * 1000;
+const MEDIA_FAILED = 'Не удалось получить видео с ПК. Повторите или откройте его в сервисе.';
 let state = null, events = null, revision = 0;
 let tab = 'home', sub = null, prev = null, current = null, mode = 'tabs';
 const panes = {};
 let refreshTimer = null, refreshBusy = false, refreshAgain = false;
 let pendingAction = null, pendingPlay = null, playGeneration = 0, playing = null;
-let reportedAt = 0, seeking = false, neighborsGeneration = 0, toastTimer = null;
+let reportedAt = 0, seeking = false, neighborsGeneration = 0, toastTimer = null, prepareTimer = null;
 const preferences = load('haltia-view', {});
 const bookmarkFilters = Object.assign({kind: 'all', source: 'all', state: 'all', sort: 'added', reverse: true},
                                       preferences.bookmarks || {});
@@ -1108,15 +1113,40 @@ async function installPlayback(session) {
   $('player').hidden = false; $('playing-title').textContent = session.video.title;
   $('service-link').href = session.service_url;
   $('previous').disabled = !session.previous; $('next').disabled = !session.next;
-  $('player-note').textContent = '';
+  $('player-note').textContent = ''; $('retry').hidden = true;
+  clearTimeout(prepareTimer);
+  prepareTimer = setTimeout(() => {
+    if (playing === session && video.readyState < HTMLMediaElement.HAVE_METADATA) mediaFailed(session);
+  }, PREPARE_MS);
   video.controls = session.mode === 'direct'; video.src = session.url;
   video.onloadedmetadata = () => {
     if (playing !== session) return;
+    clearTimeout(prepareTimer);
     if (session.mode === 'direct' && session.pos > 0) video.currentTime = session.pos;
     session.ready = true; updateTimeline();
   };
-  try { await video.play(); } catch { $('player-note').textContent = 'Нажмите ▶, чтобы начать просмотр.'; }
+  // Not awaited: the promise of a video that never loads never settles. A
+  // failed load rejects it too, after the error handler told why; only an
+  // autoplay the browser refused asks for a tap.
+  video.play().catch(error => {
+    if (playing === session && !session.failed && error.name === 'NotAllowedError')
+      $('player-note').textContent = 'Нажмите ▶, чтобы начать просмотр.';
+  });
   window.scrollTo({top: 0, behavior: 'smooth'});
+}
+// Told once per session, and only while it is the one on show: a late error
+// of a replaced or seeked stream changes nothing. The browser stops fetching;
+// «Повторить» asks the PC for the stream again, nothing retries by itself.
+function mediaFailed(session) {
+  if (playing !== session || session.failed) return;
+  session.failed = true; session.retryAt = session.ready ? position() : session.pos; session.ready = false;
+  clearTimeout(prepareTimer);
+  video.removeAttribute('src'); video.load();
+  $('player-note').textContent = MEDIA_FAILED; $('retry').hidden = false;
+  updateTimeline();
+}
+function retry() {
+  if (playing && playing.failed) seek(playing.retryAt);
 }
 function position() { return playing ? (playing.offset || 0) + (video.currentTime || 0) : 0; }
 function duration() { return playing && (playing.duration || (Number.isFinite(video.duration) ? video.duration : null)); }
@@ -1145,10 +1175,10 @@ async function seek(pos, quality = null) {
   await report(true);
   const session = playing;
   try { const result = await api('/api/seek', {id: session.id, pos, quality}); if (playing === session) await installPlayback(result); }
-  catch (error) { $('player-note').textContent = error.message; }
+  catch (error) { if (playing === session) $('player-note').textContent = error.message; }
 }
 function clearPlayer() {
-  playGeneration++; pendingPlay = null; playing = null;
+  playGeneration++; pendingPlay = null; playing = null; clearTimeout(prepareTimer);
   video.pause(); video.removeAttribute('src'); video.load(); $('player').hidden = true;
 }
 async function stopPlayer() {
@@ -1194,8 +1224,18 @@ video.ontimeupdate = () => { updateTimeline(); report(); };
 video.onpause = () => { updateTimeline(); report(true); };
 video.onseeked = () => report(true);
 video.onended = async () => { await report(true, false, true); if (playing && playing.next) await adjacent('next'); };
-video.onerror = () => { if (playing) $('player-note').textContent = 'Не удалось воспроизвести видео. Можно открыть его в сервисе.'; };
-$('toggle-play').onclick = () => { if (video.paused) video.play().catch(() => { $('player-note').textContent = 'Не удалось начать просмотр.'; }); else video.pause(); };
+// An error of the stream before the one on show (its src since replaced) is not this session's.
+video.onerror = () => {
+  if (playing && video.error && video.currentSrc === new URL(playing.url, location.href).href) mediaFailed(playing);
+};
+$('toggle-play').onclick = () => {
+  if (playing && playing.failed) retry();
+  else if (video.paused) {
+    const session = playing;
+    video.play().catch(() => { if (playing === session && session && !session.failed) $('player-note').textContent = 'Не удалось начать просмотр.'; });
+  } else video.pause();
+};
+$('retry').onclick = retry;
 $('previous').onclick = () => adjacent('previous');
 $('next').onclick = () => adjacent('next');
 $('close-player').onclick = stopPlayer;

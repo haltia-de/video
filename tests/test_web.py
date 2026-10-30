@@ -34,8 +34,15 @@ class WebTest(unittest.IsolatedAsyncioTestCase):
                 return web.Response(body=data[4:8], status=206,
                                     headers={"Content-Range": "bytes 4-7/16", "Accept-Ranges": "bytes"})
             return web.Response(body=data, content_type="video/mp4", headers={"Accept-Ranges": "bytes"})
+        async def short(request):
+            response = web.StreamResponse(headers={"Content-Type": "video/mp4", "Content-Length": "999999"})
+            await response.prepare(request)
+            await response.write(b"\0" * 128)
+            request.transport.close()
+            return response
         upstream_app = web.Application()
         upstream_app.router.add_get("/video", upstream)
+        upstream_app.router.add_get("/short", short)
         self.upstream = TestServer(upstream_app)
         await self.upstream.start_server()
         self.source = SimpleNamespace(id="vk", label="VK", watch_url=lambda v: "https://vkvideo.ru/video" + v["id"],
@@ -178,6 +185,17 @@ class WebTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await response.read(), b"")
         response = await self.client.get(session["url"], headers={"Range": "bytes=0-2,4-7"})
         self.assertEqual(response.status, 416)
+
+    async def test_source_cut_short_cuts_the_browsers_response_too(self):
+        import aiohttp
+        await self.pair()
+        self.source.browser_stream = lambda v, f: {"tracks": [{
+            "url": str(self.upstream.make_url("/short")), "container": "mp4"}], "duration": 600}
+        session = await self.start_playback()
+        response = await self.client.get(session["url"])
+        self.assertEqual(response.status, 200)
+        with self.assertRaises(aiohttp.ClientPayloadError):
+            await response.read()  # not passed off as a whole video
 
     async def test_replay_does_not_create_another_session_and_late_progress_is_ignored(self):
         await self.pair()
